@@ -1,0 +1,16 @@
+<h1>Software Update</h1>
+<h2>Update packs</h2>
+<ul>
+<li>Put them in SD:/3ds/aiconsole/update/; the app scans manifest.json.</li>
+<li>Each artifact is checked by size plus sha256; mismatches are not installed.</li>
+<li>Versions only go up; same as current shows the already-latest message.</li>
+</ul>
+<h2>Install</h2>
+<ul>
+<li>.3dsx overwrites straight into SD:/3ds/AIConsole.3dsx.</li>
+<li>.cia only copies into the cias/ folder and tells you to tap it in FBI. Homebrew has no AM service rights, so it cannot self-install CIA.</li>
+</ul>
+<h2>Confirm</h2>
+<p>The update screen lists all facts on top; only allow / deny below. Nothing installs unless you press. An interrupt cannot corrupt the original: verify first, install after.</p>
+<h2>Release notes</h2>
+<p>Release notes show in the built-in HTML viewer.</p>

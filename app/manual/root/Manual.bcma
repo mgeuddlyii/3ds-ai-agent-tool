@@ -1,0 +1,5 @@
+AI CONSOLE MANUAL PLACEHOLDER
+This file stands in for Manual.bcma so we can test whether
+the HOME menu shows a manual button for a homebrew title.
+It is NOT a valid BCMA archive and the manual applet will
+almost certainly fail to render it. That is expected.

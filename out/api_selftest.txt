@@ -1,0 +1,15 @@
+API 自检结果
+========================================
+时间     : 2026-10-18 21:46:34
+服务商   : deepseek
+地址     : https://api.deepseek.com/v1/chat/completions
+模型     : deepseek-chat
+Key      : sk-f…1bc(len=35)（已脱敏，不落盘）
+HTTP     : 200
+耗时     : 1.00 秒
+usage    : prompt=17 completion=15 total=32
+----------------------------------------
+提问：用一句中文说明你是什么模型，不要超过三十个字。
+
+回复：
+我是DeepSeek最新版模型，由深度求索公司开发。

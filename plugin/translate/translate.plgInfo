@@ -1,0 +1,24 @@
+# translate.plgInfo —— 3GX 插件的元信息（3gxtool 读这个 YAML）
+#
+# ⚠️ 结构不是随便写的：3gxtool 会按固定层级取值，
+#    直接写 `Version: 0.1.0` 会报
+#        An exception occured: operator[] call on a scalar (key: "Major")
+#    —— 它把 Version 当成一个 map 去取 Major/Minor/Revision。
+
+Title: AI Console Translate
+Author: AI Console
+Description: 在游戏里弹出翻译面板：选中/输入一段文字，直接出译文。
+
+Version:
+  Major: 0
+  Minor: 1
+  Revision: 0
+
+# 兼容性：Any = 真机与 Citra 都加载。写 Console 的话模拟器里看不到，
+# 而我们的调试主要靠模拟器**看日志**，所以选 Any。
+Compatibility: Any
+
+# 内存区大小。翻译要解 JSON + 拼 HTTP + 存译文，2MiB 偏紧，
+# 10MiB 会从游戏地址空间里多切一块（部分游戏会不够用）。
+# 5MiB 是插件生态里最常用的折中。
+MemorySize: 5MiB

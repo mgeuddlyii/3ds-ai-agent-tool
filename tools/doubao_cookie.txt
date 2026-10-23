@@ -1,0 +1,2 @@
+# 把浏览器里复制出来的 cookie 原样粘贴到这里（覆盖本行）
+# 获取：F12 -> Network -> chat/completion -> Request Headers -> cookie

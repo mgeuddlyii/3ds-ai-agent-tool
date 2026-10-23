@@ -1,0 +1,170 @@
+##############################################################################
+#  3DS AI Console -- makerom RSF (Rom Specification File)
+#
+#  Target : homebrew "Application" installed to the SD card (.cia)
+#  Parser : makerom uses libyaml, so this must be strict YAML.
+#           makerom REJECTS any key it does not recognise.
+#
+#  Required keys (fatal if omitted), per makerom/src/exheader.c:
+#       AccessControlInfo/CoreVersion
+#       AccessControlInfo/Priority
+#       AccessControlInfo/SystemCallAccess
+#       AccessControlInfo/HandleTableSize
+#  Everything else in AccessControlInfo is optional
+#  (ServiceAccessControl only produces a warning when absent).
+#
+#  Syntax notes:
+#    SystemCallAccess      -> mapping  "Name: <number>"  (only the number is used)
+#    ServiceAccessControl  -> sequence of exact service names (max 34)
+#    FileSystemAccess      -> sequence of exact names, strcmp-matched
+#    MemoryMapping         -> sequence of "<start>-<end>:<perm>" strings
+#    IORegisterMapping     -> sequence of "<start>-<end>" strings
+##############################################################################
+
+BasicInfo:
+  Title                   : 测试 0.99
+  CompanyCode             : "00"
+  ProductCode             : CTR-P-AICN
+  ContentType             : Application
+  Logo                    : Homebrew
+
+TitleInfo:
+  Category                : Application
+  # ★★★ 2026-10-16 换 ID：旧值 0xF8001 与 **FBI 的 TitleID 完全相同**
+  #   （000400000F800100），装上去是覆盖不是新增；且 0xF8001 落在
+  #   Evaluation 段，Application 段上界是 0xF7FFF。
+  #   新值 0xA1C01 → 000400000A1C0100，已查 TID-API 确认未被占用。
+  #   ⚠️ 必须与 `AIConsole_cia.rsf` 保持一致（两份分开是因为服务声明不同，
+  #      但**身份**只能有一个）。详见 AIConsole_cia.rsf 里那段长注释。
+  UniqueId                : 0xA1C01
+
+Option:
+  UseOnSD                 : true
+  FreeProductCode         : true
+  MediaFootPadding        : false
+  EnableCrypt             : false
+
+AccessControlInfo:
+  # ---- format / kernel baseline ---------------------------------------
+  CoreVersion             : 2
+  DescVersion             : 2
+  ReleaseKernelMajor      : "02"
+  ReleaseKernelMinor      : "33"
+
+  # ---- extended save data ---------------------------------------------
+  UseExtSaveData          : false
+
+  # ---- FS:USER archive permissions ------------------------------------
+  # sdmc:/ read + write. The AI console keeps its config and cached
+  # screenshots under sdmc:/3ds/aiconsole/, so BOTH are needed.
+  FileSystemAccess:
+    - DirectSdmc
+    - DirectSdmcWrite
+
+  # ---- process settings ------------------------------------------------
+  MemoryType              : Application
+  SystemMode              : 64MB
+  IdealProcessor          : 0
+  AffinityMask            : 1
+  Priority                : 16
+  MaxCpu                  : 0
+  HandleTableSize         : 0x200
+  DisableDebug            : false
+  EnableForceDebug        : false
+  CanWriteSharedPage      : true
+  CanUsePrivilegedPriority: false
+  CanUseNonAlphabetAndNumber: true
+  PermitMainFunctionArgument: true
+  CanShareDeviceMemory    : true
+  RunnableOnSleep         : false
+  SpecialMemoryArrange    : true
+
+  # ---- virtual address mappings ---------------------------------------
+  # VRAM, needed if the UI is later moved from libctru console output
+  # to citro3d.
+  MemoryMapping:
+    - 1f000000-1f5fffff:r
+
+  # ---- accessible SVCs ------------------------------------------------
+  # The mapping keys are documentation only: makerom reads the VALUES.
+  SystemCallAccess:
+    ArbitrateAddress: 34
+    Break: 60
+    CancelTimer: 28
+    ClearEvent: 25
+    ClearTimer: 29
+    CloseHandle: 35
+    ConnectToPort: 45
+    ControlMemory: 1
+    CreateAddressArbiter: 33
+    CreateEvent: 23
+    CreateMemoryBlock: 30
+    CreateMutex: 19
+    CreateSemaphore: 21
+    CreateThread: 8
+    CreateTimer: 26
+    DuplicateHandle: 39
+    ExitProcess: 3
+    ExitThread: 9
+    GetCurrentProcessorNumber: 17
+    GetHandleInfo: 41
+    GetProcessId: 53
+    GetProcessIdOfThread: 54
+    GetProcessIdealProcessor: 6
+    GetProcessInfo: 43
+    GetResourceLimit: 56
+    GetResourceLimitCurrentValues: 58
+    GetResourceLimitLimitValues: 57
+    GetSystemInfo: 42
+    GetSystemTick: 40
+    GetThreadContext: 59
+    GetThreadId: 55
+    GetThreadIdealProcessor: 15
+    GetThreadInfo: 44
+    GetThreadPriority: 11
+    MapMemoryBlock: 31
+    OutputDebugString: 61
+    QueryMemory: 2
+    ReleaseMutex: 20
+    ReleaseSemaphore: 22
+    SendSyncRequest1: 46
+    SendSyncRequest2: 47
+    SendSyncRequest3: 48
+    SendSyncRequest4: 49
+    SendSyncRequest: 50
+    SetThreadPriority: 12
+    SetTimer: 27
+    SignalEvent: 24
+    SleepThread: 10
+    UnmapMemoryBlock: 32
+    WaitSynchronization1: 36
+    WaitSynchronizationN: 37
+    Backdoor: 123
+
+  # ---- service access (max 34 entries) --------------------------------
+  # ⚠️ **别在这个文件里加 am:u。** 加了也不会生效，只会误导后来的人。
+  #
+  # 这是 **3dsx 形态**用的 RSF。Luma3DS 加载 3dsx 时会走 hbldr.c 的
+  # hbldrPatchExHeaderInfo()，那里先 memset 清零再 memcpy 一张写死的
+  # 34 项表（含 am:net，不含 am:u）—— 也就是说本节的声明会被整体丢弃。
+  #
+  # 需要 am:u 的是「AI 装程序」那条链，它要的是 **.cia 形态**，
+  # 对应的 RSF 是 app/AIConsole_cia.rsf。两份分开是故意的，原因写在那份的文件头。
+  ServiceAccessControl:
+    - cfg:u        # system configuration  -> "system settings" screen
+    - fs:USER      # filesystem
+    - gsp::Gpu     # graphics
+    - hid:USER     # input
+    - ndm:u        # network daemon
+    - soc:U        # BSD sockets
+    - ssl:C        # TLS
+    - http:C       # httpc, for AI API calls
+    - APT:U        # application manager
+    - ptm:u        # power / battery status
+
+SystemControlInfo:
+  # No Dependency block on purpose: listing a module that is absent from
+  # the running firmware makes the title hang on the boot logo.
+  SaveDataSize            : 0K
+  RemasterVersion         : 0
+  StackSize               : 0x40000

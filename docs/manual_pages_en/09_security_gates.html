@@ -1,0 +1,16 @@
+<h1>Safety: Four Gates</h1>
+<p>The action layer is bound by four gates; none can be missing.</p>
+<ol>
+<li>The model only gives data: its output is an action request, not an instruction; it never sees your file contents.</li>
+<li>Compile-time allowlist: only 4 actions can run, hardcoded; nothing can register a new action at runtime.</li>
+<li>Physical confirm: every action pops a confirm screen; without allow it does not run.</li>
+<li>Paths never come from the AI: every landing path is a local constant; the model naming a path has no effect.</li>
+</ol>
+<h2>Action allowlist</h2>
+<ul>
+<li>Write file: create or overwrite one text file, lands in sdmc:/3ds/aiconsole/out/.</li>
+<li>Install app: .3dsx moves straight to sdmc:/3ds/; .cia tells you to go to FBI.</li>
+<li>Set region: sets a game's region language, lands in sdmc:/luma/titles/gameID/locale.txt.</li>
+<li>Clear region: undoes the above.</li>
+</ul>
+<p>If the model tries anything outside the allowlist, the same confirm screen pops up and it is audited - but the action layer does not accept it; pressing allow does nothing.</p>

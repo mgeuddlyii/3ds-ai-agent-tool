@@ -1,0 +1,16 @@
+<h1>Safety: Levels and Logs</h1>
+<h2>Safety levels</h2>
+<ul>
+<li>L0 Chat (default): chat only, no actions run.</li>
+<li>L1 Files: adds write file.</li>
+<li>L2 System: adds install app, set/clear region.</li>
+<li>Higher levels (L3 Low-level, L4 Full system, L5 Highest): full-system capability is out of reach in this build; everything stays in user mode.</li>
+</ul>
+<p>Default is L0, not kept after exit. Every launch starts at the lowest level. Home shows this session's level.</p>
+<h2>What it cannot do</h2>
+<p>Write NAND, flash FIRM. Not unguarded - the capability does not exist. Nobody, including the model, can do these through this app.</p>
+<h2>Two files</h2>
+<ul>
+<li>action.log: every allow or deny is appended to SD:/3ds/aiconsole/action.log, with timestamp and details.</li>
+<li>status.txt: the run log lives in SD:/3ds/aiconsole/status.txt; follow on-screen hints when something breaks.</li>
+</ul>

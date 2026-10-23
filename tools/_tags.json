@@ -1,0 +1,102 @@
+[
+  {
+    "name": "2126.1.2",
+    "zipball_url": "https://api.github.com/repos/azahar-emu/azahar/zipball/refs/tags/2126.1.2",
+    "tarball_url": "https://api.github.com/repos/azahar-emu/azahar/tarball/refs/tags/2126.1.2",
+    "commit": {
+      "sha": "9e6f523a57fac9564ac0bf8286db3c3702d301ec",
+      "url": "https://api.github.com/repos/azahar-emu/azahar/commits/9e6f523a57fac9564ac0bf8286db3c3702d301ec"
+    },
+    "node_id": "REF_kwDOLbpMcbJyZWZzL3RhZ3MvMjEyNi4xLjI"
+  },
+  {
+    "name": "2126.1.1",
+    "zipball_url": "https://api.github.com/repos/azahar-emu/azahar/zipball/refs/tags/2126.1.1",
+    "tarball_url": "https://api.github.com/repos/azahar-emu/azahar/tarball/refs/tags/2126.1.1",
+    "commit": {
+      "sha": "3e574df8c1b502e945332b4b4d319ad683114d77",
+      "url": "https://api.github.com/repos/azahar-emu/azahar/commits/3e574df8c1b502e945332b4b4d319ad683114d77"
+    },
+    "node_id": "REF_kwDOLbpMcbJyZWZzL3RhZ3MvMjEyNi4xLjE"
+  },
+  {
+    "name": "2126.1",
+    "zipball_url": "https://api.github.com/repos/azahar-emu/azahar/zipball/refs/tags/2126.1",
+    "tarball_url": "https://api.github.com/repos/azahar-emu/azahar/tarball/refs/tags/2126.1",
+    "commit": {
+      "sha": "26e608f6fa292b27cda0ae8c84e148d17600a5e6",
+      "url": "https://api.github.com/repos/azahar-emu/azahar/commits/26e608f6fa292b27cda0ae8c84e148d17600a5e6"
+    },
+    "node_id": "REF_kwDOLbpMcbByZWZzL3RhZ3MvMjEyNi4x"
+  },
+  {
+    "name": "2126.1-rc5",
+    "zipball_url": "https://api.github.com/repos/azahar-emu/azahar/zipball/refs/tags/2126.1-rc5",
+    "tarball_url": "https://api.github.com/repos/azahar-emu/azahar/tarball/refs/tags/2126.1-rc5",
+    "commit": {
+      "sha": "073110cb44e2d23e0d893429c264e63e756d4331",
+      "url": "https://api.github.com/repos/azahar-emu/azahar/commits/073110cb44e2d23e0d893429c264e63e756d4331"
+    },
+    "node_id": "REF_kwDOLbpMcbRyZWZzL3RhZ3MvMjEyNi4xLXJjNQ"
+  },
+  {
+    "name": "2126.1-rc4",
+    "zipball_url": "https://api.github.com/repos/azahar-emu/azahar/zipball/refs/tags/2126.1-rc4",
+    "tarball_url": "https://api.github.com/repos/azahar-emu/azahar/tarball/refs/tags/2126.1-rc4",
+    "commit": {
+      "sha": "abdc43af0c4a891aad86b64bdfe8d69b2d076391",
+      "url": "https://api.github.com/repos/azahar-emu/azahar/commits/abdc43af0c4a891aad86b64bdfe8d69b2d076391"
+    },
+    "node_id": "REF_kwDOLbpMcbRyZWZzL3RhZ3MvMjEyNi4xLXJjNA"
+  },
+  {
+    "name": "2126.1-rc3",
+    "zipball_url": "https://api.github.com/repos/azahar-emu/azahar/zipball/refs/tags/2126.1-rc3",
+    "tarball_url": "https://api.github.com/repos/azahar-emu/azahar/tarball/refs/tags/2126.1-rc3",
+    "commit": {
+      "sha": "ac95f6f69db8f1971c0040df868219e9ccd12211",
+      "url": "https://api.github.com/repos/azahar-emu/azahar/commits/ac95f6f69db8f1971c0040df868219e9ccd12211"
+    },
+    "node_id": "REF_kwDOLbpMcbRyZWZzL3RhZ3MvMjEyNi4xLXJjMw"
+  },
+  {
+    "name": "2126.1-rc2",
+    "zipball_url": "https://api.github.com/repos/azahar-emu/azahar/zipball/refs/tags/2126.1-rc2",
+    "tarball_url": "https://api.github.com/repos/azahar-emu/azahar/tarball/refs/tags/2126.1-rc2",
+    "commit": {
+      "sha": "8b66c849252ba6672ec61d4619b5c51589cdf0d9",
+      "url": "https://api.github.com/repos/azahar-emu/azahar/commits/8b66c849252ba6672ec61d4619b5c51589cdf0d9"
+    },
+    "node_id": "REF_kwDOLbpMcbRyZWZzL3RhZ3MvMjEyNi4xLXJjMg"
+  },
+  {
+    "name": "2126.1-rc1",
+    "zipball_url": "https://api.github.com/repos/azahar-emu/azahar/zipball/refs/tags/2126.1-rc1",
+    "tarball_url": "https://api.github.com/repos/azahar-emu/azahar/tarball/refs/tags/2126.1-rc1",
+    "commit": {
+      "sha": "48adcefe4a3a3e301d7822a783083f685fdf8bac",
+      "url": "https://api.github.com/repos/azahar-emu/azahar/commits/48adcefe4a3a3e301d7822a783083f685fdf8bac"
+    },
+    "node_id": "REF_kwDOLbpMcbRyZWZzL3RhZ3MvMjEyNi4xLXJjMQ"
+  },
+  {
+    "name": "2126.1-alpha1",
+    "zipball_url": "https://api.github.com/repos/azahar-emu/azahar/zipball/refs/tags/2126.1-alpha1",
+    "tarball_url": "https://api.github.com/repos/azahar-emu/azahar/tarball/refs/tags/2126.1-alpha1",
+    "commit": {
+      "sha": "c0d923ba22219c84def266532fa0758e0ce3bf40",
+      "url": "https://api.github.com/repos/azahar-emu/azahar/commits/c0d923ba22219c84def266532fa0758e0ce3bf40"
+    },
+    "node_id": "REF_kwDOLbpMcbdyZWZzL3RhZ3MvMjEyNi4xLWFscGhhMQ"
+  },
+  {
+    "name": "2126.0",
+    "zipball_url": "https://api.github.com/repos/azahar-emu/azahar/zipball/refs/tags/2126.0",
+    "tarball_url": "https://api.github.com/repos/azahar-emu/azahar/tarball/refs/tags/2126.0",
+    "commit": {
+      "sha": "fbd3fb02f71e5f9ed5134037fd59bad96c7d2b8a",
+      "url": "https://api.github.com/repos/azahar-emu/azahar/commits/fbd3fb02f71e5f9ed5134037fd59bad96c7d2b8a"
+    },
+    "node_id": "REF_kwDOLbpMcbByZWZzL3RhZ3MvMjEyNi4w"
+  }
+]

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>给 3DS 传文件</title>
+<style>
+  /* 故意保持朴素：这是个本地工具页，不是给人欣赏的。
+     配色跟着经典的"浅灰 + 蓝"，与 3DS 上那个进度条同一个味道。 */
+  body { font: 15px/1.6 "Microsoft YaHei", "PingFang SC", sans-serif;
+         background: #C8C8C0; color: #1a1a1a; margin: 0; padding: 28px; }
+  .win { max-width: 720px; margin: 0 auto; background: #F4F4F0;
+         border: 2px outset #fff; box-shadow: 3px 3px 0 #8a8a80; }
+  .bar { background: linear-gradient(#0a246a, #3a6ea5); color: #fff;
+         padding: 6px 10px; font-weight: bold; }
+  .in { padding: 20px; }
+  h2 { font-size: 16px; margin: 0 0 10px; }
+
+  /* 拖拽区：虚线框 + 放上去变色。给用户一个明确的"能放这儿"。 */
+  #drop { border: 2px dashed #7a7a70; background: #fff; padding: 34px 16px;
+          text-align: center; cursor: pointer; }
+  #drop.hot { border-color: #2A5DA8; background: #E8F0FA; }
+  #drop small { color: #6a6a60; }
+
+  /* 分段进度条 —— 与 3DS 上那个同源（经典 Windows 的分段感） */
+  .bar2 { height: 20px; background: #C8C8C0; border: 1px solid #606060;
+          padding: 2px; display: flex; gap: 2px; }
+  .bar2 i { flex: 1; background: #A8A8A0; }
+  .bar2 i.on { background: #2A5DA8; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  td, th { border: 1px solid #B0B0A8; padding: 5px 8px; text-align: left;
+           font-size: 14px; }
+  th { background: #DEDED4; }
+  input { font: inherit; padding: 4px 6px; border: 1px solid #7a7a70;
+          background: #fff; }
+  #code { width: 90px; letter-spacing: 4px; text-align: center; }
+  button { font: inherit; padding: 5px 16px; border: 1px solid #606060;
+           background: #DEDED4; cursor: pointer; }
+  button:hover { background: #C8C8C0; }
+  button:disabled { color: #909090; cursor: default; }
+  .row { display: flex; align-items: center; gap: 10px; margin-top: 12px;
+         flex-wrap: wrap; }
+  .ok { color: #1a6a1a; } .bad { color: #b02020; }
+  code { background: #E8E8E0; padding: 1px 4px; }
+</style>
+</head>
+<body>
+<div class="win">
+  <div class="bar">给 3DS 传文件</div>
+  <div class="in">
+
+    <h2>一、把游戏文件拖到下面这个框里</h2>
+    <div id="drop">
+      拖到这里，或<b>点一下选文件</b>
+      <br><small>支持 .3dsx / .cia / .3ds / .nds / .cci</small>
+    </div>
+    <input type="file" id="picker" multiple hidden>
+
+    <h2 style="margin-top:20px">二、在 3DS 的互传页上找到四位配对码，填在这里</h2>
+    <div class="row">
+      <input id="code" maxlength="4" inputmode="numeric" placeholder="0000">
+      <button id="pairbtn">配对</button>
+      <span id="pairmsg"></span>
+    </div>
+
+    <h2 style="margin-top:20px">三、待传清单</h2>
+    <table>
+      <tr><th>文件</th><th style="width:90px">大小</th><th style="width:190px">上传</th></tr>
+      <tbody id="rows"><tr><td colspan="3" style="color:#6a6a60">还没有文件</td></tr></tbody>
+    </table>
+
+  </div>
+</div>
+
+<script>
+// 拖拽 + 逐个上传。刻意用最朴素的方式：
+// 这个页面只需要在内网跑一次，引入任何框架都不值当。
+const drop = document.getElementById('drop');
+const picker = document.getElementById('picker');
+const rows = document.getElementById('rows');
+const codeEl = document.getElementById('code');
+const pairBtn = document.getElementById('pairbtn');
+const pairMsg = document.getElementById('pairmsg');
+const WANT = ['.3dsx', '.cia', '.3ds', '.nds', '.cci'];
+
+drop.onclick = () => picker.click();
+picker.onchange = e => add([...e.target.files]);
+
+['dragenter', 'dragover'].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('hot'); }));
+['dragleave', 'drop'].forEach(ev =>
+  drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('hot'); }));
+drop.addEventListener('drop', e => add([...e.dataTransfer.files]));
+
+function add(files) {
+  let first = rows.querySelector('td[colspan]');
+  for (const f of files) {
+    const name = f.name.toLowerCase();
+    if (!WANT.some(x => name.endsWith(x))) { alert('不认识的类型：' + f.name); continue; }
+    if (first) { rows.innerHTML = ''; first = null; }
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${esc(f.name)}</td><td>${(f.size/1048576).toFixed(1)} MB</td>
+                   <td></td>`;
+    rows.appendChild(tr);
+    upload(f, tr.cells[2]);
+  }
+}
+
+function upload(file, cell) {
+  const seg = Math.max(6, Math.min(40, Math.round(file.size / 262144)));
+  const bar = document.createElement('div');
+  bar.className = 'bar2';
+  for (let i = 0; i < seg; ++i) bar.appendChild(document.createElement('i'));
+  const txt = document.createElement('div');
+  txt.style.cssText = 'font-size:12px;color:#6a6a60;margin-top:2px';
+  cell.appendChild(bar); cell.appendChild(txt);
+
+  const xhr = new XMLHttpRequest();
+  // ★ 裸传：文件名走 query，body 就是文件本身。
+  //   不用 multipart/form-data —— 服务端手工切边界才能拿到文件名，
+  //   而"已读了多少字节"的记账错几个字节就是一个坏掉的 .cia。
+  //   这样服务端**零解析、纯流式**，几百 MB 也不进内存。
+  xhr.open('POST', '/upload?name=' + encodeURIComponent(file.name));
+  xhr.upload.onprogress = e => {
+    if (!e.lengthComputable) return;
+    const p = e.loaded / e.total;
+    const lit = Math.round(p * seg);
+    [...bar.children].forEach((n, i) => n.classList.toggle('on', i < lit));
+    txt.textContent = Math.round(p * 100) + '%';
+  };
+  xhr.onload = () => {
+    if (xhr.status === 200) {
+      [...bar.children].forEach(n => n.classList.add('on'));
+      txt.innerHTML = '<span class="ok">好了</span>';
+    } else {
+      // 服务端会在 JSON 里说清原因（"没传完，已丢弃"之类），
+      // 直接显示它 —— 只报一个状态码等于让用户猜。
+      let why = '失败 ' + xhr.status;
+      try { why = (JSON.parse(xhr.responseText).why) || why; } catch (e) {}
+      txt.innerHTML = '<span class="bad">' + esc(why) + '</span>';
+    }
+  };
+  xhr.onerror = () => { txt.textContent = '连不上（服务关了？）'; };
+  xhr.send(file);
+}
+
+pairBtn.onclick = async () => {
+  const c = codeEl.value.trim();
+  pairMsg.textContent = '';
+  pairMsg.className = '';
+  if (!/^\d{4}$/.test(c)) {
+    pairMsg.textContent = '要四位数字'; pairMsg.className = 'bad';
+    return;
+  }
+  try {
+    const r = await fetch('/pair', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: c })
+    });
+    const j = await r.json();
+    if (j.ok) {
+      pairMsg.textContent = '配对成功，现在回 3DS 按 Y 读清单';
+      pairMsg.className = 'ok';
+    } else {
+      pairMsg.textContent = j.why || '对不上';
+      pairMsg.className = 'bad';
+    }
+  } catch (e) {
+    pairMsg.textContent = '连不上这个服务'; pairMsg.className = 'bad';
+  }
+};
+
+function esc(s) {
+  return s.replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+</script>
+</body>
+</html>

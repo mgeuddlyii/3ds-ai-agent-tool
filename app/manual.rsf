@@ -1,0 +1,49 @@
+# 系统说明书 CFA 的 RSF —— 由 tools/manual/build_manual.py 生成，别手改
+#
+# 与主程序的 AIConsole_cia.rsf 的关系：UniqueId 必须**完全相同**，
+# 否则说明书 content 挂不到这个 title 上。改 title id 时两处一起改。
+#
+# ProductCode 固定 CTR-P-CTAP —— 零售说明书的标配产品码
+# （见 3dbrew CFA 条目；makerom 会原样写进 NCCH 头 0x150）。
+
+BasicInfo:
+  Title                   : Manual
+  CompanyCode             : "00"
+  ProductCode             : CTR-P-CTAP
+  ContentType             : Manual
+  Logo                    : Homebrew
+
+TitleInfo:
+  Category                : Application
+  UniqueId                : 0xA1C01
+
+Option:
+  UseOnSD                 : true
+  FreeProductCode         : true
+  MediaFootPadding        : false
+  EnableCrypt             : false
+
+AccessControlInfo:
+  CoreVersion             : 2
+  DescVersion             : 2
+  ReleaseKernelMajor      : "02"
+  ReleaseKernelMinor      : "33"
+  MemoryType              : Application
+  SystemMode              : 64MB
+  CpuSpeed                : 804mhz
+  IdealProcessor          : 0
+  AffinityMask            : 1
+  Priority                : 16
+  MaxCpu                  : 0
+  HandleTableSize         : 0
+  DisableDebug            : false
+  EnableForceDebug        : false
+  CanWriteSharedPage      : false
+  CanUsePrivilegedPriority: false
+  CanUseNonAlphabetAndNumber: true
+  PermitMainFunctionArgument: true
+  CanShareDeviceMemory    : false
+  RunnableOnSleep         : false
+  SpecialMemoryArrange    : false
+  SystemCallAccess:
+    ArbitrateAddress: 34

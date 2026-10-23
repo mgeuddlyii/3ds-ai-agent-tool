@@ -1,0 +1,128 @@
+# ─────────────────────────────────────────────────────────────
+# 3DS AI 助手 —— 不纳入版本库的东西
+#
+# 分三类，理由各不相同，别随手删任何一条：
+#   ① 敏感信息（真的会泄漏凭据，最要紧）
+#   ② 构建产物（能重新生成，提交上去只会让 clone 变慢）
+#   ③ 本机临时物（日志、截图、虚拟环境、别人的东西）
+# ─────────────────────────────────────────────────────────────
+
+# ═════════════════════════════════════════════════════════════
+# ① 敏感信息 —— 这一组的每一条都对应一次真实的泄漏风险
+# ═════════════════════════════════════════════════════════════
+
+# 对话用的 API Key（用户自己的付费 Key）。这些绝不能进仓库。
+# 卡上的 key.txt / keys.json 是运行时文件，本不该出现在源码目录，
+# 但历史上确实有过手工拷进来调试的情况 —— 所以显式堵死。
+key.txt
+keys.json
+asr.txt
+creds.enc
+**/key.txt
+**/keys.json
+**/creds.enc
+# ★ 2026-10-23 实际踩到过：tools/_key.txt.orig 里躺着一把**真实的**
+#   对话 Key（一次手工调试留下的 .orig 冲突残留），差点随首次提交推上去。
+#   凡是带 key 字样的文本、以及 .orig/.rej 这类冲突残留，一律挡掉。
+**/*key*.txt
+**/*key*.json
+**/*_key*
+*.orig
+*.rej
+
+# 本地私有的编译期密钥头（如果有人用「抽到独立头文件」那种做法）
+shared/asr_key.h
+shared/*_key.h
+shared/*_secret.h
+
+# ⚠️ 例外：shared/asr.c 里的 ASR_BUILTIN_KEY 是**故意公开的**。
+#    那把 Key 所在账号余额为 0，只用于语音识别，被刷不影响任何付费资源。
+#    不要把它当成"忘了删的密钥"而清空 —— 清空会让「按住 ZL 说话」
+#    直接退回"没配 Key"，而普通用户不知道要配什么。
+
+# 日志里出现过真实的 Key（logs/credbak/keys.json、logs/echo_capture.txt）。
+# 整目录排除，同时也因为它全是本机运行痕迹 —— 对别人没有价值。
+logs/
+*.log
+
+# ═════════════════════════════════════════════════════════════
+# ② 构建产物 —— 都能用 tools/build.py 重新生成
+# ═════════════════════════════════════════════════════════════
+*.o
+*.d
+*.elf
+*.smdh
+*.3dsx
+*.cia
+*.cxi
+*.3gx
+
+# 构建目录（每个会话用 AIC_BUILD_DIR 隔离，所以名字很多种）
+build/
+app/build/
+app/build_*/
+_build_*/
+.build_wb/
+pack/
+dist/
+release/
+
+# 生成物：由 tools/ 里的脚本从语料/字库重新算出来
+tools/out/
+tools/__pycache__/
+__pycache__/
+*.pyc
+
+# ═════════════════════════════════════════════════════════════
+# ③ 本机临时物 / 第三方代码
+# ═════════════════════════════════════════════════════════════
+
+# Python 虚拟环境（600MB，谁用谁建）
+tools/.venv/
+.venv/
+venv/
+
+# 备份文件（历史上留了一堆 sc_guide.c.bak-20261005_xxxxxx 这种）
+*.bak
+*.bak-*
+*.bak_*
+*~
+
+# 本机专用的助手脚本。它们指向作者自己的磁盘路径和局域网地址，
+# 对别人没用，留着还会漏出个人目录结构。
+tools/ftp_putkey.py
+# `_` 前缀在项目约定里 = 一次性调试脚本（含作者内网 IP、本机路径）。
+# 例：_ftp_bootlog.py / _ftp_probe.py 里写死了作者的 192.168.100.x。
+tools/_*.py
+tools/_*.txt
+tools/_ref_doubao/
+
+# 第三方子模块：CTRPluginFramework 有自己的仓库，不该嵌套进来
+plugin/ctrpluginframework/
+plugin/CTRPluginFramework-BlankTemplate-master/
+plugin/ctrpf_blank.zip
+
+# 离线攻略的训练语料与检查点（体积大 + 版权归属需要单独判断）。
+# 编译**不需要**它们：生成好的 guide_kb.c / nnet_kb_data.c 已经在 shared/nnet/ 里。
+tools/guia/chatgpt/
+tools/guia/ckpt/
+tools/guia/chat_corpus/
+tools/guia/corpus/
+tools/guia/tmp/
+# 攻略原文（第三方游戏攻略文本，版权归属不属于本项目，不随源码分发）
+tools/guia/corpus_offplatform/
+# 训练流程的中间产物与一次性分析脚本
+tools/guia/.trash*
+tools/guia/flow_wip/
+tools/guia/_*.py
+# 子目录里的一次性脚本（`tools/_*.py` 只覆盖 tools 根目录）
+tools/**/_*.py
+
+# 编辑器 / 系统
+.workbuddy/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

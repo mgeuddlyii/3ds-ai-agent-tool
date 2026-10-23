@@ -1,0 +1,50 @@
+[
+ {
+  "host": "ark.cn-beijing.volces.com",
+  "root": "",
+  "in_3ds": false,
+  "mitm": false,
+  "chain": 0,
+  "name": "ark(火山方舟/豆包)"
+ },
+ {
+  "host": "api.deepseek.com",
+  "root": "",
+  "in_3ds": false,
+  "mitm": false,
+  "chain": 0,
+  "name": "deepseek"
+ },
+ {
+  "host": "open.bigmodel.cn",
+  "root": "",
+  "in_3ds": false,
+  "mitm": false,
+  "chain": 0,
+  "name": "zhipu"
+ },
+ {
+  "host": "api.moonshot.cn",
+  "root": "",
+  "in_3ds": false,
+  "mitm": false,
+  "chain": 0,
+  "name": "moonshot"
+ },
+ {
+  "host": "dashscope.aliyuncs.com",
+  "root": "",
+  "in_3ds": false,
+  "mitm": false,
+  "chain": 0,
+  "name": "dashscope"
+ },
+ {
+  "host": "www.doubao.com",
+  "root": "",
+  "in_3ds": false,
+  "mitm": false,
+  "chain": 0,
+  "name": "doubao网页"
+ }
+]

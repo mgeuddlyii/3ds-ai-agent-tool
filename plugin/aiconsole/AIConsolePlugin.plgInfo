@@ -1,0 +1,27 @@
+Author: AIConsole
+
+Version: # Plugin version
+    Major: 0
+    Minor: 7
+    Revision: 2
+
+Targets: # Low TitleId of games which are compatibles with this plugin (0 for all)
+
+Title: AI Console
+
+Summary: In-game AI assistant: translate the screen or ask about the game
+
+Description: |
+  In-game companion for AI Console (the .cia app).
+
+  Features (being built):
+    - Translate the current screen
+    - Ask about the game without leaving it
+
+  Needs network; runs inside the game process.
+
+Compatibility: Any
+
+MemorySize: 4MiB
+
+UsePrivateMemory: false

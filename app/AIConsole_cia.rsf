@@ -1,0 +1,215 @@
+##############################################################################
+#  3DS AI Console -- makerom RSF  ( **CIA 形态** 用的那一份 )
+#
+#  ⚠️ 这个文件和 AIConsole.rsf **必须分开**，不是图省事复制出来的。
+#     两份的唯一差别是 am:u，但那一个服务的差别是有含义的：
+#
+#     · AIConsole.rsf      -> 3dsx 形态。Luma3DS 会**无视**这里面声明的
+#                             ServiceAccessControl，用 hbldr.c 里写死的
+#                             34 项表覆盖掉（含 am:net，不含 am:u）。
+#                             所以往这份里加服务是**纯噪音**，加了也不生效。
+#
+#     · AIConsole_cia.rsf  -> .cia 形态，本文件。Luma3DS 的 loader.c 里
+#                             唯一判据是 hbldrIs3dsxTitle(title_id)，
+#                             它比的是 hbldr_tid（可配置，默认 hblauncher）。
+#                             我们的 UniqueId 0xF8001 不等于它 -> 走 else
+#                             分支 -> **用我们自己 exheader 里的声明**。
+#                             所以这份里写的服务是真的生效的。
+#
+#     依据（LumaTeam/Luma3DS master）：
+#       sysmodules/loader/source/hbldr.c    serviceList[34][8] + memset/memcpy
+#       sysmodules/loader/source/loader.c   GetProgramInfoImpl 的 if/else
+#       sysmodules/loader/source/hbldr.h    hbldrIs3dsxTitle 实现
+#     ⚠️ 以上是**源码阅读**结论，真机未实测。Azahar 不能用来验（它的 am
+#        服务不查调用者 exheader，会给出假阳性）。
+#
+#  Target : homebrew "Application" installed to the SD card (.cia)
+#  Parser : makerom uses libyaml, so this must be strict YAML.
+#           makerom REJECTS any key it does not recognise.
+#
+#  Required keys (fatal if omitted), per makerom/src/exheader.c:
+#       AccessControlInfo/CoreVersion
+#       AccessControlInfo/Priority
+#       AccessControlInfo/SystemCallAccess
+#       AccessControlInfo/HandleTableSize
+#  Everything else in AccessControlInfo is optional
+#  (ServiceAccessControl only produces a warning when absent).
+#
+#  Syntax notes:
+#    SystemCallAccess      -> mapping  "Name: <number>"  (only the number is used)
+#    ServiceAccessControl  -> sequence of exact service names (max 34)
+#    FileSystemAccess      -> sequence of exact names, strcmp-matched
+#    MemoryMapping         -> sequence of "<start>-<end>:<perm>" strings
+#    IORegisterMapping     -> sequence of "<start>-<end>" strings
+##############################################################################
+
+BasicInfo:
+  Title                   : 测试 0.99
+  CompanyCode             : "00"
+  ProductCode             : CTR-P-AICN
+  ContentType             : Application
+  Logo                    : Homebrew
+
+TitleInfo:
+  Category                : Application
+  # ★★★ 2026-10-16 换 ID —— 旧值会**覆盖掉 FBI**
+  #
+  #   旧值 0xF8001 → TitleID 000400000F800100，而那**正是 FBI 的 ID**
+  #   （TID-API 库里那条叫 nh-server/FBI-NH）。同 ID 安装 = 覆盖而非新增，
+  #   所以装我们的 CIA 会把用户机器上的 FBI 顶掉 —— 用户看到的是
+  #   "FBI 那个格子被占了"，实际是那个格子里的程序被换掉了。
+  #   另外 0xF8001 落在 Evaluation 段（0xF8000-0xFEFFF），
+  #   而 Application 段的合法上界是 0xF7FFF —— 旧值本来就不合规。
+  #
+  #   新值 0xA1C01 → 000400000A1C0100：
+  #     · 落在 Application 段（0x300-0xF7FFF）✓
+  #     · 查 TID-API（2603 条，官方 NUS + homebrew 合并的库）确认未被占用，
+  #       且整个 A1Cxx 段都是空的 ✓
+  #     · 好记：A1C ≈ AIConsole
+  #
+  #   ⚠️ `AIConsole.rsf`（3dsx 形态那份）里的 UniqueId 必须一起改，两份要一致。
+  #   ⚠️ 换 ID 之后，机器上旧的 000400000F800100 里躺的是被顶掉的 FBI ——
+  #      要么重装 FBI 的 .cia，要么在系统设置里把那个 title 删掉。
+  UniqueId                : 0xA1C01
+
+Option:
+  UseOnSD                 : true
+  FreeProductCode         : true
+  MediaFootPadding        : false
+  EnableCrypt             : false
+
+AccessControlInfo:
+  # ---- format / kernel baseline ---------------------------------------
+  CoreVersion             : 2
+  DescVersion             : 2
+  ReleaseKernelMajor      : "02"
+  ReleaseKernelMinor      : "33"
+
+  # ---- extended save data ---------------------------------------------
+  UseExtSaveData          : false
+
+  # ---- FS:USER archive permissions ------------------------------------
+  # sdmc:/ read + write. The AI console keeps its config and cached
+  # screenshots under sdmc:/3ds/aiconsole/, so BOTH are needed.
+  FileSystemAccess:
+    - DirectSdmc
+    - DirectSdmcWrite
+
+  # ---- process settings ------------------------------------------------
+  MemoryType              : Application
+  SystemMode              : 64MB
+  # New 3DS 启动即 804MHz（+ L2C）。这是 exheader 里的
+  # use_cpu_clockrate_804MHz 位，**进程一起来就是满频**，比运行时再调
+  # osSetSpeedupEnable 更早、更干净。
+  # 前提：title 必须跑在 New 3DS 模式（SystemMode 64MB 会在新机上自动
+  # 升级成 N3DS 布局）；老 3DS 上这个位被忽略，不会出事。
+  # ⚠️ 插件（.3gx/.3dsx）形态**这条路无效** —— Luma 加载时会覆盖整个
+  #    exheader，所以运行时那条 osSetSpeedupEnable 才是插件形态的保证。
+  CpuSpeed                : 804mhz
+  IdealProcessor          : 0
+  AffinityMask            : 1
+  Priority                : 16
+  # 刻意保持 MaxCpu = 0：core1 的 CPU 时间配额由运行时
+  # APT_SetAppCpuTimeLimit(60) 申请（保守取 60，给游戏留余量），
+  # 不在 exheader 里写死 —— 写死了万一游戏要 CPU 就抢不到了。
+  MaxCpu                  : 0
+  HandleTableSize         : 0x200
+  DisableDebug            : false
+  EnableForceDebug        : false
+  CanWriteSharedPage      : true
+  CanUsePrivilegedPriority: false
+  CanUseNonAlphabetAndNumber: true
+  PermitMainFunctionArgument: true
+  CanShareDeviceMemory    : true
+  RunnableOnSleep         : false
+  SpecialMemoryArrange    : true
+
+  # ---- virtual address mappings ---------------------------------------
+  # VRAM, needed if the UI is later moved from libctru console output
+  # to citro3d.
+  MemoryMapping:
+    - 1f000000-1f5fffff:r
+
+  # ---- accessible SVCs ------------------------------------------------
+  # The mapping keys are documentation only: makerom reads the VALUES.
+  SystemCallAccess:
+    ArbitrateAddress: 34
+    Break: 60
+    CancelTimer: 28
+    ClearEvent: 25
+    ClearTimer: 29
+    CloseHandle: 35
+    ConnectToPort: 45
+    ControlMemory: 1
+    CreateAddressArbiter: 33
+    CreateEvent: 23
+    CreateMemoryBlock: 30
+    CreateMutex: 19
+    CreateSemaphore: 21
+    CreateThread: 8
+    CreateTimer: 26
+    DuplicateHandle: 39
+    ExitProcess: 3
+    ExitThread: 9
+    GetCurrentProcessorNumber: 17
+    GetHandleInfo: 41
+    GetProcessId: 53
+    GetProcessIdOfThread: 54
+    GetProcessIdealProcessor: 6
+    GetProcessInfo: 43
+    GetResourceLimit: 56
+    GetResourceLimitCurrentValues: 58
+    GetResourceLimitLimitValues: 57
+    GetSystemInfo: 42
+    GetSystemTick: 40
+    GetThreadContext: 59
+    GetThreadId: 55
+    GetThreadIdealProcessor: 15
+    GetThreadInfo: 44
+    GetThreadPriority: 11
+    MapMemoryBlock: 31
+    OutputDebugString: 61
+    QueryMemory: 2
+    ReleaseMutex: 20
+    ReleaseSemaphore: 22
+    SendSyncRequest1: 46
+    SendSyncRequest2: 47
+    SendSyncRequest3: 48
+    SendSyncRequest4: 49
+    SendSyncRequest: 50
+    SetThreadPriority: 12
+    SetTimer: 27
+    SignalEvent: 24
+    SleepThread: 10
+    UnmapMemoryBlock: 32
+    WaitSynchronization1: 36
+    WaitSynchronizationN: 37
+    Backdoor: 123
+
+  # ---- service access (max 34 entries) --------------------------------
+  # 这一节在 .cia 形态下是**真正生效**的（见文件头）。加 am:u 是为了让
+  # 本程序能自己调用 AM_StartCiaInstall / AM_FinishCiaInstall，也就是
+  # "AI 装程序" 这条链。缺了它，真机上那两个调用会返回权限错误。
+  #
+  # ⚠️ 也别多加：多一个不需要的服务只是把攻击面画大，没有任何好处。
+  ServiceAccessControl:
+    - cfg:u        # system configuration  -> "system settings" screen
+    - fs:USER      # filesystem
+    - gsp::Gpu     # graphics
+    - hid:USER     # input
+    - ndm:u        # network daemon
+    - soc:U        # BSD sockets
+    - ssl:C        # TLS
+    - http:C       # httpc, for AI API calls
+    - APT:U        # application manager
+    - ptm:u        # power / battery status
+    - ptm:sysm     # CPU clockrate (osSetSpeedupEnable -> PTMSYSM_ConfigureNew3DSCPU).
+                   # 没有它 New 3DS 的 804MHz 升频调用会失败，只能跑 268MHz。
+    - am:u         # title install/uninstall/launch -- ONLY in the CIA build
+
+SystemControlInfo:
+  # No Dependency block on purpose: listing a module that is absent from
+  # the running firmware makes the title hang on the boot logo.
+  SaveDataSize            : 0K
+  RemasterVersion         : 0
+  StackSize               : 0x40000
