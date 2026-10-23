@@ -1,11 +1,33 @@
 # 3DS AI Agent Tool
 
-在 Nintendo 3DS 上跑一个**能对话、能查离线攻略、能语音说话**的 AI 助手。
+在 **New 3DS** 上跑一个**能对话、能查离线攻略、能语音说话**的 AI 助手。
 
 不越狱系统、不改固件、不自建服务器 —— 一个 Homebrew 程序，直接连厂商的 API。
 中文界面，双屏布局，全程手柄 + 触摸操作。
 
-> **设计：acrac** · **制作：DeepSeek V4.1-Flash**
+<!-- ─────────────────────────────────────────────────────────────
+     badge 行（shields.io）。
+     为什么要有：仓库页面上第一眼能读到的信息就是这些 ——
+     版本、许可、平台、维护状态。没有它，访客要滚到文档里找"这软件多大、什么许可"。
+     注意：版本号是**手写**在 URL 里的，发新版时要一起改（没接 CI 自动读）。
+     ───────────────────────────────────────────────────────────── -->
+<p align="center">
+  <img src="https://img.shields.io/badge/version-0.99.5%20beta-orange" alt="version">
+  <img src="https://img.shields.io/badge/platform-New%203DS-red" alt="platform">
+  <img src="https://img.shields.io/badge/license-MIT-blue" alt="license">
+  <img src="https://img.shields.io/badge/language-C-555" alt="language">
+  <img src="https://img.shields.io/badge/UI-%E4%B8%AD%2FEN-2ea44f" alt="ui">
+</p>
+
+<p align="center">
+  <b>设计 acrac</b> · <b>制作 DeepSeek V4.1-Flash</b>
+</p>
+
+<p align="center">
+  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/tag/v0.99.5">
+    <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_%E4%B8%8B%E8%BD%BD_v0.99.5-2ea44f?style=for-the-badge" alt="下载">
+  </a>
+</p>
 
 > ### ⚠️ 当前是测试版（v0.99.5）
 >
@@ -16,8 +38,23 @@
 > 遇到问题 → [**开 issue**](https://github.com/mgeuddlyii/3ds-ai-agent-tool/issues)
 > 或发邮件 **dpsp2936@agent.qq.com**（[详细说明](#反馈与问题)）。
 
-> 目标机型：**New 3DS / New 3DS LL / New 2DS LL**（Luma3DS 13+）
-> 旧 3DS 也能跑，只是没有 ZL/ZR 键、CPU 慢一档。
+> ### 🎯 机型要求
+>
+> | | |
+> |---|---|
+> | ✅ **支持** | **New 3DS** / **New 3DS LL/XL** / **New 2DS LL/XL** |
+> | ❌ **不支持** | 旧 3DS / 3DS LL / 2DS |
+>
+> **为什么只支持 New 系列**，三个硬原因：
+>
+> 1. **内存** —— 旧 3DS 只有 128 MB，New 系列 256 MB。内置的离线攻略模型
+>    加知识库要占掉一大块，旧机器上余量不够。
+> 2. **按键** —— 旧 3DS **没有 `ZL` / `ZR` 键**。语音输入是「按住 `ZL` 说话」，
+>    离线攻略也是 `ZL` 进 —— 这两个功能在旧机器上根本没有入口。
+> 3. **算力** —— 旧 3DS 是 134 MHz 双核，New 系列 268 MHz。
+>    软件渲染本来就吃 CPU，旧机器上会慢到不可用。
+>
+> 系统要求：**Luma3DS 13+**（需要自定义固件才能跑 Homebrew）。
 
 <p align="center">
   <img src="docs/screenshots/home.png" alt="主界面" width="720">
@@ -74,26 +111,54 @@
 
 ---
 
-## 下载
+## 📥 下载
 
-去 [**Releases**](../../releases) 页面下载 `AIConsole-0.99.5-pack.zip`（测试版）。
+<p align="center">
+  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/tag/v0.99.5">
+    <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_%E4%B8%8B%E8%BD%BD%E5%AE%8C%E6%95%B4%E5%8C%85_v0.99.5-2ea44f?style=for-the-badge" alt="下载完整包">
+  </a>
+  &nbsp;
+  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.3dsx">
+    <img src="https://img.shields.io/badge/%E5%8F%AA%E4%B8%8B%E8%BD%BD_.3dsx-0969da?style=for-the-badge" alt="只下载 3dsx">
+  </a>
+</p>
 
-> ⚠️ 这里**故意用 releases 列表页、不用 `releases/latest`**：
-> GitHub 的 `latest` 只指向**非预发布**版本，而当前唯一的 release
-> 是标记为 pre-release 的测试版，那个端点会返回 404。
+> **一句话**：点上面那个绿色的 → 下载 `AIConsole-0.99.5-pack.zip` → 解压 →
+> 把 `.3dsx` 拷到 SD 卡 `3ds/` 目录 → 插回机器 → Homebrew Launcher 启动。
 
-> 文件名里的 `AIConsole` 是**历史命名**，程序内部的 SD 卡路径也叫这个。
-> 改名只改了对外展示名，**没有动内部路径** —— 否则老用户的配置和 Key 会全部失效。
+### 三个文件，选一个
 
-包里有：
+| 文件 | 大小 | 适合谁 |
+|---|---|---|
+| 🟢 **`AIConsole-0.99.5-pack.zip`** | 6.6 MB | **大多数人都选这个**。里面有下面两个 + 安装说明 + 校验工具 |
+| **`AIConsole-0.99.5.3dsx`** | 5.1 MB | 只想拿程序、已经会装 Homebrew |
+| **`AIConsole-0.99.5.cia`** | 3.8 MB | 想让它出现在主菜单（要用 FBI 装，需要签名补丁） |
+
+### 直达链接
+
+| | |
+|---|---|
+| 📦 完整包（推荐） | [`AIConsole-0.99.5-pack.zip`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5-pack.zip) |
+| 🔧 仅 3dsx | [`AIConsole-0.99.5.3dsx`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.3dsx) |
+| 🎮 仅 cia | [`AIConsole-0.99.5.cia`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.cia) |
+| 📋 所有版本 | [Releases 列表](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases) |
+
+### 包里的东西
 
 | 文件 | 用途 |
 |---|---|
-| `AIConsole-<ver>.3dsx` | **推荐**。放到 SD 卡 `3ds/` 目录，用 Homebrew Launcher 启动 |
-| `AIConsole-<ver>.cia` | 装到主菜单。要用 FBI 安装，且需要签名补丁 |
-| `装前必读.md` | 安装步骤、常见问题 |
-| `MANIFEST.txt` | 每个文件的 sha256，可自行校验 |
-| `tools/` | 辅助脚本（校验标题、看包内容） |
+| `装前必读.md` | 安装步骤、常见问题 —— **第一次装请先看这个** |
+| `MANIFEST.txt` | 每个文件的 sha256，下载完可以自己校验 |
+| `tools/ciainfo.py` | 查 CIA 的 Title ID，确认没和别的程序撞车 |
+| `tools/smdhdump.py` | 查 SMDH 标题有没有花掉 |
+| `tools/ftp_push.py` | 用 FTP 把新版本推到 3DS（不用拔卡） |
+
+> 💡 文件名里的 `AIConsole` 是**历史命名**，程序内部的 SD 卡路径也叫这个。
+> 改名只改了对外展示名，**没有动内部路径** —— 否则老用户的配置和 Key 会全部失效。
+
+> ⚠️ 这里用 releases 列表页而不是 `releases/latest`：
+> GitHub 的 `latest` 只指向**非预发布**版本，当前唯一 release 是测试版，
+> 那个端点会 404。
 
 ---
 
