@@ -37,9 +37,17 @@
  * 0.99.2（2026-10-18）：
  *   · 修「没有 asr.txt 时内置语音 Key 不生效」（asr_reset 移到 fopen 前）
  *   · 思考强度从设置屏搬到对话页（录入凭据屏仍留入口，值不锁）
- *   · 对话页加上下文用量环 + 点击弹窗 */
-#define APP_VERSION_CODE 103
-#define APP_VERSION_NAME "0.99.4"
+ *   · 对话页加上下文用量环 + 点击弹窗
+ *
+ * 0.99.5（2026-10-23）—— **首个公开测试版**：
+ *   · 改名 3DS AI Agent Tool；署名 acrac 设计 / DeepSeek V4.1-Flash 制作
+ *   · 修：设置屏 23 行只能逐行按方向键（加 L/R 整屏翻页）
+ *   · 修：主页 B 键掉进 M1 验收页（调试入口泄漏）
+ *   · 修：主页 SELECT 阻塞式网络自检（搬进设置屏诊断分类）
+ *   · 修：每帧写 SD 卡导致 6.8fps（帧率提升到 15.7fps @模拟器）
+ *   · 修：主页/「更多」/对话屏页脚与实际行为不符，补 [ZL] 说话提示 */
+#define APP_VERSION_CODE 104
+#define APP_VERSION_NAME "0.99.5"
 
 #define OTA_MAX_ARTIFACTS 4
 

@@ -1,9 +1,18 @@
-# 3DS AI 助手 · AIConsole
+# 3DS AI Agent Tool
 
 在 Nintendo 3DS 上跑一个**能对话、能查离线攻略、能语音说话**的 AI 助手。
 
 不越狱系统、不改固件、不自建服务器 —— 一个 Homebrew 程序，直接连厂商的 API。
 中文界面，双屏布局，全程手柄 + 触摸操作。
+
+> **设计：acrac** · **制作：DeepSeek V4.1-Flash**
+
+> ### ⚠️ 当前是测试版（v0.99.5）
+>
+> 功能已经能用，但**还在收尾**：真机的边界情况在补、插件和立体 3D 没做完。
+> **正式版预计一个月后（2026 年 11 月下旬）发布。**
+>
+> 测试版可能改配置格式、可能有没预料到的坑。真机上出问题请开 issue 告诉我。
 
 > 目标机型：**New 3DS / New 3DS LL / New 2DS LL**（Luma3DS 13+）
 > 旧 3DS 也能跑，只是没有 ZL/ZR 键、CPU 慢一档。
@@ -42,7 +51,10 @@
 
 ## 下载
 
-去 [**Releases**](../../releases/latest) 页面下载最新的 `AIConsole-<版本>-pack.zip`。
+去 [**Releases**](../../releases/latest) 页面下载最新的 `AIConsole-0.99.5-pack.zip`（测试版）。
+
+> 文件名里的 `AIConsole` 是**历史命名**，程序内部的 SD 卡路径也叫这个。
+> 改名只改了对外展示名，**没有动内部路径** —— 否则老用户的配置和 Key 会全部失效。
 
 包里有：
 
@@ -71,7 +83,8 @@ SD:/3ds/AIConsole.3dsx
 **`.cia`（进主菜单）**
 
 用 FBI 装 `AIConsole.cia`。装完主菜单会多一个图标
-（桌面短名是「测试 0.99」，因为 SMDH 短标题只有 8 个字符的槽位）。
+（桌面短名是「**AI Agent**」—— SMDH 短标题只有 8 个字符的槽位，
+全名 "3DS AI Agent Tool" 有 16 个，塞不下会被静默截断）。
 
 ### 2. 配一个 API Key
 
@@ -194,9 +207,9 @@ python tools/build.py
 
 ```bash
 # 把产物放进 release/（make_pack.py 从这里读）
-cp app/AIConsole.3dsx release/AIConsole-0.99.4.3dsx
+cp app/AIConsole.3dsx release/AIConsole-0.99.5.3dsx
 python tools/make_pack.py
-# -> dist/AIConsole-0.99.4-pack.zip（含 sha256 复核）
+# -> dist/AIConsole-0.99.5-pack.zip（含 sha256 复核）
 ```
 
 ### 跑自动验收
@@ -292,3 +305,19 @@ docs/                 设计文档与截图
 
 修改系统、安装 Homebrew 有风险。出问题（变砖、丢存档、账号异常）自己承担。
 装之前先备份 SD 卡。
+
+---
+
+## 关于这个项目
+
+| | |
+|---|---|
+| **设计** | acrac |
+| **制作** | DeepSeek V4.1-Flash |
+| **当前版本** | v0.99.5（测试版） |
+| **正式版** | 预计 2026 年 11 月下旬 |
+| **许可** | MIT |
+
+设计指的是定要做什么、长什么样、哪些取舍可以接受；
+制作指的是架构、这套渲染层、各屏实现、内置输入法与离线检索、
+以及每一趟自动化验收。两边都跑在这份仓库里，问题请直接开 issue。

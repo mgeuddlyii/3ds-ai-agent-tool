@@ -370,7 +370,7 @@ static const char *const g_zh[] = {
     "%s · 字号 %s · 深度 %d%%",  /* S0355 */
     "界面",  /* S0356 */
     "第 %d 次启动",  /* S0357 */
-    "3DS AI 助手",  /* S0358 */
+    "3DS AI Agent Tool",  /* S0358 */
     "还没备份 NAND？按 Y 关闭此提醒",  /* S0359 */
     "字库 %d 字形 · %dx%d · 基线 %d",  /* S0360 */
     "[←→]选格 [A]打开 [L]设置 [X]Key [R]更新 [ZL]攻略",  /* S0361 */
@@ -1294,7 +1294,7 @@ static const char *const g_en[] = {
     "%s - font %s - depth %d%%",  /* S0355 */
     "UI",  /* S0356 */
     "Launch #%d",  /* S0357 */
-    "3DS AI Assistant",  /* S0358 */
+    "3DS AI Agent Tool",  /* S0358 */
     "NAND not backed up yet? Press Y to hide this reminder",  /* S0359 */
     "Font: %d glyphs - %dx%d - baseline %d",  /* S0360 */
     "[L/R]Pick [A]Open [L]Settings [X]Key [R]Update [ZL]Guide",  /* S0361 */

@@ -37,7 +37,7 @@ try:
 except Exception:
     ciainfo = None
 
-VERSION = "0.99.4"
+VERSION = "0.99.5"
 RELEASE = os.path.join(ROOT, "release")
 PACKDIR = os.path.join(ROOT, "dist", "pack-" + VERSION)
 ZIPPATH = os.path.join(ROOT, "dist", "AIConsole-%s-pack.zip" % VERSION)
@@ -51,7 +51,9 @@ ZIPPATH = os.path.join(ROOT, "dist", "AIConsole-%s-pack.zip" % VERSION)
 #   且主机改为必填参数（不再内置某个内网 IP）。
 TOOLS = ["ciainfo.py", "smdhdump.py", "ftp_push.py"]
 # 与 SMDH 里实际标题一致（容量 8 字符，补丁号装不下；"关于"页读全版本号）
-EXPECT_SHORT = "测试 0.99"
+# 2026-10-23 改名：短标题从「测试 0.99」改成「AI Agent」。
+# 8 码元上限没变 —— "3DS AI Agent" 是 12 码元会被静默截断，所以只取后两词。
+EXPECT_SHORT = "AI Agent"
 
 
 def sha256(p):

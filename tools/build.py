@@ -208,16 +208,22 @@ TOOL_PY = _VENV_PY if os.path.exists(_VENV_PY) else sys.executable
 #   · 版本号保留在标题末尾 —— 桌面上要能一眼看出装的是哪一版。
 #     ⚠️ SMDH 短标题容量只有 8 字符（"测试 0.99.2" = 9 个会被静默截断），
 #     所以标题只放「主.次」；应用内"关于"页读 ota.h 的全版本号。
-APP_TITLE  = "测试 0.99"
-APP_DESC   = "AI chat + PC file transfer (beta build 0.99)"
-APP_AUTHOR = "WorkBuddy"
+# ★ 2026-10-23 改名 + 署名（用户要求）：
+#   对外名称 = **3DS AI Agent Tool**；acrac 设计，DeepSeek V4.1-Flash 制作。
+#   短标题只能 8 码元（见上面那条注释），所以缩成 "AI Agent" ——
+#   "3DS AI Agent" 是 12 码元，会被**静默截断**成 "3DS AI A"。
+#   全名放在描述里（short desc 上限 64 码元）。
+APP_TITLE  = "AI Agent"
+APP_DESC   = "3DS AI Agent Tool 测试版 0.99.5 · acrac 设计，DeepSeek V4.1-Flash 制作"
+# 作者字段：SMDH 的 publisher 是 64 码元，这条 28 码元有余量。
+APP_AUTHOR = "acrac / DeepSeek V4.1-Flash"
 
 # CIA 形态在主菜单里单独一个名字 —— 它比 3dsx 版多一项能力（能装程序），
 # 两个图标长一样会造成"点错了以为坏了"的困惑。见第 6 步的说明。
 # 标题同样允许中文（依据同 APP_TITLE 上面的实测结论）。
-APP_TITLE_CIA = "测试 0.99"                # 与 3dsx 版同名（桌面显示名一致），
+APP_TITLE_CIA = "AI Agent"                # 与 3dsx 版同名（桌面显示名一致），
                                          # 区分靠描述文字，不靠标题
-APP_DESC_CIA  = "AI chat + install games (beta 0.99)"
+APP_DESC_CIA  = "3DS AI Agent Tool 测试版 0.99.5 · 支持安装游戏"
 
 # Icon used for the HOME-menu entry. Drop an app/icon.png in to override.
 ICON = os.path.join(APP, "icon.png")
