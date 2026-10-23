@@ -51,7 +51,11 @@
 
 ## 下载
 
-去 [**Releases**](../../releases/latest) 页面下载最新的 `AIConsole-0.99.5-pack.zip`（测试版）。
+去 [**Releases**](../../releases) 页面下载 `AIConsole-0.99.5-pack.zip`（测试版）。
+
+> ⚠️ 这里**故意用 releases 列表页、不用 `releases/latest`**：
+> GitHub 的 `latest` 只指向**非预发布**版本，而当前唯一的 release
+> 是标记为 pre-release 的测试版，那个端点会返回 404。
 
 > 文件名里的 `AIConsole` 是**历史命名**，程序内部的 SD 卡路径也叫这个。
 > 改名只改了对外展示名，**没有动内部路径** —— 否则老用户的配置和 Key 会全部失效。
