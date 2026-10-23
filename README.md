@@ -1,452 +1,490 @@
 # 3DS AI Agent Tool
 
-在 **New 3DS** 上跑一个**能对话、能查离线攻略、能语音说话**的 AI 助手。
+**Language:** **English** · [简体中文](README.zh-CN.md)
 
-不越狱系统、不改固件、不自建服务器 —— 一个 Homebrew 程序，直接连厂商的 API。
-中文界面，双屏布局，全程手柄 + 触摸操作。
+An AI assistant that actually runs on a **New Nintendo 3DS** — chat, offline game
+guides, and voice input, all on the console itself.
+
+No custom firmware hacks, no self-hosted server. It's a single homebrew binary that
+talks straight to the API providers. Chinese/English UI, dual-screen layout,
+fully playable with buttons — touch only where it makes sense.
 
 <!-- ─────────────────────────────────────────────────────────────
-     badge 行（shields.io）。
-     为什么要有：仓库页面上第一眼能读到的信息就是这些 ——
-     版本、许可、平台、维护状态。没有它，访客要滚到文档里找"这软件多大、什么许可"。
-     注意：版本号是**手写**在 URL 里的，发新版时要一起改（没接 CI 自动读）。
+     Badges (shields.io). Hand-maintained: the version is written into
+     the URL, so it must be bumped on every release (no CI yet).
      ───────────────────────────────────────────────────────────── -->
 <p align="center">
   <img src="https://img.shields.io/badge/version-0.99.5%20beta-orange" alt="version">
   <img src="https://img.shields.io/badge/platform-New%203DS-red" alt="platform">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="license">
   <img src="https://img.shields.io/badge/language-C-555" alt="language">
-  <img src="https://img.shields.io/badge/UI-%E4%B8%AD%2FEN-2ea44f" alt="ui">
+  <img src="https://img.shields.io/badge/UI-EN%2F%E4%B8%AD-2ea44f" alt="ui">
 </p>
 
 <p align="center">
-  <b>设计 acrac</b> · <b>制作 DeepSeek V4.1-Flash</b>
+  <b>Design by acrac</b> · <b>Built by DeepSeek V4.1-Flash</b>
 </p>
 
 <p align="center">
   <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/tag/v0.99.5">
-    <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_%E4%B8%8B%E8%BD%BD_v0.99.5-2ea44f?style=for-the-badge" alt="下载">
+    <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download_v0.99.5-2ea44f?style=for-the-badge" alt="Download">
   </a>
 </p>
 
-> ### ⚠️ 当前是测试版（v0.99.5）
+> ### ⚠️ This is a beta (v0.99.5)
 >
-> 功能已经能用，但**还在收尾**：真机的边界情况在补、插件和立体 3D 没做完。
-> **正式版预计一个月后（2026 年 11 月下旬）发布。**
+> It works, but it's still being finished: real-hardware edge cases are being
+> chased down, the plugin and stereoscopic 3D backends aren't done.
+> **A stable release is planned for late November 2026.**
 >
-> 测试版可能改配置格式、可能有没预料到的坑。
-> 遇到问题 → [**开 issue**](https://github.com/mgeuddlyii/3ds-ai-agent-tool/issues)
-> 或发邮件 **dpsp2936@agent.qq.com**（[详细说明](#反馈与问题)）。
+> Betas may change the config format. Expect rough edges.
+> Hit a problem? → [**open an issue**](https://github.com/mgeuddlyii/3ds-ai-agent-tool/issues)
+> or email **dpsp2936@agent.qq.com** ([details](#feedback)).
 
-> ### 🎯 机型要求
+> ### 🎯 Hardware requirements
 >
 > | | |
 > |---|---|
-> | ✅ **支持** | **New 3DS** / **New 3DS LL/XL** / **New 2DS LL/XL** |
-> | ❌ **不支持** | 旧 3DS / 3DS LL / 2DS |
+> | ✅ **Supported** | **New 3DS** / **New 3DS XL** / **New 2DS XL** |
+> | ❌ **Not supported** | Original 3DS / 3DS XL / 2DS |
 >
-> **为什么只支持 New 系列**，三个硬原因：
+> **Why New-series only** — three hard reasons, not a policy choice:
 >
-> 1. **内存** —— 旧 3DS 只有 128 MB，New 系列 256 MB。内置的离线攻略模型
->    加知识库要占掉一大块，旧机器上余量不够。
-> 2. **按键** —— 旧 3DS **没有 `ZL` / `ZR` 键**。语音输入是「按住 `ZL` 说话」，
->    离线攻略也是 `ZL` 进 —— 这两个功能在旧机器上根本没有入口。
-> 3. **算力** —— 旧 3DS 是 134 MHz 双核，New 系列 268 MHz。
->    软件渲染本来就吃 CPU，旧机器上会慢到不可用。
+> 1. **RAM** — the original 3DS has 128 MB; New-series has 256 MB. The embedded
+>    offline guide model takes a large chunk, and there simply isn't room left.
+> 2. **Buttons** — the original 3DS **has no `ZL` / `ZR`**. Voice input is
+>    "hold `ZL` to talk", and the offline guide is entered with `ZL` too.
+>    On older hardware those two features have no entry point at all.
+> 3. **CPU** — 134 MHz dual-core vs 268 MHz. This renderer is pure software,
+>    so it's CPU-bound; on the older chip it would crawl.
 >
-> 系统要求：**Luma3DS 13+**（需要自定义固件才能跑 Homebrew）。
+> Firmware: **Luma3DS 13+** (needed to run homebrew).
 
 <p align="center">
-  <img src="docs/screenshots/home.png" alt="主界面" width="720">
+  <img src="docs/screenshots/home.png" alt="Home screen" width="720"><br>
+  <sub>Screenshots show the Chinese UI. The English UI is complete (921 strings) —
+  switch it in <b>Settings → Language</b>.</sub>
 </p>
 
 ---
 
-## 它能做什么
+## What it does
 
-| 功能 | 说明 |
+| Feature | Details |
 |---|---|
-| **中文对话** | 直连 DeepSeek / 智谱 / 火山方舟 / Kimi / 通义 / 豆包 / 自定义服务商，流式输出 |
-| **离线攻略** | 211 款游戏、内嵌 1.18M 参数微模型 + BM25 检索，**不联网不花 Key 也能查** |
-| **语音输入** | 按住 `ZL` 说话，松开自动识别上屏 |
-| **多 Key 仓库** | 8 把 Key 存加密仓库，屏上随时切换，支持从 `key.txt` 导入 |
-| **多任务** | 每个任务独立绑定「服务商 + 模型」，换任务等于换模型 |
-| **AI 动手** | 模型可以请求执行动作（装文件、改设置…），**每一条都要你按 A 确认** |
-| **内置查看器** | 能读 HTML 子集（无 JS/CSS），看攻略、看文档 |
-| **从电脑取文件** | 内置 FTP 客户端，分段进度条 |
-| **插件管理** | 列出 `luma/plugins/` 下的 `.3gx`，开关启停 |
+| **Chat** | Direct to DeepSeek / Zhipu / Volcengine Ark / Kimi / Qwen / Doubao / any custom endpoint. Streaming output. |
+| **Offline guides** | 211 games, a 1.18M-parameter micro-model + BM25 retrieval embedded in the binary. **Works with no network, no API key, zero balance.** |
+| **Voice input** | Hold `ZL`, speak, release — it transcribes and drops the text into the input box. |
+| **API key vault** | Up to 8 keys in an encrypted store, switchable from the UI. Also imports from `key.txt`. |
+| **Multiple profiles** | Each profile pins its own provider + model. Switching profile = switching model. |
+| **AI actions** | The model can request actions (install a file, change a setting…). **Every single one requires you to press A.** |
+| **Built-in viewer** | Renders an HTML subset (no JS/CSS) for guides and docs. |
+| **Pull files from PC** | Built-in FTP client with segmented progress. |
+| **Plugin manager** | Lists `.3gx` files under `luma/plugins/`, can enable/disable them. |
 
 <p align="center">
-  <img src="docs/screenshots/chat.png" alt="对话界面" width="720"><br>
-  <sub>对话：上屏是记录，下屏是输入区 + 滑轨工作台</sub>
+  <img src="docs/screenshots/chat.png" alt="Chat screen" width="720"><br>
+  <sub>Chat: conversation on top, input area + dock on the bottom screen</sub>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/more.png" alt="更多菜单" width="720"><br>
-  <sub>「更多」二级菜单：不常用的入口都收在这里，6 行一屏可翻页</sub>
+  <img src="docs/screenshots/more.png" alt="More menu" width="720"><br>
+  <sub>"More" submenu — everything infrequent lives here, 6 rows per page</sub>
 </p>
 
 ---
 
-## 这东西适合你吗
+## Is this for you?
 
-先花 30 秒判断一下，省得下载完发现不是你要的。
+Thirty seconds of honesty saves you a download.
 
-### ✅ 大概适合
+### ✅ Probably yes
 
-- 手上有台吃灰的 3DS，想让它干点新事
-- 有 API Key，或者愿意去充几块钱（大部分服务商新号有免费额度）
-- 想躺在床上、蹲在地铁上随口问一句，而不想掏手机
-- 对"老掌机还能这样"这件事本身有兴趣
+- You have a 3DS gathering dust and want it to do something new
+- You have an API key, or don't mind topping up a few dollars
+  (most providers give new accounts free credit)
+- You want to ask something from bed or on the subway without reaching for a phone
+- You find "wait, an old handheld can do *this*?" interesting on its own
 
-### ❌ 大概不适合
+### ❌ Probably not
 
-- **想要 ChatGPT 那种体验** —— 400×240 的屏 + 手柄打字，只适合短问短答，不适合长对话
-- **完全不想弄 Key** —— 有离线演示可以点着玩，但核心的联网对话要 Key
-- **期待动画很流畅** —— 软件渲染，帧率还在测（模拟器上已从 6.8fps 提到 15.7fps，真机待验）
-- **想用它读长文/看网页** —— 内置查看器只支持 HTML 子集，长文在小屏上很累
+- **You want a ChatGPT experience** — a 400×240 screen and a D-pad are fine for
+  short exchanges, not long conversations
+- **You refuse to set up an API key** — there's an offline demo to poke at,
+  but the actual chat needs a key
+- **You expect smooth animation** — this is software rendering and the frame rate
+  is still being worked on (6.8 → 15.7 fps in the emulator; real hardware to be measured)
+- **You want to read long articles** — the viewer only handles an HTML subset,
+  and long text is rough on a small screen
 
-> 说这些不是劝退。是**测试版最怕的不是没人用，是来错的人用了然后失望**。
-> 知道边界在哪，你才知道该期待什么。
+> This isn't a sales pitch in reverse. The worst outcome for a beta isn't
+> "nobody used it" — it's **the wrong people used it and were disappointed**.
+> Knowing the boundaries tells you what to expect.
 
 ---
 
-## 📥 下载
+## 📥 Download
 
 <p align="center">
   <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/tag/v0.99.5">
-    <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_%E4%B8%8B%E8%BD%BD%E5%AE%8C%E6%95%B4%E5%8C%85_v0.99.5-2ea44f?style=for-the-badge" alt="下载完整包">
+    <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download_full_package-2ea44f?style=for-the-badge" alt="Download full package">
   </a>
   &nbsp;
   <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.3dsx">
-    <img src="https://img.shields.io/badge/%E5%8F%AA%E4%B8%8B%E8%BD%BD_.3dsx-0969da?style=for-the-badge" alt="只下载 3dsx">
+    <img src="https://img.shields.io/badge/just_the_.3dsx-0969da?style=for-the-badge" alt="Just the 3dsx">
   </a>
 </p>
 
-> **一句话**：点上面那个绿色的 → 下载 `AIConsole-0.99.5-pack.zip` → 解压 →
-> 把 `.3dsx` 拷到 SD 卡 `3ds/` 目录 → 插回机器 → Homebrew Launcher 启动。
+> **Short version:** hit the green button → download `AIConsole-0.99.5-pack.zip`
+> → unzip → copy the `.3dsx` into `3ds/` on your SD card → put the card back →
+> launch it from Homebrew Launcher.
 
-### 三个文件，选一个
+### Pick one of three
 
-| 文件 | 大小 | 适合谁 |
+| File | Size | Who it's for |
 |---|---|---|
-| 🟢 **`AIConsole-0.99.5-pack.zip`** | 6.6 MB | **大多数人都选这个**。里面有下面两个 + 安装说明 + 校验工具 |
-| **`AIConsole-0.99.5.3dsx`** | 5.1 MB | 只想拿程序、已经会装 Homebrew |
-| **`AIConsole-0.99.5.cia`** | 3.8 MB | 想让它出现在主菜单（要用 FBI 装，需要签名补丁） |
+| 🟢 **`AIConsole-0.99.5-pack.zip`** | 6.6 MB | **Most people.** Contains both binaries + install notes + verification tools |
+| **`AIConsole-0.99.5.3dsx`** | 5.1 MB | You just want the binary and already know homebrew |
+| **`AIConsole-0.99.5.cia`** | 3.8 MB | You want it on the HOME menu (install via FBI; needs signature patches) |
 
-### 直达链接
+### Direct links
 
 | | |
 |---|---|
-| 📦 完整包（推荐） | [`AIConsole-0.99.5-pack.zip`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5-pack.zip) |
-| 🔧 仅 3dsx | [`AIConsole-0.99.5.3dsx`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.3dsx) |
-| 🎮 仅 cia | [`AIConsole-0.99.5.cia`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.cia) |
-| 📋 所有版本 | [Releases 列表](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases) |
+| 📦 Full package (recommended) | [`AIConsole-0.99.5-pack.zip`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5-pack.zip) |
+| 🔧 3dsx only | [`AIConsole-0.99.5.3dsx`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.3dsx) |
+| 🎮 cia only | [`AIConsole-0.99.5.cia`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.cia) |
+| 📋 All versions | [Releases](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases) |
 
-### 包里的东西
+### What's inside the package
 
-| 文件 | 用途 |
+| File | Purpose |
 |---|---|
-| `装前必读.md` | 安装步骤、常见问题 —— **第一次装请先看这个** |
-| `MANIFEST.txt` | 每个文件的 sha256，下载完可以自己校验 |
-| `tools/ciainfo.py` | 查 CIA 的 Title ID，确认没和别的程序撞车 |
-| `tools/smdhdump.py` | 查 SMDH 标题有没有花掉 |
-| `tools/ftp_push.py` | 用 FTP 把新版本推到 3DS（不用拔卡） |
+| `装前必读.md` | Install steps and FAQ — **read this first** (Chinese; the steps are also below) |
+| `MANIFEST.txt` | sha256 of every file, so you can verify the download |
+| `tools/ciainfo.py` | Dump the CIA's Title ID to check it doesn't collide with anything |
+| `tools/smdhdump.py` | Inspect the SMDH title (catches silent truncation) |
+| `tools/ftp_push.py` | Push a new build over FTP instead of swapping the SD card |
 
-> 💡 文件名里的 `AIConsole` 是**历史命名**，程序内部的 SD 卡路径也叫这个。
-> 改名只改了对外展示名，**没有动内部路径** —— 否则老用户的配置和 Key 会全部失效。
+> 💡 The `AIConsole` in filenames is a **legacy name** — the on-SD data path is
+> `sdmc:/3ds/aiconsole/` too. Renaming the product deliberately left the internal
+> paths alone, otherwise existing users would lose their config and keys.
 
-> ⚠️ 这里用 releases 列表页而不是 `releases/latest`：
-> GitHub 的 `latest` 只指向**非预发布**版本，当前唯一 release 是测试版，
-> 那个端点会 404。
+> ⚠️ This points at the releases list rather than `releases/latest` on purpose:
+> GitHub's `latest` only resolves to non-prerelease versions, and the only
+> release right now is a prerelease — that endpoint would 404.
 
 ---
 
-## 快速开始
+## Quick start
 
-### 1. 装上去
+### 1. Install it
 
-**`.3dsx`（最简单）**
+**`.3dsx` (simplest)**
 
 ```
 SD:/3ds/AIConsole.3dsx
 ```
 
-插回 3DS → 启动 Homebrew Launcher → 选中它 → A。
+Put the card back → launch Homebrew Launcher → select it → A.
 
-**`.cia`（进主菜单）**
+**`.cia` (HOME menu entry)**
 
-用 FBI 装 `AIConsole.cia`。装完主菜单会多一个图标
-（桌面短名是「**AI Agent**」—— SMDH 短标题只有 8 个字符的槽位，
-全名 "3DS AI Agent Tool" 有 16 个，塞不下会被静默截断）。
+Install `AIConsole.cia` with FBI. A new icon appears on the HOME menu.
+The short name shows as **"AI Agent"** — SMDH short titles are capped at
+8 code units, and the full name would be silently truncated.
 
-### 2. 配一个 API Key
+### 2. Configure an API key
 
-三条路，挑一条：
+Three ways, pick one:
 
-**① 屏上直接敲**（手边没电脑时）
-`主界面 → 更多 → 添加 API` → 逐项填写服务商 / 模型 / 网址 / Key → 保存
+**① Type it on the console** (when you're away from a PC)
 
-**② 从文件导入**（省打字）
-在电脑上写 SD 卡里的 `SD:/3ds/aiconsole/key.txt`：
+`Home → More → Add API` → fill in provider / model / base URL / key → save.
+
+**② Import from a file** (saves typing)
+
+Write `SD:/3ds/aiconsole/key.txt` on your PC:
 
 ```
-sk-你的key
+sk-your-key-here
 ```
 
-也可以写完整字段：
+Or with full fields:
 
 ```
 provider=deepseek
 model=deepseek-chat
-key=sk-你的key
+key=sk-your-key-here
 ```
 
-连自己的服务器：
+Pointing at your own server:
 
 ```
 provider=custom
 base_url=https://your-server.example.com/v1
 model=your-model-name
-key=sk-你的key
+key=sk-your-key-here
 ```
 
-然后 `主界面 → 更多 → 添加 API → 从文件导入`。
+Then `Home → More → Add API → Import from file`.
 
-**③ 不用 Key**（只想看看界面）
-不配任何 Key 时会自动进入「离线演示」：回复来自内置剧本，不联网。
+**③ Don't configure anything**
+
+With no key it falls back to **offline demo** mode: replies come from a built-in
+script, no network involved. Good for seeing what the UI does.
 
 <p align="center">
-  <img src="docs/screenshots/api.png" alt="录入凭据" width="720"><br>
-  <sub>录入凭据屏：服务商 / 模型 / 网址 / 人设 / 上下文轮数 / Key，一屏改一项</sub>
+  <img src="docs/screenshots/api.png" alt="Credential entry" width="720"><br>
+  <sub>Credential screen — provider / model / URL / persona / context turns / key</sub>
 </p>
 
-### 3. 说话
+### 3. Talk to it
 
-在对话屏**按住 `ZL`** 说话，松开自动识别上屏。
+On the chat screen, **hold `ZL`** and speak. Release and it transcribes.
 
-语音识别默认走硅基流动（`XingChenASR-V3.2-Ultra`，免费档）。
-想用自己的 Key，写 SD 卡 `SD:/3ds/aiconsole/asr.txt`：
+Speech recognition defaults to SiliconFlow (`XingChenASR-V3.2-Ultra`, free tier).
+To use your own key, write `SD:/3ds/aiconsole/asr.txt`:
 
 ```
-sk-你自己的key
+sk-your-own-key
 ```
 
 ---
 
-## 操作一览
+## Controls
 
-### 主界面
+### Home
 
-| 键 | 动作 |
+| Button | Action |
 |---|---|
-| `←` `→` / 触摸 | 选格子 |
-| `A` | 打开选中的格子 |
-| `L` | 设置 |
-| `X` | Key 管理 |
-| `R` | 软件更新 |
-| `ZL` | 离线攻略 |
-| 右上角齿轮（触摸） | 设置 |
+| `←` `→` / touch | Select a tile |
+| `A` | Open the selected tile |
+| `L` | Settings |
+| `X` | API keys |
+| `R` | Software update |
+| `ZL` | Offline guides |
+| Gear icon, top right (touch) | Settings |
 
-### 对话屏
+### Chat
 
-| 键 | 动作 |
+| Button | Action |
 |---|---|
-| `A` | 发送 |
-| `Y` | 打开键盘（内置拼音输入法） |
-| `SELECT` | 快捷短语 |
-| `R` | 编辑短语 |
-| `L` | 导出聊天记录 |
-| `X` | 配置 AI / 豆包扫码 |
-| `ZL`（按住） | 语音输入 |
-| `←` `→` | 切换思考强度 |
-| `↑` `↓` | 翻历史 |
-| 底屏滑轨 | 切「聊天 / 键盘 / 项目 / 文件 / 浏览」面板 |
-| `B` | 返回 |
+| `A` | Send |
+| `Y` | Keyboard (built-in Pinyin IME) |
+| `SELECT` | Quick phrases |
+| `R` | Edit phrases |
+| `L` | Export chat log |
+| `X` | Configure AI / Doubao QR login |
+| `ZL` (hold) | Voice input |
+| `←` `→` | Cycle reasoning effort |
+| `↑` `↓` | Scroll history |
+| Bottom-screen dock | Switch panel: chat / keyboard / profiles / files / browse |
+| `B` | Back |
 
-### 设置屏
+### Settings
 
-| 键 | 动作 |
+| Button | Action |
 |---|---|
-| `↑` `↓` | 逐行移动 |
-| `L` `R` | **整屏翻页**（7 行一步） |
-| `A` / `→` | 改当前项 |
-| `←` | 反向改 |
-| `B` | 返回 |
+| `↑` `↓` | Move one row |
+| `L` `R` | **Page up/down** (7 rows at a time) |
+| `A` / `→` | Change the value |
+| `←` | Change it the other way |
+| `B` | Back |
 
 <p align="center">
-  <img src="docs/screenshots/settings.png" alt="设置" width="720"><br>
-  <sub>设置：24 行，按类别用左侧色带区分（外观 / AI / 提醒 / 安全闸门 / 诊断）</sub>
+  <img src="docs/screenshots/settings.png" alt="Settings" width="720"><br>
+  <sub>Settings — 24 rows, colour-coded by category (appearance / AI / reminders / safety gates / diagnostics)</sub>
 </p>
 
 ---
 
-## 从源码构建
+## Building from source
 
-### 需要
+### Requirements
 
-- [devkitPro](https://devkitpro.org/) + `devkitARM` + `libctru` + `citro3d`
-- Python 3.9+（构建脚本用）
-- 环境变量 `DEVKITPRO` 指向 devkitPro 安装目录
+- [devkitPro](https://devkitpro.org/) with `devkitARM`, `libctru`, `citro3d`
+- Python 3.9+ (for the build scripts)
+- `DEVKITPRO` environment variable pointing at your devkitPro install
 
-### 一条命令
+### One command
 
 ```bash
 python tools/build.py
 ```
 
-产物：`app/AIConsole.3dsx`、`app/AIConsole.elf`
+Output: `app/AIConsole.3dsx`, `app/AIConsole.elf`
 
-### 打发布包
+Add `cia` to also produce the CIA:
 
 ```bash
-# 把产物放进 release/（make_pack.py 从这里读）
-cp app/AIConsole.3dsx release/AIConsole-0.99.5.3dsx
-python tools/make_pack.py
-# -> dist/AIConsole-0.99.5-pack.zip（含 sha256 复核）
+python tools/build.py cia
+# -> app/AIConsole.cia
 ```
 
-### 跑自动验收
+> ⚠️ The build script only emits the `.3dsx` by default. If you package without
+> passing `cia`, you'll ship a **stale** CIA from a previous build — check the
+> file's mtime against the ELF.
+
+### Packaging a release
+
+```bash
+cp app/AIConsole.3dsx release/AIConsole-0.99.5.3dsx
+cp app/AIConsole.cia  release/AIConsole-0.99.5.cia
+python tools/make_pack.py
+# -> dist/AIConsole-0.99.5-pack.zip (re-verified by sha256 on unpack)
+```
+
+### Running the automated tests
 
 ```bash
 python tools/azahar_test.py --passes "0,1,4,5,K" --wait 200 --no-png
 ```
 
-需要 [Azahar](https://azahar-emu.org/) 模拟器。每趟是一个按键脚本 + 一组断言，
-结果直接打印 PASS/FAIL，并把 `status.txt`、`boot.log` 留在虚拟 SD 卡里。
+Requires the [Azahar](https://azahar-emu.org/) emulator. Each "pass" is a key
+script plus a set of assertions; it prints PASS/FAIL and leaves `status.txt` and
+`boot.log` inside the emulator's virtual SD card.
 
 ---
 
-## 项目结构
+## Project layout
 
 ```
 app/
   source/
-    main.c            启动流程 + 主循环（含帧耗时探针）
-    gfx/              软件光栅层（双缓冲、裁剪、字形）
-    ui/               19 个屏幕，一屏一个 .c
-    test/             验收探针（bootlog / autorun / perfprobe）
-  data/               字库、模型权重、CA 证书（编译期嵌入）
-shared/               与界面无关的逻辑
-  nnet/               内嵌微模型 + 知识库（离线攻略）
-  chatapi.c           HTTP / 流式 SSE / 请求体拼装
-  config.c            JSON 配置读写
-  keystore.c          多 Key 仓库（加密落盘）
-  credfile.c          key.txt 收件箱
-  actions.c           AI 动作协议 + 安全闸门
-plugin/translate/     Luma 3gx 插件（骨架，翻译未实现）
-tools/                构建、验收、i18n、语料训练脚本
-docs/                 设计文档与截图
+    main.c            Boot path + main loop (with a frame-time probe)
+    gfx/              Software rasteriser (double buffering, clipping, glyphs)
+    ui/               19 screens, one .c each
+    test/             Test probes (bootlog / autorun / perfprobe)
+  data/               Font, model weights, CA bundle (embedded at compile time)
+shared/               Logic that doesn't touch the UI
+  nnet/               Embedded micro-model + knowledge base (offline guides)
+  chatapi.c           HTTP / streaming SSE / request assembly
+  config.c            JSON config load/save
+  keystore.c          Multi-key vault (encrypted at rest)
+  credfile.c          key.txt inbox
+  actions.c           AI action protocol + safety gates
+plugin/translate/     Luma 3gx plugin (skeleton, translation not implemented)
+tools/                Build, test, i18n and corpus-training scripts
+docs/                 Design docs and screenshots
 ```
 
-### 文档怎么读
+### Which doc to read
 
-| 文件 | 给谁看 |
+| File | Audience |
 |---|---|
-| **`CHANGELOG.md`** | **人**。每个版本改了什么、修了哪个坑 |
-| **`使用手册.md`** | **人**。项目全貌、界面表、构建验收、安全分级、常量自证表 |
-| `ARCHITECTURE.md` | 人。分层、帧渲染、请求链路、服务端设计 |
-| `SAFETY_DESIGN.md` | 人。四道闸（模型只给数据 / 编译期白名单 / 物理确认 / 路径不来自 AI） |
-| `AGENT.md` | **云端模型**。每次请求时拼进 system 消息，教它 `[[ACT:]]` 协议和红线 |
+| **`CHANGELOG.md`** | Humans. What changed in each version, and which bug it fixed |
+| **`使用手册.md`** | Humans, Chinese. Full project overview, screen reference, build/test, safety levels, constant cross-reference |
+| `ARCHITECTURE.md` | Humans, Chinese. Layering, frame rendering, request path, server design |
+| `SAFETY_DESIGN.md` | Humans, Chinese. The four gates (data-only model output / compile-time whitelist / physical confirmation / paths never from the AI) |
+| `AGENT.md` | **The cloud model.** Injected into the system message on every request; teaches it the `[[ACT:]]` protocol and the red lines |
 
-> ⚠️ `AGENT.md` 不是给人读的说明书，是 AI 的操作依据。
-> 改它等于改 AI 的行为，改之前想清楚。
-
----
-
-## 设计上的几个取舍
-
-**不自建服务器。** 3DS 直连厂商 API。代价是每台机器要自己配 Key，
-好处是没有任何中间人、没有运营成本、没有隐私问题。
-
-**离线攻略用微模型而不是查 API。** 1.18M 参数跑在 3DS 的 ARM11 上，
-配合 BM25 检索，211 款游戏的攻略全存在卡里。断网、没 Key、余额为 0 都能用。
-
-**AI 要动手必须过四道闸。** 模型只能输出结构化数据（不是代码、不是路径），
-动作名经过编译期白名单，最终由用户按 A 确认，路径永远不来自模型。
-详见 `SAFETY_DESIGN.md`。
+> ⚠️ `AGENT.md` is not a manual for people — it's the model's operating
+> instructions. Editing it changes the model's behaviour.
 
 ---
 
-## 已知限制
+## Design decisions
 
-- **`.3dsx` 形态没有系统说明书**，只有 `.cia` 有（3DS 的说明书是独立 content）
-- **`.3gx` 插件是骨架**，翻译功能未实现
-- **立体 3D 未做**，当前是 2D 后端
-- **安全等级 L1–L3 的文件/系统域尚未全部打通**，L0 对话可用
-- 真机验证覆盖了主要路径，边界情况仍在补
+**No self-hosted server.** The 3DS talks to providers directly. The cost is that
+every user brings their own key; the benefit is no middleman, no operating cost,
+and no privacy exposure.
+
+**Offline guides use a micro-model, not an API call.** 1.18M parameters running
+on the ARM11, paired with BM25 retrieval, with 211 games' worth of guide content
+stored on the SD card. Works offline, with no key, with zero balance.
+
+**The AI must pass four gates before it can act.** The model can only emit
+structured data (never code, never paths), action names go through a compile-time
+whitelist, the user presses A to confirm, and paths never originate from the
+model. See `SAFETY_DESIGN.md`.
 
 ---
 
-## 反馈与问题
+## Known limitations
 
-这是测试版，出问题很正常 —— **说出来比忍着有用**。
+- **`.3dsx` builds have no system manual** — only `.cia` does (the 3DS manual is a
+  separate content, and a 3DSX isn't a title)
+- **The `.3gx` plugin is a skeleton** — translation isn't implemented
+- **No stereoscopic 3D** — the current backend is 2D
+- **Safety levels L1–L3 (filesystem/system domains) aren't fully wired up**;
+  L0 chat works
+- Real-hardware testing covers the main paths; edge cases are still being filled in
+- Frame-rate numbers come from the Azahar emulator; real hardware hasn't been measured
 
-### 最快的方式：GitHub Issues
+---
+
+## Feedback
+
+This is a beta — things will break. **Telling me beats putting up with it.**
+
+### Fastest: GitHub Issues
 
 👉 **https://github.com/mgeuddlyii/3ds-ai-agent-tool/issues**
 
-公开、能搜、能看到别人踩过的坑。开新 issue 前先扫一眼，可能已经有人报过了。
+Public, searchable, and you can see what others already hit. Skim before filing —
+someone may have reported it.
 
-### 不想用 GitHub？发邮件
+### No GitHub? Email works
 
 📮 **dpsp2936@agent.qq.com**
 
-标题写清是哪个功能（比如「对话屏 · 语音」），
-正文说清"**你做了什么 → 看到什么 → 期望什么**"。
+Put the feature in the subject (e.g. "Chat · voice input"), and in the body say
+**what you did → what you saw → what you expected**.
 
-### 带上这两样，定位能快十倍
+### Two files that make debugging ten times faster
 
-| 文件 | 在哪 | 里面有什么 |
+| File | Where | What's in it |
 |---|---|---|
-| `status.txt` | `SD:/3ds/aiconsole/` | 版本号、配置状态、帧率探针、最近一次操作的结果 |
-| `boot.log` | `SD:/3ds/aiconsole/` | 启动轨迹，崩之前最后停在哪一步 |
+| `status.txt` | `SD:/3ds/aiconsole/` | Version, config state, frame-time probe, result of the last action |
+| `boot.log` | `SD:/3ds/aiconsole/` | Boot trace — where it stopped before it crashed |
 
-两个都是纯文本，把 SD 卡插到电脑上就能看。
+Both are plain text; just read the SD card on a PC.
 
-### 顺便说一句
+### One more thing
 
-报 bug **不需要写得漂亮**。
-"点了添加 API 之后白屏" 比 "软件存在异常" 有用一百倍 ——
-**能复现的描述比专业术语重要**。
-
----
-
-## 许可
-
-[MIT](LICENSE) —— 随便用，改也行，商用也行，出事别找我。
-
-### 关于内置的语音 Key
-
-`shared/asr.c` 里的 `ASR_BUILTIN_KEY` 是**故意公开**的：
-那个账号余额为 0，只做语音识别，被刷不影响任何付费资源。
-
-**别把它当成"忘了删的密钥"而清空** —— 清空会让「按住 ZL 说话」
-直接退回"没配 Key"，而普通用户不知道要配什么。
-
-对话用的付费 Key 一律不进仓库（见 `.gitignore`）。
+Bug reports **don't need to be polished**. "White screen after I tapped Add API"
+beats "the software exhibits an anomaly" by a factor of a hundred —
+**a reproducible description beats jargon.**
 
 ---
 
-## 免责声明
+## License
 
-这是**非官方**自制软件，与任天堂没有任何关系。
+[MIT](LICENSE) — use it, modify it, ship it commercially. No warranty.
 
-修改系统、安装 Homebrew 有风险。出问题（变砖、丢存档、账号异常）自己承担。
-装之前先备份 SD 卡。
+### About the bundled speech key
+
+`ASR_BUILTIN_KEY` in `shared/asr.c` is **deliberately public**: that account has a
+zero balance and is only used for speech recognition, so abuse costs nothing.
+
+**Don't "fix" it by blanking it** — that would drop "hold ZL to talk" straight
+back to "no key configured", and ordinary users wouldn't know what to set up.
+
+Paid chat keys never go into this repo (see `.gitignore`).
 
 ---
 
-## 关于这个项目
+## Disclaimer
+
+Unofficial homebrew. Not affiliated with Nintendo in any way.
+
+Modifying your system and installing homebrew carries risk. Bricked consoles,
+lost saves, account issues — that's on you. Back up your SD card first.
+
+---
+
+## Credits
 
 | | |
 |---|---|
-| **设计** | acrac |
-| **制作** | DeepSeek V4.1-Flash |
-| **当前版本** | v0.99.5（测试版） |
-| **正式版** | 预计 2026 年 11 月下旬 |
-| **许可** | MIT |
+| **Design** | acrac |
+| **Implementation** | DeepSeek V4.1-Flash |
+| **Current version** | v0.99.5 (beta) |
+| **Stable release** | Planned for late November 2026 |
+| **License** | MIT |
 
-设计指的是定要做什么、长什么样、哪些取舍可以接受；
-制作指的是架构、这套渲染层、各屏实现、内置输入法与离线检索、
-以及每一趟自动化验收。两边都跑在这份仓库里，问题请直接开 issue。
+"Design" means deciding what to build, what it should look like, and which
+trade-offs are acceptable. "Implementation" means the architecture, the rendering
+layer, every screen, the built-in IME and offline retrieval, plus each round of
+automated testing. Both live in this repo — file issues right here.
