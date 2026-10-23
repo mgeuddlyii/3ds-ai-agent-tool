@@ -1,0 +1,45 @@
+name: 💡 想要个功能 / 提个建议
+description: 觉得缺什么、哪里不好用
+title: "[建议] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        这台机器的硬件限制很硬（400×240 双屏、电阻屏、ARM11 两核），
+        所以「为什么不做个 ×××」有时候答案是「做不了」。
+        但**说出来还有机会**，不说就一定没有。
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 你想要什么
+      placeholder: 例如：能不能在对话屏长按 A 复制回复内容
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: 你现在的做法是什么
+      description: 现在没有这个功能时，你是怎么绕过去的。这比功能本身更能说明问题。
+      placeholder: 例如：现在只能拿手机拍照，再手打一遍
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 跟哪块有关
+      options:
+        - 对话
+        - 键盘 / 输入
+        - 离线攻略
+        - 语音
+        - 设置 / 主题
+        - 文件传输
+        - 插件
+        - 界面 / 操作手感
+        - 其他
+    validations:
+      required: true

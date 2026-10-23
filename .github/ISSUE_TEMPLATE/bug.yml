@@ -1,0 +1,92 @@
+name: 🐞 报个 Bug
+description: 软件运行不对、卡住、崩溃、显示乱
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        报 bug **不需要写得漂亮**。
+        「点了添加 API 之后白屏」比「软件存在异常」有用一百倍。
+        能说清怎么复现就够，专业术语不重要。
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 设置屏最下面那行「版本号」，或者压缩包文件名里的数字
+      placeholder: 例如 0.99.5
+    validations:
+      required: true
+
+  - type: dropdown
+    id: form
+    attributes:
+      label: 装的是哪个形态
+      options:
+        - .3dsx（Homebrew Launcher 启动）
+        - .cia（装到主菜单）
+        - 两个都试过
+    validations:
+      required: true
+
+  - type: dropdown
+    id: model
+    attributes:
+      label: 机器
+      options:
+        - New 3DS
+        - New 3DS LL / XL
+        - New 2DS LL / XL
+        - 旧 3DS / 3DS LL
+        - 2DS
+        - Azahar 模拟器
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 你做了什么 → 看到什么 → 期望看到什么
+      placeholder: |
+        我在「更多 → 添加 API」里填完 Key 按保存，
+        结果退回主界面，再进去发现没保存上。
+        期望是保存成功后停在这一屏或提示一下。
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: 怎么复现（能写几步算几步）
+      placeholder: |
+        1. 进「更多」→ 添加 API
+        2. 服务商选 DeepSeek
+        3. 填 Key，按保存
+        4. 返回主界面，再进「添加 API」→ 空
+    validations:
+      required: false
+
+  - type: textarea
+    id: status
+    attributes:
+      label: status.txt（强烈建议带上）
+      description: |
+        `SD:/3ds/aiconsole/status.txt`，纯文本，用电脑打开复制过来。
+
+        这个文件里有版本号、配置状态、帧率探针、最近一次操作的结果 ——
+        有它我能直接定位；没有它只能靠猜。
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: tried
+    attributes:
+      label: 已经试过的
+      options:
+        - label: 重启过程序
+        - label: 换过网络
+        - label: 换过 API Key / 换过服务商
+        - label: 看过 README 的「已知限制」

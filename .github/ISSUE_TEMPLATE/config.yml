@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📮 发邮件反馈
+    url: mailto:dpsp2936@agent.qq.com
+    about: 不方便用 GitHub 的话，邮件发这里也可以。标题写清是哪个功能就行。
+  - name: 📖 先看 README 的「已知限制」
+    url: https://github.com/mgeuddlyii/3ds-ai-agent-tool#已知限制
+    about: 有几个问题是**故意没做**的（.3dsx 没有说明书、插件是骨架、立体 3D 未做），先扫一眼省得白写。
