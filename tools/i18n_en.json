@@ -961,5 +961,14 @@
   "S0960": "[SELECT] Switch to next phrase",
   "S0961": "[B] Back to home; [X] Set API key",
   "S0962": "[L/R] Also switch tabs, same as D-pad",
-  "S0963": "[←→] Tab  [↑↓] Row  [A] Toggle  [B] Back"
+  "S0963": "[←→] Tab  [↑↓] Row  [A] Toggle  [B] Back",
+  "S0964": "Check for updates",
+  "S0965": "Later",
+  "S0966": "Download and install",
+  "S0967": "Verifying...",
+  "S0968": "Installing...",
+  "S0969": "Package",
+  "S0970": "You are up to date",
+  "S0971": "[A] Check for updates   [B] Back",
+  "S0972": "[Left/Right] Choose   [A] OK   [B] Back"
 }

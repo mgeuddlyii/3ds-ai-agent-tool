@@ -142,6 +142,17 @@ bool ota_fetch_remote(const char *channel, OtaManifest *m, OtaState *state,
  * 2026-10-17 实测就是这么红的。 */
 const char *ota_remote_raw(size_t *n);
 
+/* 下载进度回调（可选）。
+ *
+ * pct  = 0..100（按 manifest 声明的 size 算，不是按已收字节和总数猜）
+ * file = 正在下的产物名
+ *
+ * 为什么要有它：下载是一个**阻塞调用**，中间不会回到主循环 ——
+ * 上层轮询不到进度，只有真正在收数据的那一层（file_sink）知道走到哪了。
+ * 回调里可以重绘界面（同一线程，没有并发问题）。 */
+typedef void (*OtaProgressCb)(int pct, const char *file);
+void ota_set_progress_cb(OtaProgressCb cb);
+
 /* 下载第 idx 个产物到 OTA_DIR。边下边算 sha256，只有校验通过才 rename 成
  * 正式文件名 —— 中途断网/断电只会留下一个 .partial，绝不会留半个"正式包"
  * 让下一次检查把它当成可安装的东西。 */

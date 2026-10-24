@@ -584,6 +584,16 @@ typedef struct {
     bool   over;
 } MemSink;
 
+/* 下载进度：由 file_sink 直接吐给上层。
+ *  拿到总长的是 file_sink 的调用点（manifest 里声明的 size），
+ *  所以总长放在静态变量里，sink 只负责算百分比。 */
+static OtaProgressCb s_prog_cb;
+static size_t        s_prog_total;
+static const char   *s_prog_name;
+static int           s_prog_last;
+
+void ota_set_progress_cb(OtaProgressCb cb) { s_prog_cb = cb; }
+
 static size_t mem_sink(const char *data, size_t len, void *user)
 {
     MemSink *s = user;
@@ -620,6 +630,16 @@ static size_t file_sink(const char *data, size_t len, void *user)
     }
     sha256_update(s->sh, (const u8 *)data, len);
     s->n += len;
+
+    /* 百分比只报**变化**，不然 4MB 会回调上千次、每次都重绘一帧。 */
+    if (s_prog_cb && s_prog_total) {
+        int pct = (int)((s->n * 100ull) / s_prog_total);
+        if (pct > 100) pct = 100;
+        if (pct != s_prog_last) {
+            s_prog_last = pct;
+            s_prog_cb(pct, s_prog_name);
+        }
+    }
     return len;
 }
 
@@ -755,6 +775,11 @@ bool ota_download(const char *channel, const OtaManifest *m, int idx,
         fs.sh = &sh;
         fs.n = 0;
         fs.io_err = false;
+
+        /* 告诉 sink 这一趟的总长和名字，进度才有分母。 */
+        s_prog_total = (size_t)m->art[idx].size;
+        s_prog_name  = m->art[idx].file;
+        s_prog_last  = -1;
 
         memset(&req, 0, sizeof req);
         req.url         = url;

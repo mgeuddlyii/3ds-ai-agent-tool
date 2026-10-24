@@ -976,6 +976,15 @@ static const char *const g_zh[] = {
     "[B] 返回主界面 · [X] 配 Key",  /* S0961 */
     "[L/R] 也能切格子 · 和十字键一样",  /* S0962 */
     "[←→] 切格  [↑↓] 选行  [A] 动作  [B] 返回",  /* S0963 */
+    "检查更新",  /* S0964 */
+    "稍后",  /* S0965 */
+    "下载并安装",  /* S0966 */
+    "正在校验…",  /* S0967 */
+    "正在安装…",  /* S0968 */
+    "更新包",  /* S0969 */
+    "已是最新版本",  /* S0970 */
+    "[A] 检查更新   [B] 返回",  /* S0971 */
+    "[←→] 选择   [A] 确认   [B] 返回",  /* S0972 */
 };
 
 static const char *const g_en[] = {
@@ -1942,6 +1951,15 @@ static const char *const g_en[] = {
     "[B] Back to home; [X] Set API key",  /* S0961 */
     "[L/R] Also switch tabs, same as D-pad",  /* S0962 */
     "[←→] Tab  [↑↓] Row  [A] Toggle  [B] Back",  /* S0963 */
+    "Check for updates",  /* S0964 */
+    "Later",  /* S0965 */
+    "Download and install",  /* S0966 */
+    "Verifying...",  /* S0967 */
+    "Installing...",  /* S0968 */
+    "Package",  /* S0969 */
+    "You are up to date",  /* S0970 */
+    "[A] Check for updates   [B] Back",  /* S0971 */
+    "[Left/Right] Choose   [A] OK   [B] Back",  /* S0972 */
 };
 
 /* 供 uistr.c 用（数组本体是 static，只有这几个能出去） */

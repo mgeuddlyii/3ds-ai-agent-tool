@@ -1764,6 +1764,24 @@ wait 2
 quit
 """
 
+# 更新屏的**按钮 + 读条**（2026-10-25）。这一趟专门验用户要的那件事：
+# 下屏有没有一个明确的「检查更新」按钮，按下去屏上有没有进度。
+# 注意：真正取 manifest 会阻塞，所以 2 号图抓的是"动画泵到一半"的那一帧 ——
+# 抓不到也不算失败（时机问题），判据看 status 里的 ota: online check 记录。
+SCRIPT_CH = """\
+wait 20
+key R
+wait 8
+shot 1_update_idle
+key A
+wait 6
+shot 2_update_progress
+wait 45
+shot 3_update_result
+wait 2
+quit
+"""
+
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
     "B": dict(script=SCRIPT_B, shots=1, title="二次启动 · 跳过引导"),
@@ -1855,6 +1873,9 @@ PASSES = {
     # ★ 2026-10-24 新增：远程更新**下载**段（要联网，会真下几 MB）
     "DL": dict(script=SCRIPT_DL, shots=1,
                title="远程更新下载 · 流式写盘 + sha256 + rename"),
+    # ★ 2026-10-25：更新屏的按钮与进度（用户要求的"专门按钮 + 读条"）
+    "CH": dict(script=SCRIPT_CH, shots=3,
+               title="更新屏 · 检查更新按钮 + 进度条（要联网）"),
 }# ---------------------------------------------------------------------------
 # SD 根目录
 # ---------------------------------------------------------------------------
@@ -2213,6 +2234,16 @@ def run_pass(tag, spec, ctx):
         print("D 趟：已清掉 key.txt（模拟还没配过）")
     if tag == "E":
         stage_update_package(roots)
+    if tag == "CH":
+        # 这一趟验的是"**没有**更新包时的常态版面"（那个「检查更新」按钮）。
+        # 必须先清掉上一趟 E 留下的夹具：不清的话状态是 AVAILABLE，
+        # 下屏变成「拒绝/允许」，按 A 等于"拒绝"并退回主界面 ——
+        # 断言会把"按钮其实没问题"判成"按钮没生效"，方向完全反了。
+        for r in roots:
+            d = os.path.join(r, "3ds", "aiconsole", "update")
+            if os.path.isdir(d):
+                shutil.rmtree(d, ignore_errors=True)
+        print("CH 趟：已清掉 update/ 目录（模拟没有更新包）")
     if tag == "C":
         patch_config_for_banner(roots)
     if tag == "H":
@@ -2955,6 +2986,16 @@ def assertions(res):
                        problems)
                 expect(pick("otadl: done ok=1", lines) is not None,
                        "探针自报 ok=1（不是靠上层猜的）", problems)
+
+    elif tag == "CH":
+        print("-- 断言 CH：更新屏有「检查更新」按钮，按下真的会去查 --")
+        st = res["status"]
+        expect(len(res["shots"]) == res["expect"] * 2, "截图数 = 6", problems)
+        expect("ota: online check state=" in st,
+               "status 里有 ota: online check —— 按钮真的触发了在线检查",
+               problems)
+        expect(kv(st, "end_screen") == "SCREEN_UPDATE",
+               "end_screen = SCREEN_UPDATE（没有误退回主界面）", problems)
 
     elif tag == "G":
         print("-- 断言 G：对话屏进得去，空输入不会出问题 --")
