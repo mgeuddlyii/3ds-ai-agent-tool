@@ -19,6 +19,7 @@
 #include "perfprobe.h"
 #include "exttest.h"
 #include "micprobe.h"
+#include "asrnetprobe.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,6 +50,7 @@ typedef enum {
     AR_HOLD,         /* 按住某键 N 帧（PTT 类交互只能这么驱动，见 parse_line） */
     AR_STICK,        /* 合成摇杆纵向读数 N 帧（上屏滚动只能这么驱动） */
     AR_EXTTEST,      /* 抽取式回答验收（只读） */
+    AR_ASRNET,       /* 语音连接复用验收（**要联网**，不进常规回归） */
 } ArOp;
 
 typedef struct {
@@ -343,6 +345,15 @@ static void parse_line(char *line, int lineno)
         return;
     }
 
+    /* 语音连接复用验收。**要联网**，所以不进门禁（和 perfprobe 同理：
+     * 它输出的是耗时，耗时没有固定值可断言，只能比"冷 vs 热"）。
+     * 判据写在探针里：第二次请求的 conn/tls 必须为 0 —— 那是"没有重新
+     * 建连、没有重新握手"的直接证据，比"总时长变短"可靠得多。 */
+    if (!strcmp(op, "asrnet")) {
+        push(AR_ASRNET, 0, NULL);
+        return;
+    }
+
     snprintf(g_err, sizeof g_err, "第 %d 行：不认识的指令 '%s'", lineno, op);
 }
 
@@ -545,6 +556,13 @@ bool autorun_tick(u32 *keys, int *tx, int *ty, int *stick_y,
             case AR_MICPROBE:
                 /* 最多采 0.4 秒再睡过去，不会卡住帧推进（60ms 量级）。 */
                 micprobe_run();
+                continue;
+
+            case AR_ASRNET:
+                /* 会阻塞两次 HTTPS 往返（冷的一次含完整握手，3DS 上可能
+                 * 一两秒）。这是脚本里明写的意图，不是卡死 —— 断言看的是
+                 * 它写下的那行 RESULT，不是它多久返回。 */
+                asrnetprobe_run();
                 continue;
 
             case AR_XFER:

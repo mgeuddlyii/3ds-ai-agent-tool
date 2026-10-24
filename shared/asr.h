@@ -63,6 +63,14 @@ int asr_last_model_len(void);
 int asr_key_refilled(void);
 int asr_last_clamped(void);
 
+/* 最近一次语音请求的**网络阶段耗时**（秒）：DNS 解析 / TCP 连接完成 /
+ * TLS 握手完成 / 整条请求总计。任意指针可传 NULL。
+ *
+ * 为什么要暴露这个：3DS 上"语音慢"到底慢在握手还是慢在上传，
+ * 光看总时长分不出来。第一次（冷）与第二次（热）的 dns/conn/tls
+ * 明显下降，才能证明**连接真的被复用了**；反之说明池子没生效。 */
+void asr_last_timing(double *dns, double *conn, double *tls, double *total);
+
 /* 读配置文件。格式（一行一项，`#` 开头是注释）：
  *     provider=moark       ← 可选。不写就按下面哪把 Key 有值自动挑
  *     key_moark=xxxxxxxx   ← 模力方舟令牌（国内默认，每日免费 100 次）

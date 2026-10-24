@@ -157,6 +157,17 @@ static char g_key[ASR_KEY_MAX];          /* **当前生效**的那把（发送�
  *   只有 g_key 会进请求头，另外两个是配置来源。 */
 static char g_key_cfg[ASR_KEY_MAX];
 static char g_key_groq[ASR_KEY_MAX];
+
+/* 最近一次 asr_transcribe 的网络阶段耗时（秒）。见 asr_last_timing()。 */
+static double g_t_dns, g_t_conn, g_t_tls, g_t_total;
+
+void asr_last_timing(double *dns, double *conn, double *tls, double *total)
+{
+    if (dns)   *dns   = g_t_dns;
+    if (conn)  *conn  = g_t_conn;
+    if (tls)   *tls   = g_t_tls;
+    if (total) *total = g_t_total;
+}
 static char g_key_moark[ASR_KEY_MAX];   /* 模力方舟（国内默认那家） */
 
 /* ---- 请求体缓冲 ----
@@ -724,12 +735,26 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
     req.follow       = false;
     req.add_cookies  = false;
     req.on_new_response = NULL;
+    /* ★★ 2026-10-24：**让这条请求的连接留下来**。
+     *
+     *   原来每按一次 ZL 都是 curl_easy_init → perform → cleanup，
+     *   等于每句话都要重走 DNS + TCP + TLS 1.2 三次握手；
+     *   在 ARM11 上跑 mbedtls 做完整握手是**秒级**的，而且正好落在
+     *   "说完话等出字"那一瞬间，主观上就是"这破机器好慢"。
+     *   语音请求天生适合复用：一次一条、发完就闲、主机永远不变。 */
+    req.persist      = true;
 
     g_resp_len = 0;
     g_resp[0]  = '\0';
     errb[0]    = '\0';
 
     http = hx_perform(&req, sink_body, NULL, errb, sizeof errb);
+
+    /* 记下这一趟的三段耗时（DNS/TCP/TLS）。**判据要能被复核**：
+     * 第二次按住 ZL 时，这三项应当明显变小 —— 变小才是真的复用了连接。
+     * 这里只存数，不打印：shared/ 层不依赖 UI 的 app_note，由调用方
+     * （sc_chat.c 的语音分支）读出来写进 status.txt。 */
+    hx_last_timing(&g_t_dns, &g_t_conn, &g_t_tls, &g_t_total);
 
     if (http < 0) {
         /* ★ 这里必须把**是哪一家**和**哪一步**说清楚。

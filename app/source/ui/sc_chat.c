@@ -793,6 +793,14 @@ static void do_asr(void)
     asr_transcribe(pcm, n, &r);
 
     boot_mark("asr", "done ok=%d http=%ld", (int)r.ok, r.http);
+    /* 网络三段耗时（DNS/TCP/TLS）—— 用来复核"连接复用"到底有没有生效。
+     * 第一次是冷的，第二次起 dns/conn/tls 应当明显变小。 */
+    {
+        double td = 0.0, tc = 0.0, tl = 0.0, tt = 0.0;
+        asr_last_timing(&td, &tc, &tl, &tt);
+        app_note("voice: net dns=%.2f conn=%.2f tls=%.2f total=%.2f",
+                 td, tc, tl, tt);
+    }
 
     if (r.ok && r.text[0]) {
         /* **追加**到输入框尾部，而不是覆盖：语音接着键盘打是很自然的需求

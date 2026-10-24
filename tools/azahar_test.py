@@ -874,8 +874,11 @@ shot 1_hwtest_done
 # 旧布局的坐标，在新布局下点不到任何格子（触摸被丢掉），
 # 表现就是断言里那句「没有 content: scan 记录 —— 内容更新屏压根没进过」。
 # 走法：主页 g_focus 初值 SLOT_CHAT(0)，RIGHT×2 -> SLOT_MORE(2)，A 进 MORE；
-# 菜单 g_sel 初值 0（翻译），DOWN×3 -> index 3「内容更新」，A 进 SCREEN_CONTENT。
-# sc_more.c 的 kItems 顺序一变，这里的 DOWN 次数必须同步。
+# 菜单 g_sel 初值 0（翻译），DOWN×4 -> index 4「内容更新」，A 进 SCREEN_CONTENT。
+# ★ 2026-10-24 修正：原来是 DOWN×3。10-22 新加的「添加 API」插在服务目录之后，
+#   把「内容更新」从 index 3 挤到 index 4，于是这一趟点进了「已设区域」，
+#   断言报「内容更新屏压根没进过」—— 而这条红是**脚本没跟上**，不是程序坏了。
+#   sc_more.c 的 kItems 顺序一变，这里的 DOWN 次数必须同步。
 wait 10
 key RIGHT
 wait 3
@@ -883,6 +886,8 @@ key RIGHT
 wait 3
 key A
 wait 8
+key DOWN
+wait 3
 key DOWN
 wait 3
 key DOWN
@@ -1722,6 +1727,19 @@ wait 2
 quit
 """
 
+# 语音请求的"连接复用"验收（2026-10-24）。
+# 只做一件事：对同一个主机连发两次请求，看第二次有没有重新建连/握手。
+# 判据不在这里，在探针里（asrnetprobe.c）：第二次 conn 和 tls 必须为 0。
+# 之所以要单独一趟：这条链路的收益是**时间**，而时间在截图上看不出来。
+SCRIPT_9 = """\
+wait 4
+asrnet
+wait 10
+shot 1_asrnet_done
+wait 2
+quit
+"""
+
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
     "B": dict(script=SCRIPT_B, shots=1, title="二次启动 · 跳过引导"),
@@ -1800,6 +1818,11 @@ PASSES = {
     # ★ 2026-10-24 新增：每个任务一份对话历史。
     "8": dict(script=SCRIPT_8, shots=4,
               title="按任务分历史 · 切项目上屏就换 · 切回来还是原样"),
+    # ★ 2026-10-24 新增：语音连接复用。**要联网**，模拟器能出去网才有意义
+    #   （趟 F 早就在验这条路通不通）。判据是"第二次 conn/tls 归零"，
+    #   比"总时长变短"可靠 —— 后者会被服务端缓存和抖动带偏。
+    "9": dict(script=SCRIPT_9, shots=1,
+              title="语音连接复用 · 同一主机冷热两连（第二次不该再握手）"),
 }# ---------------------------------------------------------------------------
 # SD 根目录
 # ---------------------------------------------------------------------------
@@ -2829,6 +2852,29 @@ def assertions(res):
                    problems)
         else:
             expect(False, "httpc 连跑都没跑完 —— 查 status.txt", problems)
+
+    elif tag == "9":
+        # 判据必须是**表达期望**的，而不是"跑完了就行"：
+        # 这条链路优化的目标是"第二次不要再握手"，所以判据直接看
+        # conn/tls 两项是不是 0。若探针报 SKIP（第一次就没连上），
+        # 那是环境问题 —— 但也不能算通过，否则"没网"会被记成"复用成功"。
+        print("-- 断言 9：语音请求第二次不再重建连接/握手 --")
+        acold = pick("asrnet: cold", res["status"].splitlines())
+        awarm = pick("asrnet: warm", res["status"].splitlines())
+        ares  = pick("asrnet: RESULT=", res["status"].splitlines())
+        expect(acold is not None, "冷启动那一次有耗时记录", problems)
+        expect(awarm is not None, "热启动那一次有耗时记录", problems)
+        expect(ares is not None, "status.txt 里有 asrnet 结论行", problems)
+        if acold and awarm:
+            print("     cold：%s" % acold.strip())
+            print("     warm：%s" % awarm.strip())
+        if ares:
+            print("     结论：%s" % ares.strip())
+            expect("RESULT=PASS" in ares,
+                   "第二次的 conn/tls 均为 0（连接与 TLS 会话真的被复用）",
+                   problems)
+            expect("RESULT=SKIP" not in ares,
+                   "探针不是在 SKIP 状态（SKIP = 没网，验不到东西）", problems)
 
     elif tag == "G":
         print("-- 断言 G：对话屏进得去，空输入不会出问题 --")

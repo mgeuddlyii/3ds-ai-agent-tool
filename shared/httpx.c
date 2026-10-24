@@ -263,6 +263,9 @@ static size_t on_body(char *ptr, size_t sz, size_t nm, void *u)
  * init / CA
  * ----------------------------------------------------------------------- */
 
+/* 定义在下面的"长连接池"一节；hx_exit 要先用它。 */
+static void pool_free_all(void);
+
 bool hx_init(void)
 {
     if (g_inited)
@@ -277,6 +280,9 @@ void hx_exit(void)
 {
     if (!g_inited)
         return;
+    /* 先放连接，再 global_cleanup：反过来的话 curl 会在已销毁的全局态里
+     * 去关 socket，3DS 上表现为退出时卡一下甚至崩溃。 */
+    pool_free_all();
     curl_global_cleanup();
     g_inited = false;
 }
@@ -307,6 +313,137 @@ static void apply_ca(CURL *e)
     }
     /* 两边都没有时什么都不设 —— curl 会因为没有 CA 而失败，
      * 报出来的错误码(-60/-77)本身就说明了问题，比我们瞎编一句更好。 */
+}
+
+/* --------------------------------------------------------------------------
+ * 长连接池（2026-10-24）
+ *
+ * ── 为什么要有这个 ──
+ * 原来每条请求都是 curl_easy_init → perform → curl_easy_cleanup。
+ * `curl_easy_cleanup` 会把 handle 名下的连接缓存一起扔掉，于是**每按一次
+ * ZL，3DS 都要重走一遍** DNS 解析 → TCP 三次握手 → TLS 1.2 握手。
+ * 对桌面机这是一两百毫秒；对 ARM11 上的 mbedtls（还要校验整条证书链），
+ * 这是**秒级**的纯等待，而且发生在"用户已经说完话、正等着出字"的那一刻。
+ *
+ * 复用同一个 easy handle 能一次省掉三样东西，因为 curl 的连接缓存、
+ * DNS 缓存、TLS 会话缓存**都挂在 handle 上**：
+ *   · DNS：同一主机名不再去问 resolver；
+ *   · TCP：连接还在，直接接着用（HTTP keep-alive）；
+ *   · TLS：走 session resumption，省掉非对称运算 —— 这条收益最大。
+ *
+ * ── 分寸 ──
+ * 池子很小（4 个），按主机名匹配，**busy 标记独占**：同主机并发两条时会
+ * 各自新开 handle，不会两条请求共用一个连接（那会把响应搅在一起）。
+ * 连接坏了（perform 失败）就丢掉，绝不把坏连接留给下一条请求 ——
+ * 否则用户会遇到"第一次好、第二次必失败"这种最难查的状态。
+ * ----------------------------------------------------------------------- */
+#define HX_POOL_N 4
+
+static struct {
+    char  host[80];
+    CURL *e;
+    bool  busy;
+} g_pool[HX_POOL_N];
+
+/* 服务端空闲多久会把连接掐掉，我们不知道；给 CURLE 一个保守的上限，
+ * 免得拿一条**已经被对端关掉**的连接去发请求（那会白等一个 RTT 再重连）。 */
+#define HX_POOL_MAXAGE 115L
+
+static void pool_init_opts(CURL *e)
+{
+    curl_easy_setopt(e, CURLOPT_TCP_KEEPALIVE, 1L);
+    curl_easy_setopt(e, CURLOPT_TCP_KEEPIDLE, 30L);
+    curl_easy_setopt(e, CURLOPT_TCP_KEEPINTVL, 20L);
+    curl_easy_setopt(e, CURLOPT_DNS_CACHE_TIMEOUT, 600L);
+    curl_easy_setopt(e, CURLOPT_MAXAGE_CONN, HX_POOL_MAXAGE);
+}
+
+/* 从 URL 里抠主机名。只认 http(s)://host[:port]/…，失败返回 NULL。 */
+static const char *url_host(const char *url, char *out, size_t cap)
+{
+    const char *p = strstr(url, "://");
+    size_t n;
+
+    if (!p)
+        return NULL;
+    p += 3;
+    n = strcspn(p, "/:?#");
+    if (n == 0 || n >= cap)
+        return NULL;
+    memcpy(out, p, n);
+    out[n] = '\0';
+    return out;
+}
+
+/* 取出可复用的 handle（同时置 busy）。没有就返回 NULL。 */
+static CURL *pool_take(const char *host)
+{
+    for (int i = 0; i < HX_POOL_N; ++i) {
+        if (g_pool[i].e && !g_pool[i].busy && strcmp(g_pool[i].host, host) == 0) {
+            g_pool[i].busy = true;
+            return g_pool[i].e;
+        }
+    }
+    return NULL;
+}
+
+/* 把用成功的 handle 放进池（新 handle）或解锁（池里取出来的）。 */
+static void pool_release(const char *host, CURL *e)
+{
+    for (int i = 0; i < HX_POOL_N; ++i) {
+        if (g_pool[i].e == e) {
+            g_pool[i].busy = false;
+            return;
+        }
+    }
+    for (int i = 0; i < HX_POOL_N; ++i) {
+        if (!g_pool[i].e) {
+            g_pool[i].e    = e;
+            g_pool[i].busy = false;
+            snprintf(g_pool[i].host, sizeof g_pool[i].host, "%s", host);
+            return;
+        }
+    }
+    /* 池满：这条连接不要了，否则句柄泄漏。 */
+    curl_easy_cleanup(e);
+}
+
+/* 丢弃：坏连接绝不留在池里。 */
+static void pool_drop(CURL *e)
+{
+    for (int i = 0; i < HX_POOL_N; ++i) {
+        if (g_pool[i].e == e) {
+            curl_easy_cleanup(g_pool[i].e);
+            g_pool[i].e    = NULL;
+            g_pool[i].busy = false;
+            g_pool[i].host[0] = '\0';
+            return;
+        }
+    }
+    curl_easy_cleanup(e);
+}
+
+static void pool_free_all(void)
+{
+    for (int i = 0; i < HX_POOL_N; ++i) {
+        if (g_pool[i].e)
+            curl_easy_cleanup(g_pool[i].e);
+        g_pool[i].e    = NULL;
+        g_pool[i].busy = false;
+        g_pool[i].host[0] = '\0';
+    }
+}
+
+/* 最近一次请求的阶段耗时（秒）。**这是给验收用的尺子**：
+ * 光说"更快了"没有意义，要看 dns/conn/tls 这三段各自还剩多少。 */
+static double g_t_dns, g_t_conn, g_t_tls, g_t_total;
+
+void hx_last_timing(double *dns, double *conn, double *tls, double *total)
+{
+    if (dns)   *dns   = g_t_dns;
+    if (conn)  *conn  = g_t_conn;
+    if (tls)   *tls   = g_t_tls;
+    if (total) *total = g_t_total;
 }
 
 /* --------------------------------------------------------------------------
@@ -341,15 +478,29 @@ long hx_perform(const HxReq *req, HxSink on_body_fn, void *user,
     max_hops = req->follow ? 6 : 1;
 
     for (hops = 0; hops < max_hops; ++hops) {
-        CURL *e = curl_easy_init();
         CURLcode rc;
         struct curl_slist *hl = NULL;
         char  ck[8192];
+        char  host[80];
+        bool  poolable, fresh;
+        CURL *e;
+
+        /* 单跳 + 调用方明确要求复用，才进池。重定向链每跳主机都不同，
+         * 共用 handle 只会互相踩；多跳的仍然一条一清。 */
+        poolable = req->persist && max_hops == 1 &&
+                   url_host(cur, host, sizeof host) != NULL;
+
+        e = poolable ? pool_take(host) : NULL;
+        fresh = (e == NULL);
+        if (!e)
+            e = curl_easy_init();
 
         if (!e) {
             if (err) snprintf(err, errcap, "curl_easy_init 失败");
             return -1;
         }
+        if (poolable && fresh)
+            pool_init_opts(e);
 
         http_code = 0;
         xc.location[0] = '\0';
@@ -390,6 +541,10 @@ long hx_perform(const HxReq *req, HxSink on_body_fn, void *user,
             hx_cookie_string(ck, sizeof ck);
             if (ck[0])
                 curl_easy_setopt(e, CURLOPT_COOKIE, ck);
+        } else if (poolable) {
+            /* 复用的 handle 上还记着上一条请求的 Cookie。不清的话，
+             * 一条"不要带 cookie"的请求会**悄悄把上次的登录态带上**。 */
+            curl_easy_setopt(e, CURLOPT_COOKIE, "");
         }
 
         if (req->content_type)
@@ -398,8 +553,11 @@ long hx_perform(const HxReq *req, HxSink on_body_fn, void *user,
         if (req->headers) {
             for (int i = 0; req->headers[i]; ++i)
                 hl = curl_slist_append(hl, req->headers[i]);
-            curl_easy_setopt(e, CURLOPT_HTTPHEADER, hl);
         }
+        /* ★ 无论有没有头都要设：池子里的 handle 可能还指向上一条请求
+         * 已经 free 掉的 slist，那是**野指针**。这条 if 不能省。 */
+        if (hl || poolable)
+            curl_easy_setopt(e, CURLOPT_HTTPHEADER, hl);
 
         /* POST 只在**第一跳**发。重定向一律变成 GET —— 这是 HTTP 语义，
          * 也是为了跟服务端行为一致（3DS 上的表现与浏览器相同）。 */
@@ -412,15 +570,36 @@ long hx_perform(const HxReq *req, HxSink on_body_fn, void *user,
             curl_easy_setopt(e, CURLOPT_POSTFIELDS, req->post);
             curl_easy_setopt(e, CURLOPT_POSTFIELDSIZE,
                              (long)strlen(req->post));
+        } else if (poolable) {
+            /* 同上的反面：上一条是 POST，这一条是 GET，
+             * 不显式复位就会**带着旧的 body 去发 GET**。 */
+            curl_easy_setopt(e, CURLOPT_HTTPGET, 1L);
         }
 
         rc = curl_easy_perform(e);
-        if (rc == CURLE_OK)
+        if (rc == CURLE_OK) {
             curl_easy_getinfo(e, CURLINFO_RESPONSE_CODE, &http_code);
+            curl_easy_getinfo(e, CURLINFO_NAMELOOKUP_TIME, &g_t_dns);
+            curl_easy_getinfo(e, CURLINFO_CONNECT_TIME,    &g_t_conn);
+            curl_easy_getinfo(e, CURLINFO_APPCONNECT_TIME, &g_t_tls);
+            curl_easy_getinfo(e, CURLINFO_TOTAL_TIME,      &g_t_total);
+        }
 
+        /* 顺序是刻意的：先把 handle 上的 HTTPHEADER 摘掉，再释放 slist。
+         * 反过来的话，池里的 handle 会留着一个已释放的指针。 */
+        if (poolable)
+            curl_easy_setopt(e, CURLOPT_HTTPHEADER, (struct curl_slist *)NULL);
         if (hl)
             curl_slist_free_all(hl);
-        curl_easy_cleanup(e);
+
+        if (poolable) {
+            if (rc == CURLE_OK || rc == CURLE_HTTP_RETURNED_ERROR)
+                pool_release(host, e);      /* 连接是好的，留着下次用 */
+            else
+                pool_drop(e);               /* 坏连接绝不回流 */
+        } else {
+            curl_easy_cleanup(e);
+        }
 
         if (rc != CURLE_OK) {
             /* 负返回值 = curl 层失败。调用方据此把"没连上"和

@@ -46,6 +46,11 @@ void hx_exit(void);
  * 不看这行就只能猜。 */
 const char *hx_version(void);
 
+/* 最近一次 hx_perform 的**阶段耗时**（秒）：DNS 解析 / TCP 连接 / TLS 握手完成 / 总计。
+ * 用来回答"到底哪一段慢" —— 只说"感觉快了"是没有验收价值的。
+ * 从未发过请求时全为 0。 */
+void hx_last_timing(double *dns, double *conn, double *tls, double *total);
+
 /* 收正文的回调。返回实际处理的字节数；返回 != len 会让 curl 中止传输
  * （用"想提前收工"的场合，比如用户按了 B）。
  * data 不是以 '\0' 结尾的，len 才是长度 —— SSE 的切点不认字符边界。 */
@@ -92,6 +97,19 @@ typedef struct {
      * 旧 3DS 给 app 的内存远少于 New 3DS，所以该由调用方按型号给，
      * 而不是在这里写死一个"快"的值。 */
     long        buf_size;
+
+    /* 长连接复用（2026-10-24）。
+     *
+     * 置 true 表示"这条请求值得留着连接"：请求结束后 handle 不销毁，
+     * 按主机名存进 httpx.c 的小池子里；下次同一个主机再来，**DNS 缓存、
+     * TCP 连接、TLS 会话全部复用**，省掉一次完整的握手。
+     *
+     * 默认 false，因为只有**单跳 + 短连接**的请求适合：
+     *   · 语音识别：每次按 ZL 一条，用完就闲，最该复用；
+     *   · SSE 聊天：一条连接要占几十秒，复用反而挡住别人；
+     *   · 文件传输：走 Range 分块，语义上就是一次性。
+     * 另外 follow=true（跟重定向）的请求也不入池 —— 每跳主机不同。 */
+    bool        persist;
 } HxReq;
 
 /* 发一次请求。
