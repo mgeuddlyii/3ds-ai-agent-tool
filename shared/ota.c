@@ -9,6 +9,7 @@
 
 #include "minijson.h"
 #include "sha256.h"
+#include "httpx.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -49,6 +50,15 @@
  *
  *   构建期仍可用 -DOTA_BASE_URL=... 覆盖（验收时指向本机测试服务）。 */
 #define OTA_BASE_URL "https://update.acrac.cn/aiconsole"
+#endif
+
+/* ★★ 2026-10-24：bucket 的**规范域名**，第二个更新源（也是今天唯一能过
+ *   证书校验的那个）。update.acrac.cn 是它的自定义域名，但 bucket 没绑 HTTPS
+ *   证书，服务器返回的是 oss-cn-hongkong.aliyuncs.com 的通用证书 —— 主机名
+ *   对不上，校验必失败（curl -60）。改 DNS 救不了，证书名不对就是不对。
+ *   等 bucket 给自定义域名绑好证书，第一个源就会自然生效，这里不用动。 */
+#ifndef OTA_OSS_URL
+#define OTA_OSS_URL "https://acrachongkong.oss-cn-hongkong.aliyuncs.com/aiconsole"
 #endif
 const char kUpdateBase[] = OTA_BASE_URL;
 
@@ -480,65 +490,146 @@ static bool channel_ok(const char *ch)
     return true;
 }
 
-/* 发一个 GET 并拿回状态码。返回 false 表示连请求都没发出去/没拿到响应 ——
- * 与"拿到了但不是 200"是两件事，调用方要能分开说。 */
-static bool http_get_open(httpcContext *ctx, const char *url, u32 *status,
-                          char *err, size_t errsz)
+/* --------------------------------------------------------------------------
+ * 更新源：**一串**候选地址，按顺序试
+ *
+ * ★★ 2026-10-24 修：这里原来用 libctru 的 httpc，而 httpc/sslc 只支持到 TLS 1.1，
+ *    阿里云 OSS 现在只收 TLS 1.2 —— 表现就是"网络远程更新永远连不上"。
+ *    项目里聊天（chatapi）和语音（asr）早就改用 curl + mbedtls 了，OTA 这块是漏网的。
+ *
+ *    换过来还顺带补上一个安全缺陷：httpc 时代 3DS 没有根证书库，只能
+ *    httpcSetSSLOpt(ctx, SSLCOPT_DisableVerify) 把校验关掉（那时注释里写着
+ *    "防不了中间人，只能靠产物 sha256 兜底"）。curl 这条路我们有内嵌 CA，
+ *    **可以真的验主机名和证书链**了 —— 这一点比以前强，不是弱。
+ *
+ * 为什么是多个源而不是一个：
+ *    见 OTA_OSS_URL 的注释：自定义域名的证书名对不上，规范域名才对得上。
+ *    第一个源是产品域名（也是 -DOTA_BASE_URL 的覆盖点，验收指向本机测试服务
+ *    时靠它），第二个是 bucket 规范域名。真实网络下第一个会先失败一次
+ *    （约 0.3~1s），然后落到第二个；s_base_hint 记住上次成功的那个，
+ *    同一进程内再检查就不再白试。
+ * ----------------------------------------------------------------------- */
+static const char *const kUpdateBases[] = {
+    OTA_BASE_URL,                 /* 产品域名（-D 可覆盖） */
+    OTA_OSS_URL,                  /* bucket 规范域名：证书名对得上 */
+};
+#define N_UPDATE_BASES ((int)(sizeof kUpdateBases / sizeof kUpdateBases[0]))
+
+static int s_base_hint;
+
+/* 给验收探针用的只读访问器（见 app/source/test/otaprobe.c）。
+ * 为什么要把源列表暴露出来：探针要能**逐个**报出每个源的握手结果，
+ * 否则"换源生效"这件事只能靠猜 —— 而这次要修的恰恰是"某个源连不上"。 */
+int ota_base_count(void) { return N_UPDATE_BASES; }
+
+const char *ota_base_url(int i)
 {
-    Result r;
-
-    *status = 0;
-    r = httpcInit(0);
-    if (R_FAILED(r)) {
-        if (err && errsz) snprintf(err, errsz, "httpcInit 0x%08lx",
-                                   (unsigned long)r);
-        return false;
-    }
-    r = httpcOpenContext(ctx, HTTPC_METHOD_GET, url, 0);
-    if (R_FAILED(r)) {
-        if (err && errsz) snprintf(err, errsz, "open 0x%08lx",
-                                   (unsigned long)r);
-        httpcExit();
-        return false;
-    }
-    /* 3DS 没有根证书库，只能关掉校验 —— 这条**必须**如实告诉用户：
-     * 它意味着"能防传输损坏，防不了中间人"。真正的防线是
-     * 产物 sha256 + CIA 的 Title ID 白名单 + 拒降级。 */
-    httpcSetSSLOpt(ctx, SSLCOPT_DisableVerify);
-    httpcSetKeepAlive(ctx, HTTPC_KEEPALIVE_DISABLED);
-    httpcAddRequestHeaderField(ctx, "User-Agent", "AIConsole/ota");
-
-    r = httpcBeginRequest(ctx);
-    if (R_SUCCEEDED(r))
-        r = httpcGetResponseStatusCode(ctx, status);
-    if (R_FAILED(r)) {
-        if (err && errsz) snprintf(err, errsz, "req 0x%08lx",
-                                   (unsigned long)r);
-        httpcCloseContext(ctx);
-        httpcExit();
-        return false;
-    }
-    return true;
+    if (i < 0 || i >= N_UPDATE_BASES)
+        return NULL;
+    return kUpdateBases[i];
 }
 
-/* 注意：这个宏故意写成小函数 —— 两个调用点都要 关 context + Exit，
- * 漏一个会让 httpc 服务留在"用过了但没释放"的状态，
- * 下一次检查直接失败（症状是"第一次能检查，之后永远连不上"）。 */
-static void http_get_close(httpcContext *ctx)
+/* 上一次成功的源（还没成功过就是第一个）。 */
+const char *ota_last_base(void)
 {
-    httpcCloseContext(ctx);
-    httpcExit();
+    if (s_base_hint < 0 || s_base_hint >= N_UPDATE_BASES)
+        return kUpdateBases[0];
+    return kUpdateBases[s_base_hint];
+}
+
+/* 取一段资源。返回 HTTP 状态码；负值 = 连网络层都没过（DNS/TCP/TLS）。
+ *
+ * 只在**网络层失败**时才换下一个源：服务器回了 404 说明"地址对、文件没有"，
+ * 换源重试只会把"产物压根没上传"误报成"网络不好"，那是两个完全不同的处置。 */
+static long http_get_any(const char *path, HxSink sink, void *user,
+                         char *err, size_t errsz)
+{
+    long code = -1;
+
+    for (int n = 0; n < N_UPDATE_BASES; ++n) {
+        int   i = (s_base_hint + n) % N_UPDATE_BASES;
+        char  url[192];
+        char  e[96];
+        HxReq req;
+
+        snprintf(url, sizeof url, "%s/%s", kUpdateBases[i], path);
+        memset(&req, 0, sizeof req);
+        req.url         = url;
+        /* 30s：香港 OSS 这条链路实测会慢到 15s 以上；
+         * 检查更新是人手点的动作，宁可多等几秒也不要误报"连不上"。 */
+        req.timeout_s   = 30;
+        req.follow      = true;     /* OSS 可能 302 到加速/内网域名 */
+        req.add_cookies = false;
+        req.persist     = true;     /* 复用连接：检查更新常有连着点两次的情况 */
+        e[0] = '\0';
+
+        code = hx_perform(&req, sink, user, e, sizeof e);
+        if (code >= 0) {            /* 服务器答话了，就用这个源 */
+            s_base_hint = i;
+            if (err && errsz) err[0] = '\0';
+            return code;
+        }
+        if (err && errsz)
+            snprintf(err, errsz, "%s", e);
+    }
+    return code;                    /* 所有源都在网络层失败 */
+}
+
+/* manifest 收进固定缓冲。超了就判失败 —— manifest 正常只有几百字节，
+ * 超过 4KB 说明这个 URL 返的不是 manifest（常见于托管站把 404 渲染成 HTML 页）。 */
+typedef struct {
+    char  *buf;
+    size_t cap;
+    size_t n;
+    bool   over;
+} MemSink;
+
+static size_t mem_sink(const char *data, size_t len, void *user)
+{
+    MemSink *s = user;
+
+    if (s->n + len >= s->cap) {
+        s->over = true;
+        return 0;                   /* 返回 0 让 curl 中止：再收也没地方放 */
+    }
+    memcpy(s->buf + s->n, data, len);
+    s->n += len;
+    s->buf[s->n] = '\0';
+    return len;
+}
+
+/* 产物落盘 + 边下边算 sha256。
+ * ⚠️ 写失败必须返回 0 让 curl 中止：否则会把"磁盘满了"当成"下载成功"，
+ *    然后摘要不符，报出来的原因反而是"线上文件被换过"。 */
+typedef struct {
+    FILE      *f;
+    Sha256Ctx *sh;
+    size_t     n;
+    bool       io_err;
+} FileSink;
+
+static size_t file_sink(const char *data, size_t len, void *user)
+{
+    FileSink *s = user;
+
+    if (s->io_err || !s->f)
+        return 0;
+    if (fwrite(data, 1, len, s->f) != len) {
+        s->io_err = true;
+        return 0;
+    }
+    sha256_update(s->sh, (const u8 *)data, len);
+    s->n += len;
+    return len;
 }
 
 bool ota_fetch_remote(const char *channel, OtaManifest *m, OtaState *state,
                       char *detail, size_t cap)
 {
-    httpcContext ctx;
-    u32 status = 0;
-    u32 got = 0, total = 0;
-    char url[160];
-    static char body[4096];
-    bool ok = false;
+    static char body[4096];    char   path[96];
+    MemSink sk;
+    long   code;
+    bool   ok = false;
 
     if (state)  *state = OTA_ERR_NET;
     if (detail && cap) detail[0] = '\0';
@@ -551,55 +642,34 @@ bool ota_fetch_remote(const char *channel, OtaManifest *m, OtaState *state,
         return false;
     }
 
-    snprintf(url, sizeof url, "%s/%s/manifest.json", kUpdateBase, channel);
+    snprintf(path, sizeof path, "%s/manifest.json", channel);
 
-    if (!http_get_open(&ctx, url, &status, detail, cap))
-        return false;
+    sk.buf  = body;
+    sk.cap  = sizeof body;
+    sk.n    = 0;
+    sk.over = false;
 
-    if (status != 200) {
+    code = http_get_any(path, mem_sink, &sk, detail, cap);
+    if (code < 0)
+        return false;               /* detail 里已经是 curl 的原话 */
+
+    if (code != 200) {
         if (detail && cap)
-            snprintf(detail, cap, "HTTP %lu", (unsigned long)status);
-        http_get_close(&ctx);
-        return false;
-    }
-
-    /* content-length 先看一眼：manifest 超过 4KB 说明这个 URL 给的不是
-     * manifest（常见于托管站返回一个 HTML 404 页），继续读下去只会
-     * 让解析器报一句"manifest 读不出来"，而真因是地址填错了。 */
-    httpcGetDownloadSizeState(&ctx, &got, &total);
-    if (total == 0 || total >= sizeof body) {
-        if (detail && cap)
-            snprintf(detail, cap, "大小异常（%lu 字节）", (unsigned long)total);
-        http_get_close(&ctx);
+            snprintf(detail, cap, "HTTP %ld", code);
         return false;
     }
-
-    for (u32 off = 0; off < total; ) {
-        u32 want = total - off;
-        if (want > 1024) want = 1024;
-        if (R_FAILED(httpcReceiveData(&ctx, (u8 *)body + off, want)))
-            break;
-        off += want;
-        got = off;
-    }
-    body[got] = '\0';
-    http_get_close(&ctx);
-
-    if (got != total) {
+    if (sk.over) {
         if (detail && cap)
-            snprintf(detail, cap, "只收到 %lu/%lu 字节",
-                     (unsigned long)got, (unsigned long)total);
+            snprintf(detail, cap, "manifest 过大（>%d 字节）", (int)sizeof body);
         return false;
     }
 
     /* 留一份原文：下载完要原样落盘（见 ota_remote_raw 的说明） */
-    if (got < sizeof body) {
-        memcpy(s_remote_raw, body, got);
-        s_remote_raw[got] = '\0';
-        s_remote_raw_n = got;
-    }
+    memcpy(s_remote_raw, body, sk.n);
+    s_remote_raw[sk.n] = '\0';
+    s_remote_raw_n = sk.n;
 
-    if (!ota_parse(body, got, m)) {
+    if (!ota_parse(body, sk.n, m)) {
         if (state) *state = OTA_ERR_PARSE;
         if (detail && cap)
             snprintf(detail, cap, "%s", "manifest 解析失败");
@@ -635,18 +705,16 @@ bool ota_fetch_remote(const char *channel, OtaManifest *m, OtaState *state,
 bool ota_download(const char *channel, const OtaManifest *m, int idx,
                   char *err, size_t errsz)
 {
-    httpcContext ctx;
-    u32 status = 0;
-    u32 got = 0, total = 0;
-    char url[192];
-    char tmp[192];
-    char dst[192];
-    char hex[65];
-    FILE *f = NULL;
+    char   url[192];
+    char   tmp[192];
+    char   dst[192];
+    char   hex[65];
+    FILE  *f = NULL;
     Sha256Ctx sh;
     uint8_t dg[32];
-    u32 written = 0;
-    bool ok = false;
+    size_t written = 0;
+    bool   ok = false;
+    bool   got200 = false;
 
     if (err && errsz) err[0] = '\0';
     if (!m || idx < 0 || idx >= m->count)
@@ -663,57 +731,71 @@ bool ota_download(const char *channel, const OtaManifest *m, int idx,
         return false;
     }
 
-    snprintf(url, sizeof url, "%s/%s/%s", kUpdateBase, channel,
-             m->art[idx].file);
     snprintf(tmp, sizeof tmp, "%s/%s.partial", OTA_DIR, m->art[idx].file);
     snprintf(dst, sizeof dst, "%s/%s", OTA_DIR, m->art[idx].file);
 
-    if (!http_get_open(&ctx, url, &status, err, errsz))
-        return false;
-    if (status != 200) {
-        if (err && errsz) snprintf(err, errsz, "HTTP %lu", (unsigned long)status);
-        http_get_close(&ctx);
-        return false;
-    }
+    for (int n = 0; n < N_UPDATE_BASES; ++n) {
+        int      i = (s_base_hint + n) % N_UPDATE_BASES;
+        HxReq    req;
+        FileSink fs;
+        char     e[96];
+        long     code;
 
-    httpcGetDownloadSizeState(&ctx, &got, &total);
-    if ((int)total != m->art[idx].size) {
-        /* 提前拒绝，省掉几 MB 的流量 —— 而且这条错误比"下完才说摘要不符"
-         * 有用得多：它直接指向"线上文件与 manifest 不一致"。 */
-        if (err && errsz)
-            snprintf(err, errsz, "大小不符：线上 %lu，声明 %d",
-                     (unsigned long)total, m->art[idx].size);
-        http_get_close(&ctx);
-        return false;
-    }
+        snprintf(url, sizeof url, "%s/%s/%s", kUpdateBases[i], channel,
+                 m->art[idx].file);
 
-    f = fopen(tmp, "wb");
-    if (!f) {
-        if (err && errsz) snprintf(err, errsz, "%s", "建不了临时文件");
-        http_get_close(&ctx);
-        return false;
-    }
-    sha256_init(&sh);
+        /* 每次重开 = 截断：上一个源可能已经写了半截。 */
+        f = fopen(tmp, "wb");
+        if (!f) {
+            if (err && errsz) snprintf(err, errsz, "%s", "建不了临时文件");
+            return false;
+        }
+        sha256_init(&sh);
+        fs.f = f;
+        fs.sh = &sh;
+        fs.n = 0;
+        fs.io_err = false;
 
-    while (written < total) {
-        u8 buf[1024];
-        u32 want = total - written;
-        if (want > sizeof buf) want = sizeof buf;
-        if (R_FAILED(httpcReceiveData(&ctx, buf, want)))
+        memset(&req, 0, sizeof req);
+        req.url         = url;
+        req.timeout_s   = 180;      /* 几 MB 的包，别用默认 30s */
+        req.follow      = true;
+        req.add_cookies = false;
+        req.persist     = false;    /* 大文件一次性，不占连接池 */
+        e[0] = '\0';
+
+        code = hx_perform(&req, file_sink, &fs, e, sizeof e);
+        fclose(f);
+        f = NULL;
+        written = fs.n;
+
+        if (code == 200 && !fs.io_err) {
+            got200 = true;
+            s_base_hint = i;
             break;
-        if (fwrite(buf, 1, want, f) != want)
-            break;
-        sha256_update(&sh, buf, want);
-        written += want;
+        }
+        if (code >= 0) {
+            /* 服务器答话了但不是 200：这是"文件/权限"问题，换源无意义。 */
+            if (err && errsz) snprintf(err, errsz, "HTTP %ld", code);
+            remove(tmp);
+            return false;
+        }
+        if (n == N_UPDATE_BASES - 1) {
+            if (err && errsz) snprintf(err, errsz, "%s", e);
+            remove(tmp);
+            return false;
+        }
     }
-    http_get_close(&ctx);
     fclose(f);
 
-    if (written != total) {
+    if (!got200 || written != (size_t)m->art[idx].size) {
+        /* 早先这里比对的是 content-length，现在 curl 不给我们单独的长度，
+         * 就用 manifest 声明的 size —— 比"下完再说摘要不符"有用得多，
+         * 它直接指向"线上文件与 manifest 不一致"。 */
         remove(tmp);
         if (err && errsz)
-            snprintf(err, errsz, "下载中断（%lu/%lu）",
-                     (unsigned long)written, (unsigned long)total);
+            snprintf(err, errsz, "大小不符（实收 %lu，声明 %d）",
+                     (unsigned long)written, m->art[idx].size);
         return false;
     }
 

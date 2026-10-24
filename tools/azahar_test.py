@@ -1740,6 +1740,30 @@ wait 2
 quit
 """
 
+# 远程更新的网络链路（2026-10-24 修）。只取 manifest，不下产物。
+# 为什么要单独一趟：这条链路以前用 httpc（只到 TLS 1.1）根本连不上 OSS，
+# 而"连不上"和"线上没有新版本"在屏上都是同一句"检查失败"，分不开。
+SCRIPT_UP = """\
+wait 4
+otanet
+wait 14
+shot 1_otanet_done
+wait 2
+quit
+"""
+
+# 远程更新的下载段：真下一个包（挑最小的那个）。otanet 只验 manifest，
+# 而"流式写盘 + 边下边算 sha256 + rename"是另一条路径，错一点的表现是
+# "下完了但摘要不符" —— 那句话会把排查引向"线上文件被换过"，方向全错。
+SCRIPT_DL = """\
+wait 4
+otadl
+wait 20
+shot 1_otadl_done
+wait 2
+quit
+"""
+
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
     "B": dict(script=SCRIPT_B, shots=1, title="二次启动 · 跳过引导"),
@@ -1823,6 +1847,14 @@ PASSES = {
     #   比"总时长变短"可靠 —— 后者会被服务端缓存和抖动带偏。
     "9": dict(script=SCRIPT_9, shots=1,
               title="语音连接复用 · 同一主机冷热两连（第二次不该再握手）"),
+    # ★ 2026-10-24 新增：远程更新链路。**要联网**才有意义。
+    #   键用两字符 "UP"：单字符编号已经用满，而 --passes 是"先长后短"匹配，
+    #   "UP" 不会被拆成 U + P。
+    "UP": dict(script=SCRIPT_UP, shots=1,
+               title="远程更新链路 · 逐源握手 + 真的取一次 manifest"),
+    # ★ 2026-10-24 新增：远程更新**下载**段（要联网，会真下几 MB）
+    "DL": dict(script=SCRIPT_DL, shots=1,
+               title="远程更新下载 · 流式写盘 + sha256 + rename"),
 }# ---------------------------------------------------------------------------
 # SD 根目录
 # ---------------------------------------------------------------------------
@@ -2875,6 +2907,54 @@ def assertions(res):
                    problems)
             expect("RESULT=SKIP" not in ares,
                    "探针不是在 SKIP 状态（SKIP = 没网，验不到东西）", problems)
+
+    elif tag == "UP":
+        print("-- 断言 UP：远程更新真的能取到 manifest（不是\"检查失败\"）--")
+        lines = res["status"].splitlines()
+        rline = pick("otanet: RESULT=", lines)
+        fline = pick("otanet: fetch state=", lines)
+        expect(rline is not None, "status.txt 里有 otanet 结论行", problems)
+        for l in [l for l in lines if l.startswith("otanet: base ")]:
+            print("     %s" % l.strip())
+        if fline:
+            print("     %s" % fline.strip())
+        if rline:
+            print("     结论：%s" % rline.strip())
+            # SKIP = 一个源都没答话 = 模拟器出不去网。照趟 F 的规矩：
+            # 环境问题不算产品缺陷，但必须留痕，不能悄悄当成通过。
+            if "RESULT=SKIP" in rline:
+                expect(True, "（记录）模拟器出不去网 —— 远程更新只能等实机验证",
+                       problems)
+            else:
+                expect("RESULT=PASS" in rline,
+                       "至少一个更新源握手成功，且 manifest 拿到并解析成功",
+                       problems)
+                # 关键区分：必须是"拿到了 manifest 并解析成功"的那三档
+                # （2 最新 / 3 有更新 / 7 线上更旧），**不能**是 6 解析失败、
+                # 10 连不上。写成"属于某几档"而不是"不等于某几档"：
+                # 黑名单式判据会把将来新增的正常状态也误判成失败。
+                expect(fline is not None
+                       and any(s in fline for s in ("state=2", "state=3", "state=7")),
+                       "状态属于 最新/有更新/线上更旧（说明 manifest 真解析成功）",
+                       problems)
+
+    elif tag == "DL":
+        print("-- 断言 DL：产物真的下下来了，而且摘要对得上 --")
+        lines = res["status"].splitlines()
+        dline = pick("otadl: RESULT=", lines)
+        expect(dline is not None, "status.txt 里有 otadl 结论行", problems)
+        for l in [l for l in lines if l.startswith("otadl: ")]:
+            print("     %s" % l.strip())
+        if dline:
+            if "RESULT=SKIP" in dline:
+                # 取不到 manifest = 上一段（网络）没过，不是下载的锅
+                expect(True, "（记录）先决条件不满足 —— 下载段没跑到", problems)
+            else:
+                expect("RESULT=PASS" in dline,
+                       "下载完成且 sha256 与 manifest 一致（否则会报摘要不符）",
+                       problems)
+                expect(pick("otadl: done ok=1", lines) is not None,
+                       "探针自报 ok=1（不是靠上层猜的）", problems)
 
     elif tag == "G":
         print("-- 断言 G：对话屏进得去，空输入不会出问题 --")

@@ -20,6 +20,7 @@
 #include "exttest.h"
 #include "micprobe.h"
 #include "asrnetprobe.h"
+#include "otaprobe.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,6 +52,8 @@ typedef enum {
     AR_STICK,        /* 合成摇杆纵向读数 N 帧（上屏滚动只能这么驱动） */
     AR_EXTTEST,      /* 抽取式回答验收（只读） */
     AR_ASRNET,       /* 语音连接复用验收（**要联网**，不进常规回归） */
+    AR_OTANET,       /* 远程更新链路验收（**要联网**，只取 manifest） */
+    AR_OTADL,        /* 远程更新下载验收（**要联网**，真下一个包） */
 } ArOp;
 
 typedef struct {
@@ -354,6 +357,21 @@ static void parse_line(char *line, int lineno)
         return;
     }
 
+    /* 远程更新链路验收。**要联网**，跟 asrnet 同理不进常规门禁。
+     * 它比"检查更新"按钮更细：逐个更新源报握手结果，
+     * 这样"是产品域名连不上还是两个源都连不上"一眼就能分开。 */
+    if (!strcmp(op, "otanet")) {
+        push(AR_OTANET, 0, NULL);
+        return;
+    }
+
+    /* 远程更新**下载**验收。otanet 只验"能取到 manifest"，
+     * 而流式写盘 + sha256 + rename 是另一条路径，必须单独验。 */
+    if (!strcmp(op, "otadl")) {
+        push(AR_OTADL, 0, NULL);
+        return;
+    }
+
     snprintf(g_err, sizeof g_err, "第 %d 行：不认识的指令 '%s'", lineno, op);
 }
 
@@ -556,6 +574,18 @@ bool autorun_tick(u32 *keys, int *tx, int *ty, int *stick_y,
             case AR_MICPROBE:
                 /* 最多采 0.4 秒再睡过去，不会卡住帧推进（60ms 量级）。 */
                 micprobe_run();
+                continue;
+
+            case AR_OTADL:
+                /* 真下一个包：几 MB，模拟器里几十秒到两分钟。
+                 * 脚本里明写的意图，不是卡死。 */
+                otadlprobe_run();
+                continue;
+
+            case AR_OTANET:
+                /* 逐源各一次 HTTPS + 一次真正的 fetch，最坏几十秒。
+                 * 同样是脚本里明写的意图，不是卡死。 */
+                otaprobe_run();
                 continue;
 
             case AR_ASRNET:
