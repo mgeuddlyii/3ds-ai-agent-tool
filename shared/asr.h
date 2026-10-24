@@ -64,10 +64,12 @@ int asr_key_refilled(void);
 int asr_last_clamped(void);
 
 /* 读配置文件。格式（一行一项，`#` 开头是注释）：
- *     provider=groq        ← 可选。不写就按"有没有 key_groq"自动挑
- *     key=sk-xxxx          ← 硅基流动那家的 Key（可选，兜底用）
- *     key_groq=gsk_xxxx    ← Groq 的 Key（可选；配了默认就走它，免费档）
- * 只认这三项；认不出来就忽略，不留半截状态。
+ *     provider=moark       ← 可选。不写就按下面哪把 Key 有值自动挑
+ *     key_moark=xxxxxxxx   ← 模力方舟令牌（国内默认，每日免费 100 次）
+ *     key_groq=gsk_xxxx    ← Groq 的 Key（备选，海外免费档）
+ *     key=sk-xxxx          ← 硅基流动的 Key（兜底；不写就用内置那把）
+ * 只认这四项；认不出来就忽略，不留半截状态。
+ * 优先级：显式 provider > key_moark > key_groq > 内置 siliconflow。
  * 返回 false = 文件不存在/打不开（那时用编译期默认，不是错误）。 */
 bool asr_load_file(const char *path);
 

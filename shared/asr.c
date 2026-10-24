@@ -111,6 +111,27 @@ static const AsrDef kAsrTable[] = {
         "whisper-large-v3",
         NULL,               /* 不传 language：中英混说交给模型自己判 */
     },
+    /* ★★ 模力方舟（moark.com，Gitee 系）—— 2026-10-24 实测后加的**国内默认**。
+     *
+     *   为什么它排在 Groq 前面：
+     *   ① **国内直连** api.moark.com 0.17s，而 console.groq.com 在本机
+     *      直接 403（Cloudflare 拦），连注册那一步都过不去 —— 拿不到 Key 的
+     *      免费等于不存在；
+     *   ② 中文最强档之一：Qwen3-ASR-1.7B，52 种语言 + 22 种中文方言，
+     *      公开基准上中文 CER 比 Whisper 低一档（同门 0.6B 在 945 条中文录音
+     *      实测 CER 6.83% vs Whisper turbo 7.51%）；
+     *   ③ **每日免费 100 次**（页面上写"每日免费调用次数 100"），
+     *      一天说 100 句话够用；超了才 0.015 元/次；
+     *   ④ 接口形态和 OpenAI 一模一样（multipart + {"text":…}），零改造。
+     *
+     *   ⚠️ 注册要 Gitee 账号（国内手机号即可），在 moark.com 建令牌后
+     *   写进 asr.txt 的 `key_moark=`。**不写就不生效**，自动落到下一家。 */
+    {
+        "moark",
+        "https://api.moark.com/v1/audio/transcriptions",
+        "Qwen3-ASR-1.7B",
+        NULL,               /* 同上：自动检测中/英，别锁死 */
+    },
 };
 #define ASR_TABLE_N ((int)(sizeof kAsrTable / sizeof kAsrTable[0]))
 
@@ -136,6 +157,7 @@ static char g_key[ASR_KEY_MAX];          /* **当前生效**的那把（发送�
  *   只有 g_key 会进请求头，另外两个是配置来源。 */
 static char g_key_cfg[ASR_KEY_MAX];
 static char g_key_groq[ASR_KEY_MAX];
+static char g_key_moark[ASR_KEY_MAX];   /* 模力方舟（国内默认那家） */
 
 /* ---- 请求体缓冲 ----
  * 容量必须按 **VOICE_CAP_BYTES（满 5 秒录音）** 算，不能拍脑袋给几 KB：
@@ -168,8 +190,9 @@ static const char *asr_boundary(void) { return ASR_BOUNDARY; }
 void asr_reset(void)
 {
     g_provider[0] = '\0';
-    g_key_cfg[0]  = '\0';
-    g_key_groq[0] = '\0';
+    g_key_cfg[0]   = '\0';
+    g_key_groq[0]  = '\0';
+    g_key_moark[0] = '\0';
     /* 先填内置 Key；asr.txt 若给了 key 会覆盖它（见 asr_load 的解析）。
      * 这样"没配文件"= 用内置（能用），"配了文件"= 用用户的（更安全）。 */
     snprintf(g_key, sizeof g_key, "%s", ASR_BUILTIN_KEY);
@@ -185,7 +208,10 @@ static void asr_apply_key(void)
     const AsrDef *d = asr_current();
     const char *k;
 
-    if (strcmp(d->name, "groq") == 0) {
+    if (strcmp(d->name, "moark") == 0) {
+        /* 模力方舟同样只认自己的令牌（它的令牌是 32 位十六进制，不是 sk-） */
+        k = g_key_moark;
+    } else if (strcmp(d->name, "groq") == 0) {
         /* 海外那家**必须**用它自己的 Key —— 内置那把是硅基流动的，它不认。
          * 没配就给空串：上层会老实说"没配语音 Key"，比拿错 Key 去换一个
          * 401 强得多（401 会把人引去"检查 Key 对不对"，而问题在"根本没配"）。 */
@@ -195,6 +221,22 @@ static void asr_apply_key(void)
     }
     if (strcmp(g_key, k) != 0)
         snprintf(g_key, sizeof g_key, "%s", k);
+}
+
+/* 这家在 asr.txt 里该写哪个键名。有内置 Key 的那家写 `key=`。 */
+static const char *asr_key_name(const char *nm)
+{
+    if (nm && strcmp(nm, "moark") == 0) return "key_moark=";
+    if (nm && strcmp(nm, "groq") == 0)  return "key_groq=";
+    return "key=";
+}
+
+/* 这家有没有**内置** Key。
+ * 发请求前的"补 Key"兜底只能给这种 —— 给别家补等于拿别家的凭据去请求，
+ * 服务端回 401/403，而屏上会把人引向"Key 不对"，真因是"这家根本没配"。 */
+static int asr_has_builtin(const char *nm)
+{
+    return !nm || strcmp(nm, "siliconflow") == 0;
 }
 
 /* 按名字查表；找不到返回 NULL */
@@ -212,6 +254,14 @@ const AsrDef *asr_current(void)
     /* 1) asr.txt 显式写了 provider → 就是它（老行为，一个字节都不变） */
     if (g_provider[0]) {
         const AsrDef *d = asr_find(g_provider);
+        if (d)
+            return d;
+    }
+
+    /* 1.5) **有模力方舟令牌就先走它**（国内直连、中文最强、每日免费 100 次）。
+     *      放在 Groq 前面：Groq 的控制台在本机 403，注册那一步就断了。 */
+    if (g_key_moark[0]) {
+        const AsrDef *d = asr_find("moark");
         if (d)
             return d;
     }
@@ -328,6 +378,9 @@ bool asr_load_file(const char *path)
          * 写在同一行（`key=`）会让中文和英文里必有一边用错 Key。 */
         else if (strcmp(p, "key_groq") == 0)
             snprintf(g_key_groq, sizeof g_key_groq, "%s", val);
+        /* 模力方舟（国内默认那家）。令牌是 32 位十六进制，不是 sk- 开头。 */
+        else if (strcmp(p, "key_moark") == 0)
+            snprintf(g_key_moark, sizeof g_key_moark, "%s", val);
         /* 别的键一律忽略：这个文件是给人手敲的，
          * 写坏一行不该让整个语音功能跟着哑掉。 */
     }
@@ -617,7 +670,7 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
          *
          *   另外 asr_reset() 会连 g_key_cfg / g_key_groq 一起清空 ——
          *   补一次就把用户配的 Key 忘了。所以只补生效值，不动配置源。 */
-        if (!d || strcmp(d->name, "groq") != 0) {
+        if (asr_has_builtin(d ? d->name : NULL)) {
             snprintf(g_key, sizeof g_key, "%s", ASR_BUILTIN_KEY);
             g_key_refilled++;
         }
@@ -633,9 +686,10 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
          * ⚠️ out->err 只有 ASR_ERR_MAX(96) 字节，**写完要数字节**：
          *   超了 snprintf 会截断，而半截提示比"没连上"更难懂。
          *   本句 UTF-8 实测 83 字节（中文 3 字节/字），留 13 字节余量。 */
-        if (d && strcmp(d->name, "groq") == 0)
+        if (d && !asr_has_builtin(d->name))
             snprintf(out->err, sizeof out->err,
-                     "没配 Groq 语音 Key：asr.txt 加 key_groq=gsk_…");
+                     "没配 %s 的语音 Key：asr.txt 加 %s…",
+                     d->name, asr_key_name(d->name));
         else
             snprintf(out->err, sizeof out->err,
                      "没配语音 Key：建 SD:/3ds/aiconsole/asr.txt"
@@ -736,8 +790,7 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
             snprintf(out->err, sizeof out->err,
                      "%s 拒绝了 Key（HTTP %ld）。asr.txt 写 %s",
                      nm, http,
-                     strcmp(nm, "groq") == 0 ? "key_groq=你的Key"
-                                             : "key=你的Key");
+                     asr_key_name(nm));
         } else {
             char detail[120];
             size_t n = g_resp_len < sizeof detail - 1 ? g_resp_len : sizeof detail - 1;

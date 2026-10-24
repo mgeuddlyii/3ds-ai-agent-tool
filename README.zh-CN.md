@@ -227,17 +227,17 @@ key=sk-你的key
 
 在对话屏**按住 `ZL`** 说话，松开自动识别上屏。
 
-语音识别中英文都走 **Groq**（`whisper-large-v3`）—— 永久免费档、不用信用卡：
-20 次/分钟、2000 次/天、每天 8 小时音频。Groq 要自己的 Key，
-去 [console.groq.com/keys](https://console.groq.com/keys) 免费领一个，
-写进 SD 卡 `SD:/3ds/aiconsole/asr.txt`：
+语音识别默认走 **模力方舟**（[moark.com](https://moark.com)，Gitee 系）的
+**Qwen3-ASR-1.7B** —— 52 种语言 + 22 种中文方言，国内直连，**每天免费 100 次**。
+用 Gitee 账号登录建一个令牌，写进 SD 卡 `SD:/3ds/aiconsole/asr.txt`：
 
 ```
-key_groq=gsk_你的Key
+key_moark=你的令牌
 ```
 
-还没配 Groq Key 时会退回内置的硅基流动 Key，语音照样能用 ——
-但那只是过渡方案，不是推荐路径。
+备选按"配了哪个就用哪个"：`key_moark=`（模力方舟，推荐）→ `key_groq=`
+（Groq `whisper-large-v3`，每天 8 小时免费，但控制台在部分网络下打不开）→
+内置的硅基流动 Key（零配置能用，只是过渡方案）。
 
 ---
 

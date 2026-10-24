@@ -243,18 +243,18 @@ script, no network involved. Good for seeing what the UI does.
 
 On the chat screen, **hold `ZL`** and speak. Release and it transcribes.
 
-Speech recognition runs on **Groq** (`whisper-large-v3`) for both Chinese and
-English — permanent free tier, no credit card: 20 requests/min, 2,000 requests/day,
-8 hours of audio/day. Groq needs its own key: grab one free at
-[console.groq.com/keys](https://console.groq.com/keys), then write
-`SD:/3ds/aiconsole/asr.txt`:
+Speech recognition defaults to **MoArk** ([moark.com](https://moark.com), Gitee's AI
+platform) running **Qwen3-ASR-1.7B** — 52 languages plus 22 Chinese dialects, direct
+connection from mainland China, **100 free calls per day**. Sign in with a Gitee
+account, create a token, then write `SD:/3ds/aiconsole/asr.txt`:
 
 ```
-key_groq=gsk_your_key_here
+key_moark=your_token_here
 ```
 
-No Groq key yet? It falls back to the built-in SiliconFlow key, so voice input
-works out of the box — treat that as a stopgap, not the recommended path.
+Alternatives, first configured wins: `key_moark=` (MoArk, recommended) →
+`key_groq=` (Groq `whisper-large-v3`, 8 h/day free, but its console is blocked on
+some networks) → the built-in SiliconFlow key (works with zero setup, stopgap only).
 
 ---
 
