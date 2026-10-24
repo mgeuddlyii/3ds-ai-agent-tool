@@ -23,7 +23,7 @@
 #include <3ds.h>
 #include <stdbool.h>
 
-#define DOCKUI_PANEL_N   4
+#define DOCKUI_PANEL_N   5       /* 键盘 / 项目 / 文件 / 浏览 / 状态 */
 #define DOCKUI_RAIL_Y  168.0f
 #define DOCKUI_RAIL_H   30.0f
 #define DOCKUI_RAIL_GAP  4.0f

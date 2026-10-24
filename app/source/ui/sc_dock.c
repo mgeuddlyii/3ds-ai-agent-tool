@@ -44,6 +44,7 @@
 #include "input.h"
 #include "ime.h"
 #include "dock_ui.h"
+#include "statpanel.h"
 
 #include "projects.h"
 #include "provider.h"
@@ -64,7 +65,7 @@
 #define ROW_GAP       2.0f
 #define ROW_Y0       54.0f
 
-enum { PANEL_KEY = 0, PANEL_PROJ, PANEL_FILE, PANEL_BROWSE, PANEL_N };
+enum { PANEL_KEY = 0, PANEL_PROJ, PANEL_FILE, PANEL_BROWSE, PANEL_STAT, PANEL_N };
 
 static int  g_panel = PANEL_KEY;
 static int  g_sel   = 0;          /* 各面板共用一个"当前行"，切面板时重置 */
@@ -654,6 +655,7 @@ static const char *panel_name(int p)
         case PANEL_PROJ:   return "项目";
         case PANEL_FILE:   return "文件";
         case PANEL_BROWSE: return "浏览";
+        case PANEL_STAT:   return "状态";
         default:           return "?";
     }
 }
@@ -964,6 +966,12 @@ void dockui_render(int panel)
     float w = (float)W_BOT_USABLE;
 
     switch (panel) {
+    case PANEL_STAT:
+        /* 状态页：帧率 / 主循环占用 / 内存。数据是主循环每帧采的，
+         * 这里只负责画（见 statpanel.c 顶部对"为什么没有 GPU%"的说明）。 */
+        statpanel_render();
+        break;
+
     case PANEL_KEY: {
         Rect box = { x, 62.0f, w, 56.0f, 0 };
         w_panel(&box, w_c(C_SLOT_ACC_LT), w_c(C_SLOT_ACCENT));

@@ -28,6 +28,7 @@
 #include "shot.h"
 
 #include "app.h"
+#include "sysstat.h"
 #include "autorun.h"
 #include "bootlog.h"
 #include "httpx.h"
@@ -318,6 +319,10 @@ static void app_thread_main(void *arg)
             u64 t1 = osGetTime();
             app_render();
             u64 t2 = osGetTime();
+            /* 状态面板的采样：**复用这两个已有时间戳**，不额外调 osGetTime ——
+             * 这一句每帧都跑（不像上面的探针只跑前 400 帧），
+             * 观测本身要尽量不花钱。 */
+            sysstat_tick((unsigned)t_start, (unsigned)t2);
             if (probe_frames < 400) {
                 t_hdl += t1 - t_start;   /* 输入采集 + autorun + app_handle + anim */
                 t_rdr += t2 - t1;        /* app_render（含 r_end 的 vblank 等待） */

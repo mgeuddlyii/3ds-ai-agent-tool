@@ -2316,7 +2316,12 @@ static void render_top(void)
  *
  * ★ 为什么滑轨在**对话页**而不是独立屏：
  *   聊天时想换模型、看产出文件、打中文，都不该先退出对话再进一个"工作台"。
- *   所以滑轨常驻对话页下屏，5 格：聊天 / 键盘 / 项目 / 文件 / 浏览。
+ *   所以滑轨常驻对话页下屏，6 格：选项 / 键盘 / 项目 / 文件 / 浏览 / 状态。
+ *
+ *   ★ 2026-10-25 加第 6 格「状态」：帧率、主循环占用、内存的实时图。
+ *     这些数字平时藏起来，但"为什么卡"这个问题必须有个地方能当场看。
+ *     ⚠️ 这几格标签是**硬编码中文**（历史遗留，见下方注释）——
+ *        44px 的格子放不下英文单词，改成 S() 会在英文界面下溢出。
  *   第 0 格是聊天本身（输入框与发送按钮），1~4 交给 dock_ui 组件。
  *
  * 几何（与 dock_ui.h 的约定对齐，别自己另算一套）：
@@ -2325,7 +2330,7 @@ static void render_top(void)
  *   提示    y 202
  *   页脚    y 214..240
  */
-#define CHAT_RAIL_N    5
+#define CHAT_RAIL_N    6
 #define CHAT_RAIL_Y   24.0f
 #define CHAT_RAIL_H   18.0f
 #define CHAT_RAIL_W   44.0f
@@ -2341,7 +2346,7 @@ static void render_top(void)
  *      4 行选项 + 输入框 + 发送按钮在 320×240 上挤不下（算过：
  *      滑轨占到 42，剩下 198px 只够 4×26 + 一行提示）。 */
 static const char *const CHAT_RAIL_LABEL[CHAT_RAIL_N] = {
-    "选项", "键盘", "项目", "文件", "浏览",
+    "选项", "键盘", "项目", "文件", "浏览", "状态",
 };
 
 static Rect chat_rail_rect(int i)
@@ -2471,6 +2476,12 @@ static void chat_fill_phrase(void)
  */
 static void chat_footer_hint(void)
 {
+    /* 状态页没有"行"可选，那些键位提示在这里全是错的
+     * （[↑↓] 选这一格的行 —— 这一格根本没有行）。
+     * 宁可空着，也不要指一条走不通的路。 */
+    if (g_tab == 5)
+        return;
+
     if (chat_ready()) {
         /* ★ 为什么是一张**函数内静态**表 + 懒加载，而不是文件级 const 数组：
          *   S() 展开成 uistr(id)（运行时查表），不是编译期常量，

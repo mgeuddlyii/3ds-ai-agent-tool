@@ -1782,6 +1782,23 @@ wait 2
 quit
 """
 
+# 滑轨「状态」格（2026-10-25）：点第 6 格，看三块图有没有画出来、数字是否在动。
+# 触摸坐标：6 格 ×44 + 5 间隙 ×2 = 274，右对齐到 x=310 → 起点 x=36；
+# 第 6 格是 36+5*46=266..310，取中心 (288, 33)。
+# 两张图隔一段时间再拍，用来看"柱子确实在长"（静态图证明不了它在采样）。
+SCRIPT_ST = """\
+wait 20
+key A
+wait 10
+touch 288 33
+wait 14
+shot 1_stat_panel
+wait 45
+shot 2_stat_later
+wait 2
+quit
+"""
+
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
     "B": dict(script=SCRIPT_B, shots=1, title="二次启动 · 跳过引导"),
@@ -1874,6 +1891,9 @@ PASSES = {
     "DL": dict(script=SCRIPT_DL, shots=1,
                title="远程更新下载 · 流式写盘 + sha256 + rename"),
     # ★ 2026-10-25：更新屏的按钮与进度（用户要求的"专门按钮 + 读条"）
+    # ★ 2026-10-25：滑轨第 6 格「状态」——帧率/主循环占用/内存
+    "ST": dict(script=SCRIPT_ST, shots=2,
+               title="滑轨状态页 · CPU/帧耗时/内存三块图"),
     "CH": dict(script=SCRIPT_CH, shots=3,
                title="更新屏 · 检查更新按钮 + 进度条（要联网）"),
 }# ---------------------------------------------------------------------------
@@ -2226,6 +2246,13 @@ def run_pass(tag, spec, ctx):
 
     h_dummy = None              # H 趟夹具标记；初值必须写在夹具赋值之前
 
+    # ★ 2026-10-25：**每一趟都清对话历史**。
+    #   原来只清"用历史夹具的那几趟"，于是前面任何一趟聊过天（CH/ST/H…）
+    #   都会给后面 M/N/P 留一条记录 —— 断言报"实际 4 条（夹具预置 3 条）"，
+    #   看起来像程序多写了一条，其实是**趟与趟之间没隔离**。
+    #   放在最前面，各趟自己的夹具随后再写。
+    _clear_chat_slots(roots)
+
     if tag == "A":
         stage_keyfile(roots)
     if tag == "D":
@@ -2436,7 +2463,14 @@ def run_pass(tag, spec, ctx):
     if tag == "N":
         # 写盘有没有生效：数一数 chat.json 里有几条（夹具预置的是 2 条）。
         # **必须在清理之前读** —— 下面就要把这个文件删掉。
-        p_chat = newest(roots, CHATLOG_REL)
+        # ★ 2026-10-25 修：数**真正在写的那一份**。
+        #   对话历史早就按任务分文件了（chatlog.c 的 chat_p0.json），
+        #   chat.json 只在首次启动迁移时用一次。原来只读 chat.json，
+        #   于是永远只能读到夹具预置的那 2 条 —— 断言"应当 > 2"永远不成立，
+        #   报出来的话却是"写盘路径没生效"，把方向指到写盘上去了。
+        p_chat = newest(roots, os.path.join(SD_SUBDIR, "chat_p0.json"))
+        if not p_chat:
+            p_chat = newest(roots, CHATLOG_REL)
         if p_chat:
             try:
                 with open(p_chat, "r", encoding="utf-8") as fh:
@@ -2996,6 +3030,13 @@ def assertions(res):
                problems)
         expect(kv(st, "end_screen") == "SCREEN_UPDATE",
                "end_screen = SCREEN_UPDATE（没有误退回主界面）", problems)
+
+    elif tag == "ST":
+        print("-- 断言 ST：滑轨第 6 格能进，三块图都画了 --")
+        st = res["status"]
+        expect(len(res["shots"]) == res["expect"] * 2, "截图数 = 4", problems)
+        expect("chat: rail -> 5" in st,
+               "status 记到切到了第 5 格（0 基）= 状态页", problems)
 
     elif tag == "G":
         print("-- 断言 G：对话屏进得去，空输入不会出问题 --")
@@ -5856,6 +5897,29 @@ def stage_demo(roots):
 N_PERSONA = "你是一只说话简短干脆的猫。"
 
 
+def _clear_chat_slots(roots):
+    """清掉**按任务分的历史文件**（chat_p0.json / chat_conv_p0.txt …）。
+
+    ★ 2026-10-25 修：对话历史早就改成"每个任务一份"（chatlog.c 的
+      `chat_p%d.json`），而夹具还在写老的 `chat.json`。老文件在启动时会被
+      迁移成 chat_p0.json，**但如果上一次跑留下的 chat_p0.json 还在**，
+      迁移就不会发生，app 读到的是上一趟的历史 —— 断言于是报
+      "实际 14 条（夹具预置的就是 2 条）"，看起来像程序把记录重复写了，
+      其实是**夹具没隔离**。这类红必须在这里修掉，不能让人去查代码。
+    """
+    for r in roots:
+        d = os.path.join(r, SD_SUBDIR)
+        if not os.path.isdir(d):
+            continue
+        for fn in os.listdir(d):
+            if fn.startswith("chat_p") or fn.startswith("chat_conv_p") \
+                    or fn == "chat.json":
+                try:
+                    os.remove(os.path.join(d, fn))
+                except OSError:
+                    pass
+
+
 def stage_chatlog(roots):
     """N 趟夹具：预写一份会话记录，并在 config.json 里塞一个人设。
 
@@ -5867,6 +5931,7 @@ def stage_chatlog(roots):
         而且失败时定位更直接（不用纠结是没存上还是没读出来）。
     写盘那一半由断言去看 chat.json 的条数有没有增长。
     """
+    _clear_chat_slots(roots)
     for r in roots:
         p = os.path.join(r, *CHATLOG_REL.split("/"))
         os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -5912,6 +5977,7 @@ def stage_chatlog_many(roots):
             for k in range(1, 6))
         lines.append(json.dumps({"mine": who, "text": body},
                                 ensure_ascii=False))
+    _clear_chat_slots(roots)
     for r in roots:
         p = os.path.join(r, *CHATLOG_REL.split("/"))
         os.makedirs(os.path.dirname(p), exist_ok=True)
