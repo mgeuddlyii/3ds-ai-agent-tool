@@ -633,21 +633,21 @@ static const char *const g_zh[] = {
     "软件更新",  /* S0618 */
     "离线包通道",  /* S0619 */
     "当前版本",  /* S0620 */
-    "更新到",  /* S0621 */
+    "新版本",  /* S0621 */
     "%d 个文件 · %d KB",  /* S0622 */
     "体积",  /* S0623 */
-    "摘要",  /* S0624 */
-    "（这个更新包没写说明）",  /* S0625 */
+    "校验码",  /* S0624 */
+    "这个版本没写更新说明",  /* S0625 */
     "在电脑上下载好整包丢进去就行 —— 3DS 的老 TLS 未必连得上现在这些站点。",  /* S0626 */
     "已安装",  /* S0627 */
     "确认安装",  /* S0628 */
-    "更新状态",  /* S0629 */
-    "现在没有能装的更新。放好更新包之后按 Y 再查一次。",  /* S0630 */
+    "更新",  /* S0629 */
+    "眼下没有可装的更新。点下面的「检查更新」到线上看看。",  /* S0630 */
     "[A] 返回   [Y] 重新检查",  /* S0631 */
-    "上面是当前版本、新版本、体积和摘要。确认无误再按允许。",  /* S0632 */
-    "装之前会先重新算一遍摘要，不符就直接中止。",  /* S0633 */
+    "确认安装这个版本？",  /* S0632 */
+    "装之前会重新校验一遍，对不上就中止。",  /* S0633 */
     "[X] 看说明 · 方向键选 · 默认拒绝",  /* S0634 */
-    "[A] 确认所选   [X] 说明   [B] 返回",  /* S0635 */
+    "[A] 安装   [X] 说明   [B] 返回",  /* S0635 */
     "安装完成",  /* S0636 */
     "安装失败",  /* S0637 */
     "%d 行 · 上下键滚动",  /* S0638 */
@@ -888,10 +888,10 @@ static const char *const g_zh[] = {
     "界面语言随时能换",  /* S0873 */
     "界面语言：%s",  /* S0874 */
     "正在检查更新…",  /* S0875 */
-    "正在下载（%d%）…",  /* S0876 */
+    "正在下载… %d%%",  /* S0876 */
     "下载完成，按 A 安装",  /* S0877 */
     "SELECT 检查在线更新",  /* S0878 */
-    "A 下载这个版本",  /* S0879 */
+    "选「下载并安装」开始",  /* S0879 */
     "更新源未配置（编译期常量 kUpdateBase）",  /* S0880 */
     "插件",  /* S0881 */
     "luma/plugins 里没有插件",  /* S0882 */
@@ -1087,14 +1087,14 @@ static const char *const g_en[] = {
     "Me",  /* S0097 */
     "Action",  /* S0098 */
     "Note",  /* S0099 */
-    "%.*s... (%d chars total, does not fit the screen)",  /* S0100 */
+    "%.*s… (%d chars total, does not fit the screen)",  /* S0100 */
     "Thinking (%d chars) %s",  /* S0101 */
     "> press [Right] to expand",  /* S0102 */
     "No usable microphone on this machine (fine in the emulator)",  /* S0103 */
     "Microphone unavailable - see status.txt",  /* S0104 */
-    "Listening... (release ZL or tap Voice again to stop)",  /* S0105 */
+    "Listening… (release ZL or tap Voice again to stop)",  /* S0105 */
     "Recording under 0.5 s - hold ZL, then speak",  /* S0106 */
-    "Recognising...",  /* S0107 */
+    "Recognising…",  /* S0107 */
     "No audio captured - check the mic is not in use",  /* S0108 */
     "%d chars heard, press A to send%s",  /* S0109 */
     "(input too long, truncated)",  /* S0110 */
@@ -1107,10 +1107,10 @@ static const char *const g_en[] = {
     "Unknown reason (details in status.txt on the card)",  /* S0117 */
     "Empty input - press Y for the keyboard",  /* S0118 */
     "No API key yet - press X to see how to get one",  /* S0119 */
-    "Asking...",  /* S0120 */
+    "Asking…",  /* S0120 */
     "Offline demo - reply comes from a built-in script, no network",  /* S0121 */
-    "Requesting (streaming)...",  /* S0122 */
-    "Requesting...",  /* S0123 */
+    "Requesting (streaming)…",  /* S0122 */
+    "Requesting…",  /* S0123 */
     "\n\n[Result OF LAST ACTION]\n%s\n",  /* S0124 */
     "Offline demo done - %d chars%s",  /* S0125 */
     " - streaming",  /* S0126 */
@@ -1144,7 +1144,7 @@ static const char *const g_en[] = {
     "No key",  /* S0154 */
     "Offline demo",  /* S0155 */
     "Chat",  /* S0156 */
-    "...(scroll up for older)",  /* S0157 */
+    "…(scroll up for older)",  /* S0157 */
     "What you want to say",  /* S0158 */
     "Chinese supported.)",  /* S0159 */
     "Send",  /* S0160 */
@@ -1153,7 +1153,7 @@ static const char *const g_en[] = {
     "No mic",  /* S0163 */
     "Listening",  /* S0164 */
     "Rec %ds",  /* S0165 */
-    "Listening... %s %d.%ds release ZL",  /* S0166 */
+    "Listening… %s %d.%ds release ZL",  /* S0166 */
     "Voice ZL",  /* S0167 */
     "[ZL] Talk [L] Export [R] Phrases [<->] Think",  /* S0168 */
     "[ZL] Hold to talk, release to recognise  [L] Export  [R] Phrases",  /* S0169 */
@@ -1302,7 +1302,7 @@ static const char *const g_en[] = {
     "Doubao",  /* S0312 */
     "No API key needed. What you say syncs into Doubao's history on your phone.",  /* S0313 */
     "Fetching QR",  /* S0314 */
-    "Asking Doubao for a QR code...\n\nThis needs the network; on a slow link it takes seconds.",  /* S0315 */
+    "Asking Doubao for a QR code…\n\nThis needs the network; on a slow link it takes seconds.",  /* S0315 */
     "Did not work",  /* S0316 */
     "Not signed in",  /* S0317 */
     "Scanning needs the **Douyin app** (the Doubao app cannot read this code).",  /* S0318 */
@@ -1315,18 +1315,18 @@ static const char *const g_en[] = {
     "The signed-in state is stored on the card, so no scan next time.",  /* S0325 */
     "Sign out",  /* S0326 */
     "[A] Sign out   [B] Back",  /* S0327 */
-    "You can try once more.",  /* S0328 */
+    "Try again.",  /* S0328 */
     "Retry",  /* S0329 */
     "[A] Retry   [B] Back",  /* S0330 */
-    "One moment...",  /* S0331 */
+    "One moment…",  /* S0331 */
     "[B] Back",  /* S0332 */
     "You never need to do anything on the PC.",  /* S0333 */
     "Show QR code",  /* S0334 */
     "[A] Start scanning   [B] Back",  /* S0335 */
     "Already signed in on the card (%d cookies)",  /* S0336 */
-    "Fetching the QR code...",  /* S0337 */
+    "Fetching the QR code…",  /* S0337 */
     "Signed out (the cookie file was left on the card)",  /* S0338 */
-    "The code is about to expire, getting a new one...",  /* S0339 */
+    "The code is about to expire, getting a new one…",  /* S0339 */
     "API key read - press X to see the setup guide again",  /* S0340 */
     "No API key yet - press X to set one up",  /* S0341 */
     "Ready - launch #%d",  /* S0342 */
@@ -1350,7 +1350,7 @@ static const char *const g_en[] = {
     "Font: %d glyphs - %dx%d - baseline %d",  /* S0360 */
     "[L/R]Pick [A]Open [L]Settings [X]Key [R]Update [ZL]Guide",  /* S0361 */
     "Home",  /* S0362 */
-    "The AI is set up; you can start chatting.",  /* S0363 */
+    "Setup complete. Start chatting.",  /* S0363 */
     "No AI set up yet - pick a provider in Providers.",  /* S0364 */
     "Add an API key to chat online — or skip it and use the offline demo.",  /* S0365 */
     "Config path",  /* S0366 */
@@ -1448,7 +1448,7 @@ static const char *const g_en[] = {
     "Every risky action asks for confirmation first.",  /* S0458 */
     "Current level: L0 (chat)   25 chars/line",  /* S0459 */
     "Digits 0123456789 punctuation ,. ;:?!()<>\"",  /* S0460 */
-    "...- middle dot: ellipsis / dash / interpunct",  /* S0461 */
+    "…- middle dot: ellipsis / dash / interpunct",  /* S0461 */
     "English The quick brown fox jumps over the lazy dog.",  /* S0462 */
     "Mixed Mix Chinese + English + 123 + ,. end.",  /* S0463 */
     "Glyph %d / cell %dx%d / baseline %d",  /* S0464 */
@@ -1496,7 +1496,7 @@ static const char *const g_en[] = {
     "Key set (%s)",  /* S0506 */
     "No key - you need to set one up",  /* S0507 */
     "Providers (%d)",  /* S0508 */
-    "Switched to %s. It has no credential yet; taking you to set it up...",  /* S0509 */
+    "Switched to %s. It has no credential yet; taking you to set it up…",  /* S0509 */
     "Switched to %s; back on the chat screen it is ready to use.",  /* S0510 */
     "Providers - current = %s",  /* S0511 */
     "Press A to switch to it first, then change the %s.",  /* S0512 */
@@ -1605,33 +1605,33 @@ static const char *const g_en[] = {
     "The keys are taken over by the password",  /* S0615 */
     "A wrong entry starts over by itself; it never gets stuck.",  /* S0616 */
     "You can also press R",  /* S0617 */
-    "App update",  /* S0618 */
+    "Software update",  /* S0618 */
     "Offline pack channel",  /* S0619 */
     "Current version",  /* S0620 */
-    "Update to",  /* S0621 */
+    "New version",  /* S0621 */
     "%d files - %d KB",  /* S0622 */
     "Size",  /* S0623 */
-    "Summary",  /* S0624 */
-    "(this update pack has no description)",  /* S0625 */
+    "Checksum",  /* S0624 */
+    "No release notes for this version.",  /* S0625 */
     "Download the whole pack on a PC and drop it in - the 3DS's old TLS may not reach today's sites.",  /* S0626 */
     "Installed",  /* S0627 */
     "Confirm install",  /* S0628 */
-    "Update status",  /* S0629 */
-    "No update to install right now. Put a pack in place, then press Y to check again.",  /* S0630 */
+    "Update",  /* S0629 */
+    "Nothing to install. Tap Check for updates to see if there is a newer build.",  /* S0630 */
     "[A] Back   [Y] Check again",  /* S0631 */
-    "Above are the current version, the new one, the size and the summary. Confirm before allowing.",  /* S0632 */
-    "The summary is recomputed before installing; a mismatch aborts.",  /* S0633 */
+    "Install this version?",  /* S0632 */
+    "The package is checked again before installing. A mismatch cancels it.",  /* S0633 */
     "[X] Notes - arrows to choose - decline by default",  /* S0634 */
-    "[A] Confirm choice   [X] Notes   [B] Back",  /* S0635 */
-    "Install finished",  /* S0636 */
-    "Install failed",  /* S0637 */
+    "[A] Install   [X] Notes   [B] Back",  /* S0635 */
+    "Install finished.",  /* S0636 */
+    "Install failed.",  /* S0637 */
     "%d lines - up/down to scroll",  /* S0638 */
     "Nothing read",  /* S0639 */
     "Viewer",  /* S0640 */
     "HTML subset",  /* S0641 */
     "Nothing read. The file may not exist, or may hold no displayable text.",  /* S0642 */
     "Press B to go back",  /* S0643 */
-    "...(down for more)",  /* S0644 */
+    "…(down for more)",  /* S0644 */
     "Up/down to scroll - plain text pages only",  /* S0645 */
     "It cannot run JavaScript, and it cannot read CSS.",  /* S0646 */
     "Line %d of %d",  /* S0647 */
@@ -1688,8 +1688,8 @@ static const char *const g_en[] = {
     "The address printed on the PC",  /* S0698 */
     "Address set to %s",  /* S0699 */
     "The address is unchanged",  /* S0700 */
-    "Looking at what the PC has...",  /* S0701 */
-    "Fetching...",  /* S0702 */
+    "Looking at what the PC has…",  /* S0701 */
+    "Fetching…",  /* S0702 */
     "Fetching %d%%",  /* S0703 */
     "Cannot reach the PC (is the IP right, is the script running?)",  /* S0704 */
     "The PC answered %ld (something went wrong on its side)",  /* S0705 */
@@ -1707,7 +1707,7 @@ static const char *const g_en[] = {
     "No listing yet. Press A to read it once.",  /* S0717 */
     "(no name)",  /* S0718 */
     "(some file names were too long to list)",  /* S0719 */
-    "...more, use Down to scroll",  /* S0720 */
+    "…more, use Down to scroll",  /* S0720 */
     "Paired; the page lists your PC files",  /* S0721 */
     "Not paired - type these four digits on the PC first",  /* S0722 */
     "Transfer",  /* S0723 */
@@ -1716,7 +1716,7 @@ static const char *const g_en[] = {
     "Back to Home",  /* S0726 */
     "Fetch another",  /* S0727 */
     "About %ld KB/s - %ld min %ld sec left",  /* S0728 */
-    "Measuring the speed...",  /* S0729 */
+    "Measuring the speed…",  /* S0729 */
     "Press B to give up (any leftover .tmp can be removed)",  /* S0730 */
     "Nothing is being fetched",  /* S0731 */
     "Read the listing",  /* S0732 */
@@ -1862,11 +1862,11 @@ static const char *const g_en[] = {
     "Pick the interface language. You can change it later in Settings.",  /* S0872 */
     "Language can be switched any time",  /* S0873 */
     "Interface language: %s",  /* S0874 */
-    "Checking for updates...",  /* S0875 */
-    "Downloading (%d%%)...",  /* S0876 */
-    "Downloaded - press A to install",  /* S0877 */
+    "Checking for updates…",  /* S0875 */
+    "Downloading… %d%%",  /* S0876 */
+    "Downloaded. Press A to install.",  /* S0877 */
     "SELECT: check online",  /* S0878 */
-    "A: download this version",  /* S0879 */
+    "Pick Download & install to begin",  /* S0879 */
     "Update source not configured (kUpdateBase)",  /* S0880 */
     "Plugins",  /* S0881 */
     "No plugins in luma/plugins",  /* S0882 */
@@ -1914,7 +1914,7 @@ static const char *const g_en[] = {
     "Test",  /* S0924 */
     "Fill in a key first",  /* S0925 */
     "No URL to test for this provider",  /* S0926 */
-    "Testing connection...",  /* S0927 */
+    "Testing connection…",  /* S0927 */
     "OK (HTTP %d)",  /* S0928 */
     "Key rejected (HTTP %d)",  /* S0929 */
     "404 - this provider may not support probing; the key may still be fine",  /* S0930 */
@@ -1953,13 +1953,13 @@ static const char *const g_en[] = {
     "[←→] Tab  [↑↓] Row  [A] Toggle  [B] Back",  /* S0963 */
     "Check for updates",  /* S0964 */
     "Later",  /* S0965 */
-    "Download and install",  /* S0966 */
-    "Verifying...",  /* S0967 */
-    "Installing...",  /* S0968 */
+    "Download & install",  /* S0966 */
+    "Verifying…",  /* S0967 */
+    "Installing…",  /* S0968 */
     "Package",  /* S0969 */
-    "You are up to date",  /* S0970 */
-    "[A] Check for updates   [B] Back",  /* S0971 */
-    "[Left/Right] Choose   [A] OK   [B] Back",  /* S0972 */
+    "Already up to date.",  /* S0970 */
+    "[A] Check   [B] Back",  /* S0971 */
+    "[A] Choose   [B] Back",  /* S0972 */
 };
 
 /* 供 uistr.c 用（数组本体是 static，只有这几个能出去） */
