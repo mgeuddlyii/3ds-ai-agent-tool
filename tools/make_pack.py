@@ -37,7 +37,7 @@ try:
 except Exception:
     ciainfo = None
 
-VERSION = "0.99.5"
+VERSION = "0.99.6"
 RELEASE = os.path.join(ROOT, "release")
 PACKDIR = os.path.join(ROOT, "dist", "pack-" + VERSION)
 ZIPPATH = os.path.join(ROOT, "dist", "AIConsole-%s-pack.zip" % VERSION)

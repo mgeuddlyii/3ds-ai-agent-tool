@@ -21,7 +21,7 @@
 #include "uistr.h"
 #include "widgets.h"
 
-#define MORE_N 8
+#define MORE_N 7
 
 typedef struct {
     /* ★ 存**编号的枚举值**，不是字符串 "S0888" ——
@@ -56,11 +56,16 @@ static const MoreItem kItems[MORE_N] = {
     { S0277, SCREEN_CONTENT,   0 },   /* 内容更新 */
     { S0372, SCREEN_XFER,      0 },   /* 从电脑取文件 */
     { S0881, SCREEN_PLUGINS,   0 },   /* 插件（S0881 是「插件」的真实编号，别硬猜） */
-    /* ★ 工作台**追加在末尾**，不插到前面 ——
-     *   验收趟 0 用"DOWN×1 落到服务目录"定位这一屏，
-     *   在前面插一项会让它落到别的条目上，红的却不是功能坏了。
-     *   要调整顺序时，连带改 azahar_test.py 的 SCRIPT_0。 */
-    { S0912, SCREEN_DOCK,      0 },   /* 工作台：滑轨（键盘/项目/文件/浏览） */
+    /* ★★ 2026-10-23 用户要求删掉「工作台」这一项：「现在没有任何意义了」。
+     *
+     *   删它的理由站得住：滑轨（键盘/项目/文件/浏览）**已经常驻在对话屏下屏**，
+     *   从「更多」再进一个只画滑轨、没有上文的屏，等于让人多走一步
+     *   去看同一个东西。真正要用键盘/项目的人本来就在对话屏里。
+     *
+     *   注意：**只删菜单项**。SCREEN_DOCK 这个屏本身留着 ——
+     *   sc_chat.c 的 dockui_render / dockui_touch 都靠它那套组件，
+     *   屏注册表里删掉会引起链接错误。 */
+
 };
 
 static int g_sel;

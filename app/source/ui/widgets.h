@@ -119,6 +119,12 @@ void w_top_footer(const char *status, const char *hint);
 void w_bot_header(const char *title);
 void w_bot_footer(const char *hint);
 
+/* 轮播式操作指引：每 ms 毫秒换一条，循环。
+ * 为什么需要它见 widgets.c 里 w_bot_footer_roll 上方那段
+ * （一句话：300px 只放得下 18 个全角字，整套键位一行讲不完）。
+ * ms<=0 或 n==1 时退化为静态显示第一条。 */
+void w_bot_footer_roll(const char *const *items, int n, int ms);
+
 /* --------------------------------------------------------------------------
  * 内容
  * ----------------------------------------------------------------------- */

@@ -57,6 +57,70 @@ static const ProviderDef TABLE[] = {
          *    thinking_budget（会报错），所以这里只发前者。 */
         .think         = PROVIDER_THINK_ENABLE_EFFORT,
     },
+    /* ---- 2026-10-23 用户要求「包括中外知名厂商」，下列为新补 ---- */
+    {
+        /* 硅基流动：国内最常用的 OpenAI 兼容转发，一把 Key 能打很多家模型。
+         * 它同时也是本项目语音识别的默认通道（见 asr.c）。 */
+        .name          = "siliconflow",
+        .base_url      = "https://api.siliconflow.cn/v1",
+        .default_model = "deepseek-ai/DeepSeek-V3",
+        .auth          = "bearer",
+        .note_id      = S0938,
+    },
+    {
+        .name          = "hunyuan",
+        .base_url      = "https://api.hunyuan.cloud.tencent.com/v1",
+        .default_model = "hunyuan-turbos-latest",
+        .auth          = "bearer",
+        .note_id      = S0939,
+    },
+    {
+        .name          = "minimax",
+        .base_url      = "https://api.minimax.chat/v1",
+        .default_model = "abab6.5s-chat",
+        .auth          = "bearer",
+        .note_id      = S0940,
+    },
+    {
+        .name          = "openai",
+        .base_url      = "https://api.openai.com/v1",
+        .default_model = "gpt-4o-mini",
+        .auth          = "bearer",
+        .note_id      = S0941,
+    },
+    {
+        /* Gemini 的原生接口不是 OpenAI 形状，但它提供了 /v1beta/openai/ 兼容端点 ——
+         * 必须用这个，因为本项目只发 OpenAI 形状的请求体。 */
+        .name          = "gemini",
+        .base_url      = "https://generativelanguage.googleapis.com/v1beta/openai",
+        .default_model = "gemini-2.0-flash",
+        .auth          = "bearer",
+        .note_id      = S0942,
+    },
+    {
+        .name          = "grok",
+        .base_url      = "https://api.x.ai/v1",
+        .default_model = "grok-2-latest",
+        .auth          = "bearer",
+        .note_id      = S0943,
+    },
+    {
+        .name          = "mistral",
+        .base_url      = "https://api.mistral.ai/v1",
+        .default_model = "mistral-small-latest",
+        .auth          = "bearer",
+        .note_id      = S0944,
+    },
+    {
+        /* OpenRouter：一把 Key 通上百个模型，含 Claude 系列。
+         * Claude 原生接口是 x-api-key + 不同 body，本项目不支持；
+         * 走 OpenRouter 是**唯一**能用上 Claude 的路。 */
+        .name          = "openrouter",
+        .base_url      = "https://openrouter.ai/api/v1",
+        .default_model = "anthropic/claude-3.5-sonnet",
+        .auth          = "bearer",
+        .note_id      = S0945,
+    },
     {
         /* 豆包。**唯一一个不需要 API Key 的服务商** —— 它靠扫码登录，
          * 用的是账号本身（所以对话会同步进手机端豆包的历史记录，

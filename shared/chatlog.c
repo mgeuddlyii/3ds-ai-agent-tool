@@ -23,6 +23,122 @@
 #define CHATLOG_DIR_PATH "sdmc:/3ds/aiconsole"
 #define CHATLOG_JSON     CHATLOG_DIR_PATH "/chat.json"
 
+/* ★★ 按项目分文件（2026-10-24 用户要求）。
+ *
+ *   问题：切换任务只改 provider/model，对话历史却一直是**同一份**
+ *   chat.json。于是"新建一个任务"之后上屏还是上一个任务的对话 ——
+ *   从用户角度看就是"选了新项目但没进去"，两个项目的工作内容混在
+ *   一条时间线上，谁也分不清哪句属于哪个项目。
+ *
+ *   做法：槽名为空 → 老路径 chat.json（兼容升级前的老数据、以及
+ *   "还没建过任何任务"的情形）；槽名非空 → chat_<槽>.json。
+ *
+ *   为什么槽用**项目序号**而不是项目名：项目名用户可以随时改
+ *   （面板里 START 就能改名），而文件名一改就找不到旧历史了 ——
+ *   表现为"我把任务改了个名字，之前的对话全没了"。
+ *   序号在重排/删除时也会漂移，但那种操作本来就是在动项目表本身，
+ *   而改名是最常见的操作。两害相权，取序号 + 名字做**注释性后缀**
+ *   都不必 —— 简单到只有序号，出问题时用文件名能直接对上第几个任务。
+ *
+ *   ⚠️ 槽只在**进对话屏**和**切换项目**时设置，不要在渲染里设：
+ *   渲染每帧都跑，一旦某处漏设就会在写盘时落到别的槽里。 */
+static char g_slot[24];
+static char g_path[160];
+
+static const char *cur_path(void)
+{
+    if (!g_slot[0])
+        return CHATLOG_JSON;
+    if (!g_path[0])
+        snprintf(g_path, sizeof g_path, CHATLOG_DIR_PATH "/chat_%s.json", g_slot);
+    return g_path;
+}
+
+/* 把老的 chat.json 交给**第一个**任务。
+ *
+ *   ★ 为什么必须有这一步：老用户就一份 chat.json。他新建第二个任务之后，
+ *   槽从"空"变成 p0/p1，而 chat_p0.json 并不存在 —— 于是"升级完打开程序，
+ *   之前的对话全没了"。这不是猜测：槽机制上线当天就是这个行为。
+ *
+ *   只在 p0 且目标不存在时搬一次，幂等。搬完**不删** chat.json：
+ *   万一迁移逻辑本身有 bug，原件还在，用户的数据不会因为一次自动搬运
+ *   而永久消失。多留一份几十 KB 的文件，比"对话没了"便宜得多。 */
+static void migrate_default_to_p0(void)
+{
+    static const char *SLOT0 = CHATLOG_DIR_PATH "/chat_p0.json";
+    FILE *dst, *src;
+    char buf[512];
+    size_t n;
+
+    if (strcmp(g_slot, "p0") != 0)
+        return;
+    src = fopen(CHATLOG_JSON, "rb");
+    if (!src)
+        return;                      /* 没有老数据，正常情况 */
+    dst = fopen(SLOT0, "rb");
+    if (dst) { fclose(dst); fclose(src); return; }   /* 已迁移过 */
+
+    dst = fopen(SLOT0, "wb");
+    if (!dst) { fclose(src); return; }
+    while ((n = fread(buf, 1, sizeof buf, src)) > 0)
+        fwrite(buf, 1, n, dst);
+    fclose(dst);
+    fclose(src);
+}
+
+/* 删掉第 idx 个任务的槽，并把后面的整体前移一位。
+ *
+ * ★ 为什么必须有这一步：槽名是**序号**（p0/p1/p2）。删掉中间那个之后，
+ *   后面所有任务的序号都会前移，而文件名不会自己跟着动 ——
+ *   于是"删掉任务乙"的后果是：任务丙开始读 chat_p1.json，
+ *   而那份是**乙的**历史。屏幕上看不出错，就是"丙的对话变成了乙的"。
+ *
+ *   这是序号方案自带的代价（见上面为什么不用项目名）。既然用户要的就是
+ *   "每行一个删除按钮"，那就必须同时把文件挪好，不能只删项目表。
+ *
+ * total = 删除**之前**的任务个数。
+ *
+ * ⚠️ 挪动顺序必须**从小到大**：每一步的源文件都还没被碰过。
+ *   反过来（从大到小）会让 p(k+1) 先占掉 p(k+2) 的目标位，
+ *   再挪 p(k+1) 时读到的已经是自己刚写进去的那份 —— 复制粘贴自己。 */
+void chatlog_drop_slot(int idx, int total)
+{
+    char src[160];
+    char dst[160];
+
+    if (idx < 0 || total <= 0 || idx >= total)
+        return;
+
+    /* 被删项目的历史跟着项目一起走 —— 留着它只会变成谁都读不到的垃圾 */
+    snprintf(dst, sizeof dst, CHATLOG_DIR_PATH "/chat_p%d.json", idx);
+    remove(dst);
+
+    for (int k = idx; k + 1 < total; ++k) {
+        snprintf(src, sizeof src, CHATLOG_DIR_PATH "/chat_p%d.json", k + 1);
+        snprintf(dst, sizeof dst, CHATLOG_DIR_PATH "/chat_p%d.json", k);
+        /* 先 rename，失败才退化成"删目标再 rename"：
+         * 一上来就 remove 目标的话，万一 rename 也失败就是**两个都没了**。 */
+        if (rename(src, dst) != 0) {
+            remove(dst);
+            rename(src, dst);
+        }
+    }
+
+    /* 当前槽的文件名可能刚好被挪动过 —— 清掉缓存路径，下次 cur_path() 重算 */
+    g_path[0] = '\0';
+}
+
+void chatlog_set_slot(const char *slot)
+{
+    /* 老路径用过的槽名不算"变" —— 两者都指向 chat.json 时不必重算 */
+    if (!slot) slot = "";
+    if (strncmp(g_slot, slot, sizeof g_slot) == 0)
+        return;
+    snprintf(g_slot, sizeof g_slot, "%s", slot);
+    g_path[0] = '\0';               /* 下次 cur_path() 重算 */
+    migrate_default_to_p0();
+}
+
 static FILE *g_fp;
 static int   g_items;
 static bool  g_human;        /* 这次写的是给人看的文本还是持久化 JSONL */
@@ -60,11 +176,11 @@ static void put_str(FILE *f, const char *s)
  * ----------------------------------------------------------------------- */
 
 const char *chatlog_dir(void)  { return CHATLOG_DIR_PATH; }
-const char *chatlog_path(void) { return CHATLOG_JSON; }
+const char *chatlog_path(void) { return cur_path(); }
 
 bool chatlog_exists(void)
 {
-    FILE *f = fopen(CHATLOG_JSON, "rb");
+    FILE *f = fopen(cur_path(), "rb");
     if (!f)
         return false;
     fclose(f);
@@ -99,7 +215,7 @@ bool chatlog_open(bool human, char *out_path, size_t cap)
             fputs("，本地时区）\n\n", g_fp);
         }
     } else {
-        snprintf(g_last_path, sizeof g_last_path, "%s", CHATLOG_JSON);
+        snprintf(g_last_path, sizeof g_last_path, "%s", cur_path());
         g_fp = fopen(g_last_path, "wb");
     }
 
@@ -170,7 +286,7 @@ static bool compact_keep_last(int keep)
     if (keep <= 0)
         return false;
 
-    in = fopen(CHATLOG_JSON, "rb");
+    in = fopen(cur_path(), "rb");
     if (!in)
         return false;
     if (fseek(in, 0, SEEK_END) != 0) { fclose(in); return false; }
@@ -204,7 +320,7 @@ static bool compact_keep_last(int keep)
     }
     if (from >= len) { free(buf); return false; }
 
-    snprintf(tmp, sizeof tmp, "%s.tmp", CHATLOG_JSON);
+    snprintf(tmp, sizeof tmp, "%s.tmp", cur_path());
     out = fopen(tmp, "wb");
     if (!out) { free(buf); return false; }
 
@@ -217,7 +333,7 @@ static bool compact_keep_last(int keep)
     free(buf);
 
     if (fclose(out) != 0) { remove(tmp); return false; }
-    if (rename(tmp, CHATLOG_JSON) != 0) { remove(tmp); return false; }
+    if (rename(tmp, cur_path()) != 0) { remove(tmp); return false; }
     return true;
 }
 
@@ -232,7 +348,7 @@ bool chatlog_append(bool mine, const char *text)
     util_mkdirs(CHATLOG_DIR_PATH);
 
     /* 先看多大，超限就先压一次 */
-    f = fopen(CHATLOG_JSON, "rb");
+    f = fopen(cur_path(), "rb");
     if (f) {
         if (fseek(f, 0, SEEK_END) == 0)
             size = ftell(f);
@@ -243,7 +359,7 @@ bool chatlog_append(bool mine, const char *text)
 
     /* ★ "ab" 而不是 "wb"：**这是整个修复的关键**。
      *   "wb" 会在打开瞬间清空文件，中途出任何事都是全丢。 */
-    f = fopen(CHATLOG_JSON, "ab");
+    f = fopen(cur_path(), "ab");
     if (!f)
         return false;
 
@@ -388,7 +504,7 @@ int chatlog_load(ChatlogFn fn, void *user)
     if (!fn)
         return 0;
 
-    f = fopen(CHATLOG_JSON, "rb");
+    f = fopen(cur_path(), "rb");
     if (!f)
         return 0;
 

@@ -294,7 +294,15 @@ shot 1_chat_ready
 key SELECT
 wait 3
 shot 2_chat_qp
-key A
+# ★ 2026-10-24：**发送挪到键盘格了**（用户定的分工）。
+#   第 0 格（选项）的 A 是"把这一行的值换下一档"，按 A 只会改设置、不发消息。
+#   发送 = 切到「键盘」格（RIGHT）后按 Y。
+#   这个改动不是偏好问题：旧脚本按 A，屏幕上"思考强度"真的被切了一档，
+#   而消息一条都没发出去 —— 判据红的地方（没回复）与真实原因（没发送）
+#   隔着一整个推理步骤，排查花了整整一轮。
+key RIGHT
+wait 4
+key Y
 wait 400
 wait 400
 shot 3_chat_reply
@@ -329,7 +337,12 @@ wait 20
 touch 158 130
 wait 8
 shot 1_touch_chat
-touch 80 175
+# ★ 2026-10-23 修假阳性：这里原本写 80 175，而 CHAT_BTN_SEND 是
+#   (10,124,144,36) —— 纵向 124..160。175 落在**滑轨区**（168..198），
+#   也就是说这一点从来没点到「发送」，点到的是滑轨某一格；
+#   断言之所以一直是绿的，是因为切面板**确实**让画面变了。
+#   换成真实的按钮中心 (82,142) 之后，这条才真的在验"空发送给提示"。
+touch 80 142
 wait 6
 shot 2_touch_send_empty
 wait 2
@@ -481,12 +494,21 @@ shot 1_chat_ready
 key SELECT
 wait 3
 shot 2_chat_qp
-key A
+# ★ 2026-10-24：**发送挪到键盘格了**（用户定的分工）。
+#   第 0 格（选项）的 A 是"把这一行的值换下一档"，按 A 只会改设置、不发消息。
+#   发送 = 切到「键盘」格（RIGHT）后按 Y。
+#   这个改动不是偏好问题：旧脚本按 A，屏幕上"思考强度"真的被切了一档，
+#   而消息一条都没发出去 —— 判据红的地方（没回复）与真实原因（没发送）
+#   隔着一整个推理步骤，排查花了整整一轮。
+key RIGHT
+wait 4
+key Y
 wait 60
 key SELECT
 wait 3
 shot 3_round2_qp
-key A
+# 已经在键盘格里（上一轮切过来的），直接 Y 发送。
+key Y
 wait 60
 shot 4_final
 wait 2
@@ -504,7 +526,15 @@ shot 1_restored
 key SELECT
 wait 3
 shot 2_qp
-key A
+# ★ 2026-10-24：**发送挪到键盘格了**（用户定的分工）。
+#   第 0 格（选项）的 A 是"把这一行的值换下一档"，按 A 只会改设置、不发消息。
+#   发送 = 切到「键盘」格（RIGHT）后按 Y。
+#   这个改动不是偏好问题：旧脚本按 A，屏幕上"思考强度"真的被切了一档，
+#   而消息一条都没发出去 —— 判据红的地方（没回复）与真实原因（没发送）
+#   隔着一整个推理步骤，排查花了整整一轮。
+key RIGHT
+wait 4
+key Y
 wait 60
 shot 3_reply
 wait 2
@@ -532,7 +562,15 @@ shot 1_chat
 key SELECT
 wait 3
 shot 2_phrase_filled
-key A
+# ★ 2026-10-24：**发送挪到键盘格了**（用户定的分工）。
+#   第 0 格（选项）的 A 是"把这一行的值换下一档"，按 A 只会改设置、不发消息。
+#   发送 = 切到「键盘」格（RIGHT）后按 Y。
+#   这个改动不是偏好问题：旧脚本按 A，屏幕上"思考强度"真的被切了一档，
+#   而消息一条都没发出去 —— 判据红的地方（没回复）与真实原因（没发送）
+#   隔着一整个推理步骤，排查花了整整一轮。
+key RIGHT
+wait 4
+key Y
 wait 60
 shot 3_replied
 wait 8
@@ -550,6 +588,30 @@ wait 2
 quit
 """
 
+
+SCRIPT_Z = """\
+# 拼音键盘：进对话 -> Y 开键盘 -> 点 n、i -> 看候选。
+# 2026-10-23 真机报「拼音根本加载不出字」，这一趟就是为了让那个现象
+# 在模拟器里可复现、可截图、可回归。坐标是按 sc_dock.c 的
+# ime_key_rect() 算的（W_BOT_MARGIN=10, IME_KEY_W=28, IME_KEY_GAP=2）：
+#   row2 "zxcvbnm" 共 7 键 -> total=208, x0=10+(300-208)/2=56
+#     'n' = col 5 -> x=56+5*30=206..234，中心 220；y=80+2*32=144..172，中心 158
+#   row0 "qwertyuiop" 共 10 键 -> total=298, x0=11
+#     'i' = col 7 -> x=11+7*30=221..249，中心 235；y=80..108，中心 94
+wait 20
+touch 158 130
+wait 8
+key Y
+wait 6
+shot 1_ime_open
+touch 220 158
+wait 3
+touch 235 94
+wait 6
+shot 2_ime_ni
+wait 2
+quit
+"""
 
 SCRIPT_P = """\
 # 长消息回落（B1 回归守卫）。
@@ -621,7 +683,15 @@ shot 1_chat
 key SELECT
 wait 3
 shot 2_phrase_filled
-key A
+# ★ 2026-10-24：**发送挪到键盘格了**（用户定的分工）。
+#   第 0 格（选项）的 A 是"把这一行的值换下一档"，按 A 只会改设置、不发消息。
+#   发送 = 切到「键盘」格（RIGHT）后按 Y。
+#   这个改动不是偏好问题：旧脚本按 A，屏幕上"思考强度"真的被切了一档，
+#   而消息一条都没发出去 —— 判据红的地方（没回复）与真实原因（没发送）
+#   隔着一整个推理步骤，排查花了整整一轮。
+key RIGHT
+wait 4
+key Y
 wait 60
 shot 3_replied
 wait 8
@@ -658,7 +728,15 @@ shot 1_chat
 key SELECT
 wait 3
 shot 2_phrase_filled
-key A
+# ★ 2026-10-24：**发送挪到键盘格了**（用户定的分工）。
+#   第 0 格（选项）的 A 是"把这一行的值换下一档"，按 A 只会改设置、不发消息。
+#   发送 = 切到「键盘」格（RIGHT）后按 Y。
+#   这个改动不是偏好问题：旧脚本按 A，屏幕上"思考强度"真的被切了一档，
+#   而消息一条都没发出去 —— 判据红的地方（没回复）与真实原因（没发送）
+#   隔着一整个推理步骤，排查花了整整一轮。
+key RIGHT
+wait 4
+key Y
 wait 60
 shot 3_replied
 wait 8
@@ -916,16 +994,27 @@ wait 8
 shot 1_chat
 key SELECT
 wait 4
-key A
+# ★ 2026-10-24：发送挪到键盘格（第 0 格的 A 是"改值"）→ RIGHT 切格 + Y 发。
+key RIGHT
+wait 4
+key Y
 wait 90
 shot 2_confirm
+# 确认屏上的 A 仍是"按下当前焦点那一项"（默认焦点 = 拒绝）—— 这一屏没动。
 key A
 wait 40
 shot 3_back
+# ⚠️ 回到对话屏时是**重新 enter**（chat_enter 把 g_tab 归零），
+#   所以这里不能直接 SELECT —— 第 0 格没有输入框，短语填进去了也看不见，
+#   下屏一个字都不会变（第一版就栽在这，断言报"填了短语却没变"）。
+#   先 RIGHT 切回键盘格，让输入框重新出现在屏上。
+key RIGHT
+wait 4
 key SELECT
 wait 6
 shot 4_filled
-key A
+# 已经在键盘格里了，直接 Y 发第二轮。
+key Y
 wait 90
 shot 5_round2
 wait 2
@@ -1176,6 +1265,133 @@ shot 11_providers_url_guard
 key Y
 wait 4
 shot 12_providers_model_guard
+wait 2
+quit
+"""
+
+# ---- 7：十字键管下屏 / 摇杆管上屏滚动 / 最下行操作指引（2026-10-23 新增）
+#
+# 用户原话：「现在逻辑是十字键控制下屏内容，然后那个摇杆上下控制上屏文字
+# 上下滑动。另一个是最下行，给出操作指引。」
+#
+# 这一趟验三件在别的趟次里**根本碰不到**的事：
+#   ① ←→ 真的在切下屏滑轨（判据：底屏像素在切格前后**不同**，且切回来
+#      之后与最初**相同** —— 只判"不同"会被状态行文字/闪烁骗过）；
+#   ② ↑↓ 真的在动当前格的光标（判据同上，但只在第 0 格验：选项行高亮
+#      位置一变，整块底屏必然不同）；
+#   ③ 摇杆真的能滚上屏（判据：推杆前后**上屏**不同，而底屏**不变** ——
+#      底屏不变是关键：如果底屏也变了，说明这不是"滚动"，是别的东西
+#      顺带改了画面，那这条断言就失去了意义）。
+#
+# ⚠️ ③ 必须先有"能滚的内容"：上屏没消息时 g_scroll 卡在 0，
+#    推杆一格都走不动，画面也不会变 —— 于是这条会假失败。
+#    所以脚本先按 SELECT 填一条快捷短语再发送（离线演示 provider=demo
+#    会立刻回一句），这样上屏真的有内容可滚。
+#    ⚠️ 这一步依赖 M 趟的离线夹具？不依赖 —— 无夹具时 provider 是
+#    deepseek 且没有 Key，发送会失败。所以本趟**只验"有内容时的滚动"**：
+#    判断不了内容有没有，就退回到"推杆前后上屏相同 = 这条没验到"，
+#    并在断言里显式区分「没内容可滚」与「推杆无效」。
+#
+# ⚠️ 引导段与 SCRIPT_4 逐键同源（改引导必须两处一起改）。
+SCRIPT_7 = """\
+wait 20
+# 走完引导到主页（与 SCRIPT_4 / SCRIPT_0 同源）
+key A
+wait 3
+key A
+wait 6
+key LEFT
+wait 3
+key A
+wait 8
+key LEFT
+wait 3
+key A
+wait 8
+wait 4
+key B
+wait 12
+key RIGHT
+wait 3
+key A
+wait 10
+key A
+wait 6
+key A
+wait 6
+key A
+wait 6
+key A
+wait 10
+# 主界面 → 开始对话（用触摸，见 SCRIPT_J 的说明：连续注入同名按键
+# 在模拟器里只交付一个按下沿，触摸是独立通道）
+touch 158 130
+wait 10
+shot 1_chat_opt
+# 先塞一条短语，让上屏真的有内容可滚
+#
+# ★ 这里**用 SELECT 而不是 A**：第 0 格是「选项」，A 在这一格的含义是
+#   "把光标那一行的值换下一档"（见 sc_dock.c 的 dockui_keys_opt）。
+#   2026-10-23 第一版脚本按了 A，于是「思考强度」真的被切了一档 ——
+#   后面"回位后画面应当与最初相同"两条判据因此全红，而代码本身是对的。
+#   这不是"判据太严"，是脚本自己改了状态：**验收脚本不许有副作用**，
+#   否则它验的就不再是同一件事了。
+#
+# ⚠️ 也别再在这里按 A 发送：A 在第 0 格永远是"切值"。本趟不发送 ——
+#   它的目的是"上屏有内容可滚"，而卡上 chat.json 已经有历史（restored=4），
+#   现成的就够了。为了滚动去发一条请求，反而会把网络状态混进判据里。
+key SELECT
+wait 6
+shot 2_chat_sent
+# ① ←→ 切格：切到「键盘」格
+key RIGHT
+wait 6
+shot 3_tab_kbd
+# 切回「选项」格 —— 与 1 对比应当逐字节相同（除状态行外）
+key LEFT
+wait 6
+shot 4_tab_opt_back
+# ② 第 0 格内 ↑↓ 选行
+key DOWN
+wait 6
+shot 5_opt_row2
+key UP
+wait 6
+shot 6_opt_row1
+# ③ 摇杆上推：连续 16 帧 dy=-120（累积量够走好几格）
+stick -120 16
+wait 6
+shot 7_scrolled_up
+# 摇杆下推：回到最新
+stick 120 16
+wait 6
+shot 8_scrolled_down
+# ④ 最下行操作指引 —— **必须换到「键盘」格再测**
+#
+# ★ 2026-10-23 踩过的坑：第 0 格（选项）自己也会画一条固定页脚
+#   （S0963「[←→] 切格 [↑↓] 选行 [A] 动作 [B] 返回」，见 sc_dock.c
+#   的 dockui_render_opt），那条**不轮播**。而对话格的轮播页脚
+#   （7 条键位指引）只画在**非第 0 格**的路径上 —— 也就是 g_tab>0。
+#   第一版脚本全程停在第 0 格，于是"轮播在走"永远测不到：页脚压根
+#   不是同一个控制器画出来的。判据红的原因不是功能坏了，是**测错了格子**。
+#
+#   所以这里先 RIGHT 切到「键盘」格，再等两轮（每条 3.2s，模拟器
+#   一帧约 0.2s，90 帧 ≈ 18s，足够走好几条）。
+key RIGHT
+wait 8
+shot 9_hint_a
+# ★ 取三张、间隔两次，而不是"前后两张必须不同"（2026-10-24 改）。
+#
+#   轮播是**按时间**推进的（3.2s 一条），而 w_bot_footer_roll 用 while
+#   补齐错过的轮次 —— 于是"刚切回这一格"那一帧会把中间几条一次跳过，
+#   之后又老实等 3.2s。两张截图恰好落在同一格的概率不为零（实测栽过：
+#   status 里明明记着 step=2，两张却一模一样）。
+#   三张里只要有一对相邻不同，就证明"文案真的会换" —— 这才是判据要的。
+#   要求"每一对都不同"反而是把判据绑在模拟器帧率上，与功能无关。
+wait 60
+shot 9b_hint
+wait 60
+shot 10_hint_b
 wait 2
 quit
 """
@@ -1444,6 +1660,68 @@ wait 2
 quit
 """
 
+#: 趟 8 · 每个任务一份历史（2026-10-24 用户要求）
+#:
+#: 用户原话：「选择新项目后，上屏的页面没有变化，没有进入新项目的空间。
+#: 同理，打开新项目的时候，也要看到那个项目之前做的内容。」
+#:
+#: 验的就是这两句，一条断言对一句：
+#:   ① 切到任务 B → 上屏**必须**变（否则等于没进去）
+#:   ② 切回任务 A → 上屏**必须**变回原样（否则 B 的历史把 A 冲了）
+#:
+#: ⚠️ 别只判"变了"：改一下状态行也会让上屏变。所以三个指纹要两两不同
+#:   （A ≠ B）**且**首尾相同（回到 A = 原样），两条一起才说明"分得开"。
+SCRIPT_8 = """\
+wait 20
+key A
+wait 3
+key A
+wait 6
+key LEFT
+wait 3
+key A
+wait 8
+key LEFT
+wait 3
+key A
+wait 8
+wait 4
+key B
+wait 12
+key RIGHT
+wait 3
+key A
+wait 10
+key A
+wait 6
+key A
+wait 6
+key A
+wait 6
+key A
+wait 10
+touch 158 130
+wait 10
+shot 1_proj_a
+# 切到「项目」格（0 选项 → 1 键盘 → 2 项目）
+key RIGHT
+wait 4
+key RIGHT
+wait 6
+shot 2_proj_panel
+# 点第 1 行 = 切到任务 B。行坐标 row_rect: y = 54 + i*26，高 24
+#   → 第 0 行 54..78（中心 66）、第 1 行 80..104（中心 92）
+touch 158 92
+wait 10
+shot 3_proj_b
+# 点第 0 行 = 切回任务 A
+touch 158 66
+wait 10
+shot 4_proj_a_again
+wait 2
+quit
+"""
+
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
     "B": dict(script=SCRIPT_B, shots=1, title="二次启动 · 跳过引导"),
@@ -1465,6 +1743,11 @@ PASSES = {
               title="会话持久化 + 助手人设 · 恢复历史、带上人设"),
     "O": dict(script=SCRIPT_O, shots=14,
               title="AI 创建文件 · 动作解析 + 确认屏 + 沙箱落盘 + 审计"),
+    # ★ 键位用 6 而不是 Z：Z 早就被「动作链路探针」占了，两个同名 dict
+    #   条目会**后者覆盖前者**（我第一次就踩了，跑出来是 actprobe 的截图）。
+    #   加新趟次前先看 PASSES 里哪些键空闲。
+    "6": dict(script=SCRIPT_Z, shots=2,
+              title="拼音键盘 · 开键盘 + 打 ni + 看候选"),
     "P": dict(script=SCRIPT_P, shots=2,
               title="长消息回落 · JSONL 行超旧行缓冲不丢历史"),
     "Q": dict(script=SCRIPT_Q, shots=2,
@@ -1505,6 +1788,18 @@ PASSES = {
               title="更多 → 添加 API · 菜单入口 + 录入屏版面 + 从文件导入"),
     "5": dict(script=SCRIPT_5, shots=6,
               title="设置屏 L/R 翻页 + 网络自检（搬自主页 SELECT）"),
+    # ★ 2026-10-23 新增：用户定的新分工（十字键管下屏 / 摇杆管上屏滚动 /
+    #   最下行给操作指引）。这趟验三件事：
+    #     ① ←→ 真的在切下屏格子（不是只在画面上写着）
+    #     ② ↑↓ 真的在动当前格的光标
+    #     ③ 摇杆真的能滚上屏（靠 autorun 的 stick 指令驱动）
+    #   为什么必须单独一趟：这三条都是"新接线"，任何一处没接上，
+    #   表现都是"按了没反应"，而别的趟次根本不碰这些键。
+    "7": dict(script=SCRIPT_7, shots=11,
+              title="十字键切格/选行 + 摇杆滚上屏 + 最下行操作指引"),
+    # ★ 2026-10-24 新增：每个任务一份对话历史。
+    "8": dict(script=SCRIPT_8, shots=4,
+              title="按任务分历史 · 切项目上屏就换 · 切回来还是原样"),
 }# ---------------------------------------------------------------------------
 # SD 根目录
 # ---------------------------------------------------------------------------
@@ -1844,7 +2139,10 @@ def run_pass(tag, spec, ctx):
     #   那串引导键就全打在主页上（3 个 A 进对话屏、RIGHT 挪焦点、
     #   A 进攻略屏）—— 症状是 end_screen=SCREEN_GUIDE 且六张截图
     #   逐像素完全相同，看着像"程序卡死了"，真因是走法错位。
-    clear_pass_artifacts(roots, drop_config=(tag in ("A", "D", "0", "1", "4", "5")))
+    # ★ 趟 "7" 也必须清配置：它的脚本从**引导段开头**跑（同 0/4/5），
+    #   有 config.json 的话首启会跳过引导，后面那串 key 全打在主页上。
+    clear_pass_artifacts(roots,
+                         drop_config=(tag in ("A", "D", "0", "1", "4", "5", "7", "8")))
     write_autorun(roots, spec["script"])
     # 按**实际配置的 exe 名**清场（见 kill_stale_azahar 的说明）：
     # 写死 "azahar.exe" 会误杀另一个会话的实例，且清不掉改名副本的残留。
@@ -1891,6 +2189,20 @@ def run_pass(tag, spec, ctx):
         stage_chatlog(roots)
         stage_phrases_neutral(roots)
         print("N 趟：夹具已就位（离线演示 + 2 条历史 + 一句人设）")
+    if tag == "7":
+        # ★ 2026-10-24：趟 7 以前靠"卡上碰巧还剩几条历史"来滚上屏。
+        #   那个前提是靠不住的 —— 前面任一趟（H/M/N）都会重写 chat.json，
+        #   轮到 7 时常常只剩 2 条，一屏就装得下、**根本没有可滚的东西**，
+        #   于是"摇杆能滚"这条断言红在一个与摇杆毫无关系的原因上。
+        #   夹具把"有足够内容"这件事钉死：8 条，每屏只放得下 3~4 条。
+        stage_chatlog_many(roots)
+        print("7 趟：夹具已就位（8 条历史 → 上屏真的能滚）")
+    if tag == "8":
+        # 这一趟验"每个任务一份历史"，所以**必须**先有两个任务、两份内容
+        # 不同的记录 —— 只有一个任务时代码走的是老路径（见 chatlog.c：
+        # 单任务 = chat.json），那种状态下这条判据一句都没验到。
+        stage_two_projects(roots)
+        print("8 趟：夹具已就位（2 个任务 + 各自 3 条历史）")
     if tag == "K":
         backup_config(roots)
         print("K 趟：config.json 已备份（本趟会改主题与护栏，跑完还原）")
@@ -2638,6 +2950,175 @@ def assertions(res):
                    "触摸空发送后状态行变了（给了提示，不是静默）", problems)
         else:
             expect(False, "缺少触摸屏截图", problems)
+
+    elif tag == "8":
+        print("-- 断言 8：每个任务一份历史（切项目上屏就换）--")
+        expect(len(res["shots"]) == res["expect"] * 2,
+               "截图数 = %d（脚本 %d 张 × 上下屏）"
+               % (res["expect"] * 2, res["expect"]), problems)
+        expect("SCREEN_CHAT" in kv(res["status"], "end_screen"),
+               "end_screen = SCREEN_CHAT", problems)
+
+        def _top(tag_name):
+            hit = [q for q in res["shots"]
+                   if tag_name in os.path.basename(q)
+                   and os.path.basename(q).endswith("_top.bmp")]
+            return hit[0] if hit else None
+
+        # ① 切到任务乙 → 上屏必须变
+        # ② 切回任务甲 → 上屏必须变回原样
+        # 两条判据合起来才成立：第①条单独成立时，"改了个状态行"也能让它绿；
+        # 第②条单独成立时，"两个任务共用一份历史"也照样绿。**必须成对**。
+        t_a  = _top("1_proj_a")
+        t_b  = _top("3_proj_b")
+        t_a2 = _top("4_proj_a_again")
+        if not (t_a and t_b and t_a2):
+            expect(False, "缺少上屏截图（1_proj_a / 3_proj_b / 4_proj_a_again）",
+                   problems)
+        else:
+            expect(not _same_bytes(t_a, t_b),
+                   "切到任务乙：上屏换成了乙的历史（不是没反应）", problems)
+            # 只比内容区：状态行会写成「当前项目：任务乙/甲」，那是**该变**的，
+            # 拿它当"历史没回来"的证据就把正常行为判成了 bug。
+            expect(_same_top_content(t_a, t_a2),
+                   "切回任务甲：上屏内容回到甲的原样（乙没把甲的记录冲掉）",
+                   problems)
+
+        # ③ 状态侧证据：槽真的按任务切换过。
+        #    只判像素不够 —— 万一哪天"切项目顺便清屏"了，像素也会变，
+        #    但历史其实没换。slot= 这行是"确实读了哪一份"的直接证据。
+        expect("slot=p1" in res["status"], "status 记到切到了槽 p1", problems)
+        expect("slot=p0" in res["status"], "status 记到切回了槽 p0", problems)
+
+    elif tag == "7":
+        print("-- 断言 7：十字键管下屏 / 摇杆管上屏滚动 / 最下行指引 --")
+        expect(len(res["shots"]) == res["expect"] * 2,
+               "截图数 = %d（脚本 %d 张 × 上下屏）"
+               % (res["expect"] * 2, res["expect"]), problems)
+        expect(kv(res["status"], "end_screen") == "SCREEN_CHAT",
+               "end_screen = SCREEN_CHAT", problems)
+
+        def _find(tag_name, kind):
+            hit = [p for p in res["shots"]
+                   if tag_name in os.path.basename(p)
+                   and os.path.basename(p).endswith(kind + ".bmp")]
+            return hit[0] if hit else None
+
+        # ---- ① ←→ 切下屏格子 ----
+        # 判据用**两边夹**：切过去必须不同，切回来必须相同。
+        # 只判"不同"不够 —— 状态行文字、闪烁帧都会让它不同；
+        # 而"切回来还一样"才能证明这一步是**可逆的格切换**。
+        #
+        # ⚠️ "相同"只比**滑轨以外**的像素（这里比的是整屏去掉页脚与状态行）：
+        #   页脚现在会轮播文案（用户要求的最下行指引），3.2 秒一换，
+        #   两张截图间隔必然超过一条的时长 —— 拿它当"画面没变"的判据，
+        #   红的原因会是"轮播在正常工作"。**判据不该被新的正常行为推翻。**
+        a = _find("1_chat_opt", "_bottom")
+        b = _find("3_tab_kbd", "_bottom")
+        c = _find("4_tab_opt_back", "_bottom")
+        if a and b and c:
+            # ★ 两条一起判，缺一不可（2026-10-24 血的教训）：
+            #   "底屏变了"单独成立时**什么都证明不了** —— 第 0 格按左右
+            #   是"把当前行的值改一档"，底屏照样会变，而人还停在第 0 格。
+            #   那趟因此全绿，真正的问题（页脚从不轮播）被埋在绿灯底下。
+            #   所以还要 status 里那行 dpad 记录：它会写出切到了第几格。
+            #   只判像素 = 判了个"看起来像"；加上状态 = 判了"确实是"。
+            expect(not _same_bytes(a, b),
+                   "←→ 切格：底屏变了", problems)
+            expect("chat: dpad(R) -> 1" in res["status"],
+                   "←→ 切格：status 记到切进了第 1 格（不是改值冒充的）", problems)
+            expect(_same_stable_area(a, c),
+                   "←→ 切回：除轮播页脚外逐字节相同（切格是可逆的）", problems)
+        else:
+            expect(False, "缺少切格相关的底屏截图", problems)
+
+        # ---- ② ↑↓ 在第 0 格内选行 ----
+        d = _find("5_opt_row2", "_bottom")
+        e = _find("6_opt_row1", "_bottom")
+        if a and d and e:
+            expect(not _same_bytes(a, d),
+                   "↑↓ 选行：光标动到第 2 行，底屏变了", problems)
+            expect(_same_stable_area(a, e),
+                   "↑↓ 回位：除轮播页脚外逐字节相同（上下各一次回到原样）",
+                   problems)
+        else:
+            expect(False, "缺少选行相关的底屏截图", problems)
+
+        # ---- ③ 摇杆滚上屏 ----
+        # ★ 判据是"上屏变、底屏不变"。底屏**必须**不变 —— 摇杆只该动上屏，
+        #   底屏若也变了，说明这一帧有别的东西在改画面（状态行刷新、
+        #   动画帧），那"上屏变了"就不再是"滚动了"的证据。
+        s0_t = _find("2_chat_sent", "_top")
+        s1_t = _find("7_scrolled_up", "_top")
+        s0_b = _find("2_chat_sent", "_bottom")
+        s1_b = _find("7_scrolled_up", "_bottom")
+        if s0_t and s1_t and s0_b and s1_b:
+            if _same_bytes(s0_t, s1_t) and _same_bytes(s0_b, s1_b):
+                # 上下屏都没变：要么没内容可滚，要么推杆没接线。
+                # 这两件事**必须分开报**，否则以后排查会以为是同一个问题。
+                if not _same_bytes(s0_t, _find("1_chat_opt", "_top") or s0_t):
+                    expect(False,
+                           "推杆前后上下屏都没变 —— 摇杆没接线（或累积量不够）",
+                           problems)
+                else:
+                    expect(True,
+                           "推杆前后都没变，且上屏本来就空 —— 本趟没内容可滚"
+                           "（滚动这条未被验到，不算失败）", problems)
+            else:
+                expect(not _same_bytes(s0_t, s1_t),
+                       "摇杆上推：上屏变了（上屏真的滚动了）", problems)
+                expect(_same_bytes(s0_b, s1_b),
+                       "摇杆上推：底屏一字未动（摇杆只滚上屏，没有连带改下屏）",
+                       problems)
+        else:
+            expect(False, "缺少摇杆相关的截图", problems)
+
+        # ---- ④ 最下行操作指引 ----
+        # ★ 这条判据**分两种状态**，因为页脚本来就是两套：
+        #   · 配了 Key（chat_ready）→ 轮播 7 条键位指引
+        #   · 没配 Key / 豆包      → **只写一条**（怎么连上），不轮播
+        # 后者是有意的：这时候"怎么聊"不是问题，"怎么连上"才是，
+        # 多讲键位反而把那一句关键指引淹掉。
+        #
+        # ⚠️ 还必须**在第 0 格以外**测：第 0 格自己画一条固定页脚
+        #    （S0963，见 sc_dock.c 的 dockui_render_opt），不轮播。
+        #    脚本里已经 RIGHT 切到「键盘」格再截图。
+        h0 = _find("9_hint_a", "_bottom")
+        hm = _find("9b_hint", "_bottom")
+        h1 = _find("10_hint_b", "_bottom")
+        if not (h0 and hm and h1):
+            expect(False, "缺少页脚对比截图（要三张：9_hint_a / 9b_hint / 10_hint_b）",
+                   problems)
+        else:
+            fb = [_footer_bytes(x) for x in (h0, hm, h1)]
+            # 相邻两对里任意一对不同 → 文案换过。
+            # 不要求"两对全不同"：3.2s 一条，60 帧在模拟器里可能不足一条。
+            f0 = fb[0]
+            # ⚠️ 条件别写反（第一版就反了）：要的是"和第二张不同就用第二张，
+            # 相同才退到第三张"。写反的后果是——两张相同就自我比较、
+            # 三张里明明有一对不同却判红，而 status 里 hintroll step 已经在涨。
+            f1 = fb[1] if fb[0] != fb[1] else fb[2]
+            has_key = (kv(res["status"], "ai_configured") == "1")
+            if f0 is None or f1 is None:
+                expect(False, "页脚区读不出来（截图不是 320x240 24bpp）", problems)
+            elif kw_is_offline(res["status"]):
+                # 离线演示 = chat_ready 为真 → 应当轮播
+                expect(f0 != f1,
+                       "离线演示下页脚换了一条（轮播真的在走）", problems)
+            elif has_key:
+                expect(f0 != f1,
+                       "有 Key 时页脚换了一条（轮播真的在走）", problems)
+            else:
+                # 没 Key：页脚应当是**固定的一条**（配 Key 指引）
+                expect(f0 == f1,
+                       "没 Key 时页脚固定不轮播（只给一条「怎么连上」的指引）",
+                       problems)
+                expect(kv(res["status"], "layout_overflow") == "0",
+                       "页脚那一条也没被右边缘裁掉", problems)
+
+        expect(kv(res["status"], "layout_overflow") == "0",
+               "status: layout_overflow = 0（新指引行没有被右边缘裁掉）",
+               problems)
 
     elif tag == "K":
         print("-- 断言 K：设置屏（主题切换真落盘 + 像素真变黑）--")
@@ -4786,11 +5267,150 @@ def assertions(res):
     return problems
 
 
+def kw_is_offline(status):
+    """当前是不是"离线演示"（provider = demo）。
+
+    判据来源与 C 侧同源：provider.c 里 demo 那一项的 base_url 是空串，
+    而 status.txt 里 ai_provider 直接写的是 provider 名 ——
+    所以这里只认名字 "demo"。
+    为什么需要它：离线演示**算 chat_ready 为真**（见 sc_chat.c 的
+    chat_ready：g_have_key || chat_offline()），于是页脚会轮播；
+    而"没配 Key"的普通状态页脚是固定一条。这两者靠 ai_configured
+    分不开（离线演示也可能 ai_configured=1），必须看 provider 名。
+    """
+    return kv(status, "ai_provider") == "demo"
+
+
+def _footer_bytes(path):
+    """下屏 BMP 的**页脚区**（y 214..240）原始像素。量轮播/固定文案用。
+
+    不用 Pillow：本仓库的系统 Python 没装（实测 No module named 'PIL'），
+    而这条判据不该因为宿主环境缺一个可选库就整趟变红 ——
+    依赖 Pillow 的判据最后会变成"常常跳过"，等于没有。
+    """
+    try:
+        import struct
+
+        with open(path, "rb") as f:
+            data = f.read()
+        off   = struct.unpack_from("<I", data, 10)[0]
+        w     = struct.unpack_from("<i", data, 18)[0]
+        h     = struct.unpack_from("<i", data, 22)[0]
+        bpp   = struct.unpack_from("<H", data, 28)[0]
+        if bpp != 24:
+            return None
+        stride = ((w * 24 + 31) // 32) * 4
+        rows = []
+        for r in range(abs(h)):
+            s = off + r * stride
+            rows.append(data[s:s + w * 3])
+        if h > 0:
+            rows = list(reversed(rows))
+        return b"".join(rows[214:240])
+    except Exception:
+        return None
+
+
 def _same_bytes(a, b):
     try:
         with open(a, "rb") as fa, open(b, "rb") as fb:
             return fa.read() == fb.read()
     except OSError:
+        return False
+
+
+def _same_stable_area(a, b):
+    """两张下屏 BMP 在**页脚以外**是否逐字节相同。
+
+    为什么需要"以外"：底屏最下一行现在是**轮播的操作指引**
+    （2026-10-23 用户要求「最下行给出操作指引」，见 widgets.c 的
+    w_bot_footer_roll）。它每 3.2 秒自己换一条，所以任何间隔超过
+    3 秒的两张底屏截图，页脚区必然不同。
+
+    用整屏比较来做"画面没变"的判据 → 判据会被**正常的轮播**推翻，
+    而红的原因跟被测功能毫无关系。这种红比假绿更坏：它会训练人
+    "看到红就先忽略"，于是真的回归也一起被忽略了。
+
+    比较范围：y ∈ [W_BOT_HEADER_H, W_BOT_CONTENT_B)，即 24..214。
+    页脚 = 214..240（W_BOT_CONTENT_B = 240 - 26）。
+    这里**不解析 BMP 编码细节**，只按 24bpp 行宽算偏移 —— 本项目的
+    截图恒为 320x240 24bpp（见 shot.c），断言前已校验尺寸。
+    """
+    try:
+        import struct
+
+        def rows(path):
+            with open(path, "rb") as f:
+                data = f.read()
+            off = struct.unpack_from("<I", data, 10)[0]
+            w   = struct.unpack_from("<i", data, 18)[0]
+            h   = struct.unpack_from("<i", data, 22)[0]
+            bpp = struct.unpack_from("<H", data, 28)[0]
+            if bpp != 24:
+                return None
+            stride = ((w * 24 + 31) // 32) * 4
+            out = []
+            for r in range(abs(h)):
+                s = off + r * stride
+                out.append(data[s:s + w * 3])
+            if h > 0:                      # BMP 自下而上
+                out = list(reversed(out))
+            return out, w, abs(h)
+
+        ra = rows(a)
+        rb = rows(b)
+        if not ra or not rb:
+            return False
+        ra, wa, ha = ra
+        rb, wb, hb = rb
+        if (wa, ha) != (wb, hb):
+            return False
+        # 24..214：避开页眉（有标题/页码）与页脚（轮播）
+        top, bot = 24, 214
+        top = max(0, min(top, ha))
+        bot = max(top, min(bot, ha))
+        return ra[top:bot] == rb[top:bot]
+    except Exception:
+        return False
+
+
+def _same_top_content(a, b):
+    """两张**上屏** BMP 在内容区（y < 200）是否逐字节相同。
+
+    为什么不能整屏比：切项目会把状态行改成「当前项目：任务乙（zhipu）」，
+    而状态行就在上屏最底下（约 203..217）。切回来之后这句又变成任务甲 ——
+    于是"整屏相同"永远不成立，而**对话内容其实一模一样**。
+    这条判据要看的是"历史回来了没有"，不是"状态行写的是不是同一句话"。
+
+    上界取 200，就是 W_TOP_CONTENT_B（见 widgets.h）—— 以下都是页脚/状态行。
+    """
+    try:
+        import struct
+
+        def rows(path):
+            with open(path, "rb") as f:
+                data = f.read()
+            off = struct.unpack_from("<I", data, 10)[0]
+            w   = struct.unpack_from("<i", data, 18)[0]
+            h   = struct.unpack_from("<i", data, 22)[0]
+            bpp = struct.unpack_from("<H", data, 28)[0]
+            if bpp != 24:
+                return None
+            stride = ((w * 24 + 31) // 32) * 4
+            out = []
+            for r in range(abs(h)):
+                q = off + r * stride
+                out.append(data[q:q + w * 3])
+            if h > 0:
+                out = list(reversed(out))
+            return out
+
+        ra = rows(a)
+        rb = rows(b)
+        if not ra or not rb or len(ra) != len(rb):
+            return False
+        return ra[:200] == rb[:200]
+    except Exception:
         return False
 
 
@@ -5100,6 +5720,78 @@ def stage_chatlog(roots):
         cfg.setdefault("ai", {})["system_prompt"] = N_PERSONA
         with open(c, "w", encoding="utf-8") as fh:
             json.dump(cfg, fh, ensure_ascii=False, indent=2)
+
+
+def stage_chatlog_many(roots):
+    """趟 7 夹具：写 8 条历史，保证上屏**内容多到装不下**。
+
+    为什么必须夹具化：这一趟要验"摇杆能滚上屏"，而滚动的先决条件是
+    "内容比可视区高"。靠卡上残留的历史凑不出来 —— 前一趟（H/M/N）会
+    重写 chat.json，条数随机。没有这条夹具时，7 趟时而绿时而红，
+    红的理由却是"没东西可滚"，跟摇杆一点关系都没有。
+
+    ★★ 每条必须**长到多行**（2026-10-24 实测踩坑）：
+    第一版每条只写一句话，8 条加起来也没超过上屏的行数预算，于是
+    reanchor() 算出 g_scroll=0 —— 也就是"全部可见、上面没有更早的"。
+    这种状态下上推摇杆**本来就该什么都不动**，而判据却报"摇杆没接线"。
+    判据没错，夹具错了：它摆出来的根本不是"有内容可滚"的状态。
+    现在每条写 6 行，8 条 ≈ 48 行，远超预算，g_scroll > 0 成立。
+    """
+    lines = []
+    for i in range(1, 9):
+        who = 1 if i % 2 else 0
+        body = ("第 %d 条测试消息。" % i) + "".join(
+            "第 %d 行：这一行只是用来把上屏填满，好让摇杆有东西可滚。" % k
+            for k in range(1, 6))
+        lines.append(json.dumps({"mine": who, "text": body},
+                                ensure_ascii=False))
+    for r in roots:
+        p = os.path.join(r, *CHATLOG_REL.split("/"))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8", newline="\n") as fh:
+            for ln in lines:
+                fh.write(ln + "\n")
+
+    return [ln.encode("utf-8") for ln in lines]
+
+
+def stage_two_projects(roots):
+    """趟 8 夹具：两个任务 + 两份内容明显不同的历史。
+
+    为什么两份内容要"明显不同"：判据是"上屏指纹变了"。两条历史只要
+    有一点不一样指纹就会变，但**看不出是不是切对了** —— 用两段完全不同
+    的话（甲/乙各一句话），万一真出了"切到别人历史"的 bug，从截图上一眼
+    就能认出来是哪一份。
+    """
+    proj = "active=0\n" \
+           "任务甲|zhipu|glm-4-flash\n" \
+           "任务乙|zhipu|glm-4-flash\n"
+
+    def log(tag):
+        return "".join(
+            json.dumps({"mine": i % 2, "text": "%s 的第 %d 条记录" % (tag, i)},
+                       ensure_ascii=False) + "\n"
+            for i in range(1, 4))
+
+    for r in roots:
+        d = os.path.join(r, SD_SUBDIR)
+        os.makedirs(d, exist_ok=True)
+
+        with open(os.path.join(d, "projects.txt"), "w",
+                  encoding="utf-8", newline="\n") as fh:
+            fh.write(proj)
+
+        for name, tag in ((("chat_p0.json"), "任务甲"), (("chat_p1.json"), "任务乙")):
+            with open(os.path.join(d, name), "w",
+                      encoding="utf-8", newline="\n") as fh:
+                fh.write(log(tag))
+
+        # 老格式那份要清掉：它还留着上一趟的内容，而 p0 的迁移逻辑
+        # 只在 chat_p0.json 不存在时才搬 —— 留着不影响本趟，但会让
+        # 失败时的取证多一份噪音。
+        old = os.path.join(d, "chat.json")
+        if os.path.isfile(old):
+            retire(old)
 
 
 #: M / N 趟用的中性短语。

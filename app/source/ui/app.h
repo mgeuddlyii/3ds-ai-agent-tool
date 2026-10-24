@@ -65,6 +65,15 @@ bool app_touch_held(int *x, int *y);
 /* 便捷：手指这帧是否按在 r 上（画按下态用）。 */
 bool app_touch_on(const Rect *r);
 
+/* ---- 摇杆（圆摇）----
+ * main 每帧喂一次原始值（-156..156，已钳制）。屏幕层自己决定死区
+ * 与用法 —— 采集层不替它判断"多大才算动"，因为不同屏要的灵敏度不一样。
+ * 没喂过时恒为 0（= 摇杆居中），所以"没读数"与"没动"看起来一样，
+ * 这是有意的：屏幕不该因为采集层没接上就画出异常状态。 */
+void app_circle_frame(int x, int y);
+int  app_circle_x(void);
+int  app_circle_y(void);
+
 /* ---- 状态行（页脚第一行） ---- */
 void        app_status_set(const char *fmt, ...);
 const char *app_status(void);

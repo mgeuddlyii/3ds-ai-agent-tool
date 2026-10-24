@@ -277,7 +277,10 @@ static void row_value(int row, char *out, size_t n)
         case R_ROW_REPLYLANG:
             /* 语言名用**它自己的写法**（中文/English），不随界面翻译 ——
              * 界面上"Chinese"和"中文"是同一件事，让用户认得出来更重要。 */
-            if (c->ai.reply_lang == 1)      snprintf(out, n, S(S0001));
+            /* ★ 2026-10-23：这里原本是 S(S0001)，而 S0001 的真实内容是
+             *   「这个键还没有对应实现（内部问题）」—— 选"中文"时值列显示的
+             *   就是那行错误提示。已改为 S0947（中文）。 */
+            if (c->ai.reply_lang == 1)      snprintf(out, n, "%s", S(S0946));
             else if (c->ai.reply_lang == 2) snprintf(out, n, "English");
             else                            snprintf(out, n, "%s", S(S0863));
             break;

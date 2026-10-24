@@ -377,12 +377,12 @@ static const char *const g_zh[] = {
     "主界面",  /* S0362 */
     "AI 已经配好，可以直接开始对话。",  /* S0363 */
     "还没配 AI —— 进「服务目录」挑一家。",  /* S0364 */
-    "「离线攻略」不用联网、不用 Key。",  /* S0365 */
+    "填个 API Key 就能联网对话，不配也能用离线演示。",  /* S0365 */
     "配置路径",  /* S0366 */
     "开始对话",  /* S0367 */
     "服务目录",  /* S0368 */
     "设置",  /* S0369 */
-    "离线攻略",  /* S0370 */
+    "配置 API",  /* S0370 */
     "已设区域",  /* S0371 */
     "从电脑取文件",  /* S0372 */
     "方向键选择  A打开  X配AI",  /* S0373 */
@@ -934,6 +934,48 @@ static const char *const g_zh[] = {
     "网络自检",  /* S0919 */
     "按 A 执行",  /* S0920 */
     "探测能不能连出去，不看某家服务商通不通。会卡一下，属正常。",  /* S0921 */
+    "+ 新建任务",  /* S0922 */
+    "(默认模型)",  /* S0923 */
+    "测试连接",  /* S0924 */
+    "先填上 Key 再测",  /* S0925 */
+    "这个服务商没有可测的网址",  /* S0926 */
+    "正在测试连接…",  /* S0927 */
+    "连接正常（HTTP %d）",  /* S0928 */
+    "Key 不对（HTTP %d）",  /* S0929 */
+    "返回 404 —— 这家可能不支持这个探测，Key 未必有问题",  /* S0930 */
+    "返回 HTTP %d",  /* S0931 */
+    "连不上：%s",  /* S0932 */
+    "没有返回原因",  /* S0933 */
+    "还没有添加过 API —— 先去主页「配置 API」加一把",  /* S0934 */
+    "「%s」正用 %s / %s　　按 ←/→ 换模型，A 确定",  /* S0935 */
+    "模型已确定",  /* S0936 */
+    "已新建，之后点它再按 X 也能换",  /* S0937 */
+    "硅基流动 · 国内常用，可转发多家模型",  /* S0938 */
+    "腾讯混元 · 混元系列",  /* S0939 */
+    "MiniMax · abab 系列",  /* S0940 */
+    "OpenAI · GPT 系列官方接口",  /* S0941 */
+    "Google Gemini · 走它的 OpenAI 兼容端点",  /* S0942 */
+    "xAI Grok · grok 系列",  /* S0943 */
+    "Mistral · mistral 系列",  /* S0944 */
+    "OpenRouter · 一个 Key 转发上百个模型（含 Claude / GPT）",  /* S0945 */
+    "中文",  /* S0946 */
+    "点一行即切换，立刻生效",  /* S0947 */
+    "选项",  /* S0948 */
+    "为「%s」选 API：←→ 换，A 确定",  /* S0949 */
+    "上下选，A 确定",  /* S0950 */
+    "选 API",  /* S0951 */
+    "还没有添加过 API",  /* S0952 */
+    "先去「配置 API」加一套，再回来",  /* S0953 */
+    "「%s」→ %s / %s",  /* S0954 */
+    "没选上：这条可能刚被删了",  /* S0955 */
+    "[←→] 切下屏格子 · [↑↓] 选这一格的行",  /* S0956 */
+    "[摇杆] 上下推 · 滚上屏对话",  /* S0957 */
+    "[Y] 发送消息 · [A] 改文字",  /* S0958 */
+    "[ZL] 按住说话 · 松手自动识别",  /* S0959 */
+    "[SELECT] 换个常用短语",  /* S0960 */
+    "[B] 返回主界面 · [X] 配 Key",  /* S0961 */
+    "[L/R] 也能切格子 · 和十字键一样",  /* S0962 */
+    "[←→] 切格  [↑↓] 选行  [A] 动作  [B] 返回",  /* S0963 */
 };
 
 static const char *const g_en[] = {
@@ -1301,12 +1343,12 @@ static const char *const g_en[] = {
     "Home",  /* S0362 */
     "The AI is set up; you can start chatting.",  /* S0363 */
     "No AI set up yet - pick a provider in Providers.",  /* S0364 */
-    "Offline guides need no network and no key.",  /* S0365 */
+    "Add an API key to chat online — or skip it and use the offline demo.",  /* S0365 */
     "Config path",  /* S0366 */
     "Chat",  /* S0367 */
     "Providers",  /* S0368 */
     "Settings",  /* S0369 */
-    "Guides",  /* S0370 */
+    "Configure API",  /* S0370 */
     "Region set",  /* S0371 */
     "PC files",  /* S0372 */
     "Arrows pick  A open  X set AI",  /* S0373 */
@@ -1858,6 +1900,48 @@ static const char *const g_en[] = {
     "Network self-test",  /* S0919 */
     "Press A to run",  /* S0920 */
     "Checks whether this console can reach the internet at all — not whether any particular provider works. It briefly blocks; that is expected.",  /* S0921 */
+    "+ New task",  /* S0922 */
+    "(default model)",  /* S0923 */
+    "Test",  /* S0924 */
+    "Fill in a key first",  /* S0925 */
+    "No URL to test for this provider",  /* S0926 */
+    "Testing connection...",  /* S0927 */
+    "OK (HTTP %d)",  /* S0928 */
+    "Key rejected (HTTP %d)",  /* S0929 */
+    "404 - this provider may not support probing; the key may still be fine",  /* S0930 */
+    "HTTP %d",  /* S0931 */
+    "Cannot connect: %s",  /* S0932 */
+    "no reason given",  /* S0933 */
+    "No API added yet - go to \"Configure API\" on the home screen first",  /* S0934 */
+    "\"%s\" now uses %s / %s - press LEFT/RIGHT to change, A to confirm",  /* S0935 */
+    "Model confirmed",  /* S0936 */
+    "Created. Tap it later and press X to change too",  /* S0937 */
+    "SiliconFlow - popular China relay for many models",  /* S0938 */
+    "Tencent Hunyuan",  /* S0939 */
+    "MiniMax",  /* S0940 */
+    "OpenAI - official GPT API",  /* S0941 */
+    "Google Gemini - via its OpenAI-compatible endpoint",  /* S0942 */
+    "xAI Grok",  /* S0943 */
+    "Mistral AI",  /* S0944 */
+    "OpenRouter - one key, hundreds of models incl. Claude and GPT",  /* S0945 */
+    "Chinese",  /* S0946 */
+    "Tap a row to change it - applies immediately",  /* S0947 */
+    "Options",  /* S0948 */
+    "Pick API for \"%s\": LEFT/RIGHT to change, A to confirm",  /* S0949 */
+    "UP/DOWN to choose, A to confirm",  /* S0950 */
+    "Pick API",  /* S0951 */
+    "No API added yet",  /* S0952 */
+    "Add one under \"Configure API\" first",  /* S0953 */
+    "\"%s\" -> %s / %s",  /* S0954 */
+    "Not applied - that entry may have just been deleted",  /* S0955 */
+    "[D-pad L/R] Switch tab; [Up/Down] Move row",  /* S0956 */
+    "[Stick] Push up/down to scroll the chat",  /* S0957 */
+    "[Y] Send message; [A] Edit text",  /* S0958 */
+    "[ZL] Hold to talk; release to transcribe",  /* S0959 */
+    "[SELECT] Switch to next phrase",  /* S0960 */
+    "[B] Back to home; [X] Set API key",  /* S0961 */
+    "[L/R] Also switch tabs, same as D-pad",  /* S0962 */
+    "[←→] Tab  [↑↓] Row  [A] Toggle  [B] Back",  /* S0963 */
 };
 
 /* 供 uistr.c 用（数组本体是 static，只有这几个能出去） */

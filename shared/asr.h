@@ -59,6 +59,8 @@ const char *asr_key(void);
  *   clamped   —— 录音超上限被截断过（1 = 说明 length 与内容对不上过） */
 int asr_last_body_len(void);
 int asr_last_model_len(void);
+/* 发请求前"内置 Key 被补回来"的次数。>0 说明有别的路径在抹 g_key。 */
+int asr_key_refilled(void);
 int asr_last_clamped(void);
 
 /* 读配置文件。格式（一行一项，`#` 开头是注释）：

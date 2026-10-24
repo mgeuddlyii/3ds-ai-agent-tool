@@ -39,6 +39,7 @@ extern const Screen g_screen_content;
 extern const Screen g_screen_doubao;
 extern const Screen g_screen_providers;
 extern const Screen g_screen_keyedit;
+extern const Screen g_screen_pickapi;
 extern const Screen g_screen_dock;
 
 static const Screen *const g_screens[SCREEN_COUNT] = {
@@ -58,6 +59,7 @@ static const Screen *const g_screens[SCREEN_COUNT] = {
     [SCREEN_XFER]    = &g_screen_xfer,
     [SCREEN_PLUGINS] = &g_screen_plugins,
     [SCREEN_MORE]    = &g_screen_more,
+    [SCREEN_PICKAPI] = &g_screen_pickapi,
     [SCREEN_DOCK]    = &g_screen_dock,
     [SCREEN_GUIDE]   = &g_screen_guide,
     [SCREEN_LOCALES] = &g_screen_locales,
@@ -669,6 +671,43 @@ bool app_touch_held(int *x, int *y)
     if (y) *y = g_touch_y;
     return true;
 }
+
+/* ---- 摇杆（圆摇）-------------------------------------------------------
+ *
+ * ★ 2026-10-23 用户定的分工：
+ *     「十字键控制下屏内容，摇杆上下控制上屏文字上下滑动」
+ *
+ *   在此之前**摇杆一路都没被读过**（全仓 grep circlePosition 为空），
+ *   所以这是一条新通路，而不是改既有行为。
+ *
+ * 为什么经 app 层转一手，而不是让屏幕自己调 hidCircleRead：
+ *   ① main 才是唯一该碰 hid 的地方 —— 屏幕里再读一次，等于同一帧
+ *      两个采样点，"看到的"和"处理掉的"可能不是同一帧的数据；
+ *   ② 回放脚本（autorun）替的是**按键**，直接在屏幕里读摇杆会绕过
+ *      回放层，验收趟永远推不动它 —— 而验收正是唯一能自动化的事。
+ *   所以 main 喂一次 app_circle_frame()，屏幕层用 app_circle_x/y 取。
+ *
+ * 值域：摇杆原始值是 -156..156，这里**照原样**传，不做缩放 ——
+ * 死区阈值属于"用它的那一屏"的判断（不同屏幕要的灵敏度不一样），
+ * 在采集层先掐死就再也调不回来了。
+ */
+static int g_circle_x;
+static int g_circle_y;
+
+void app_circle_frame(int x, int y)
+{
+    /* 超范围钳制：hidCircleRead 有抖动，偶尔会吐出比 156 大的值。
+     * 不钳的话，按"值 / 156"算比例的地方会算出 >1 的系数。 */
+    if (x < -156) x = -156;
+    if (x >  156) x =  156;
+    if (y < -156) y = -156;
+    if (y >  156) y =  156;
+    g_circle_x = x;
+    g_circle_y = y;
+}
+
+int app_circle_x(void) { return g_circle_x; }
+int app_circle_y(void) { return g_circle_y; }
 
 bool app_touch_on(const Rect *r)
 {

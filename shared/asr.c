@@ -103,11 +103,14 @@ static u8 g_body[VOICE_CAP_BYTES + ASR_BODY_HEAD + ASR_BODY_TAIL];
 /* 上一次发送的自检信息。真机出错时**必须能回答"我到底发了什么"** ——
  * 否则只能对着屏幕上一句服务端的"参数不合法"瞎猜（2026-10-22 就卡在这）。 */
 static int  g_last_body_len;
+/* 发请求前"内置 Key 被补回来"的次数。>0 说明有别处在抹 g_key。 */
+static int  g_key_refilled;
 static int  g_last_model_len;
 static int  g_clamped;
 
 int asr_last_body_len(void)  { return g_last_body_len; }
 int asr_last_model_len(void) { return g_last_model_len; }
+int asr_key_refilled(void)   { return g_key_refilled; }
 int asr_last_clamped(void)   { return g_clamped; }
 
 static char g_resp[4096];
@@ -359,10 +362,32 @@ bool asr_payload_probe(size_t pcm_bytes, size_t *body_len)
     return true;
 }
 
+/* 注意：这里返回的是**一整行 HTTP 头**（含 "Content-Type: " 前缀），
+ * 不是光秃秃的 MIME 值。
+ *
+ * ★★ 2026-10-23 真机 bug（语音一直 HTTP 400）就出在这儿：
+ *   这个函数的返回值被直接放进 hdrs[] 数组，而 httpx 把 hdrs[] 里每一项
+ *   **原样**当作一条完整的头行交给 curl（curl 不校验格式，照发）。
+ *   以前这里只返回 `multipart/form-data; boundary=xxx` —— **没有冒号**，
+ *   于是真机发出去的请求头里多了一行畸形内容：
+ *
+ *       Authorization: Bearer sk-...
+ *       multipart/form-data; boundary=aiconsoleboundary     ← 没有冒号
+ *       Host: api.siliconflow.cn
+ *
+ *   服务端解析到那一行就知道报文坏了，直接 400。
+ *
+ *   为什么 PC 上一直测不出：PC 那套是 Python 脚本直接发请求（自己拼头，
+ *   拼的是对的），**从没走过 asr.c + httpx.c 这条真路径**。
+ *   这正是"复刻逻辑验的是复刻品，验不到被测代码"的典型。
+ *
+ *   所以前缀必须留在这里，别为了"语义干净"把它去掉。 */
 const char *asr_content_type(void)
 {
-    static char buf[96];
-    snprintf(buf, sizeof buf, "multipart/form-data; boundary=%s", asr_boundary());
+    static char buf[112];
+    snprintf(buf, sizeof buf,
+             "Content-Type: multipart/form-data; boundary=%s",
+             asr_boundary());
     return buf;
 }
 
@@ -452,6 +477,30 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
         g_clamped = 1;
         bytes = (size_t)VOICE_CAP_BYTES;
     }
+    /* ★★ 2026-10-23：**发请求前最后一道保底**。
+     *
+     *   真机日志（status.txt）里有这么一串，而且每次按住 ZL 都是它：
+     *       voice: begin
+     *       voice: captured ms=1711 bytes=55998 rms=25 sent=55998
+     *       voice: asr provider=siliconflow model=... bytes=55998 key=0
+     *       voice: fail http=-1 没配 ASR Key（看 asr.txt）
+     *
+     *   也就是说：**麦克风是好的、ZL 是好的、录音也录到了**，
+     *   只是 g_key 在发请求那一刻是空的 —— 请求根本没发出去（http=-1）。
+     *
+     *   正常路径上 asr_reset() 会把 ASR_BUILTIN_KEY 填进去（它在
+     *   asr_load_file 的第一行），所以"key 为空"说明有别的东西把它抹了。
+     *   具体是谁，现有日志判不出来（fopen 成败、解析到几行都没记）。
+     *
+     *   但**不管是谁抹的，用户不该看到"没配 Key"** ——
+     *   内置 Key 的整个意义就是"开箱能用"。所以在发请求前再确认一次：
+     *   空就补回来。这不是掩盖 bug，是把底线焊死；真要追责，
+     *   下面那条 app_note 会把"补过几次"记进 status.txt。 */
+    if (!g_key[0]) {
+        asr_reset();
+        g_key_refilled++;
+    }
+
     if (!g_key[0]) {
         /* ★ 必须把**路径和格式**说全。"没配 ASR Key（看 asr.txt）"只说了一半：
          *   用户不知道 asr.txt 该放哪、里面写什么，而本 App **没有配置语音

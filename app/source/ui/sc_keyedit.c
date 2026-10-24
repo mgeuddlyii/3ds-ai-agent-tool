@@ -34,6 +34,7 @@
 #include "input.h"
 #include "keystore.h"
 #include "provider.h"
+#include "httpx.h"   /* 测试连接：只发一个 GET /models */
 #include "widgets.h"
 
 #include <stdio.h>
@@ -68,6 +69,77 @@ enum {
     R_COUNT
 };
 
+/* ★★ 2026-10-23 用户要求：「改回以前那样列出知名厂商 + 填模型名，
+ *   剩下都不需要动手了」。
+ *
+ *   所以这一屏现在只露四行（自定义再多一行网址）：
+ *     服务商 / API 密钥 / 模型名 / （自定义）网址 / 保存
+ *
+ *   被藏起来的三行是：助手人设、上下文轮数、思考强度。
+ *   它们**不是删了** —— do_save() 仍然从 cfg 里读原值写回，
+ *   改它们的地方在「设置」屏（那里空间够、还带说明）。
+ *   隐藏而不是删除的理由：这三项的值必须继续参与保存，
+ *   从枚举里摘掉会引起一大片 `case R_SYS:` 编译错误，
+ *   而这轮要的是"界面别露出来"，不是重构数据结构。
+ *
+ *   ★ 不要在这里加回任何一行"顺手也能填"的东西 —— 用户原话是
+ *     「剩下都不需要做动手了」，加回去就是又一次把简单的事弄复杂。 */
+static bool svc_is_custom(void);   /* 定义在后面，row_visible 要用 */
+
+static bool row_visible(int r)
+{
+    switch (r) {
+    case R_SVC:
+    case R_KEY:
+    case R_MODEL:
+    case R_SAVE:
+        return true;
+    case R_URL:
+        return svc_is_custom();     /* 内置厂商的网址是编译期常量，不让填 */
+    default:
+        return false;               /* R_SYS / R_CTX / R_THINK：挪去设置屏 */
+    }
+}
+
+/* 可见行数（"3/5"那个分母）。 */
+static int visible_count(void)
+{
+    int n = 0;
+
+    for (int i = 0; i < R_COUNT; ++i)
+        if (row_visible(i))
+            ++n;
+    return n;
+}
+
+/* 可见序号（1-based，"3/5"那个分子）。 */
+static int visible_index(int r)
+{
+    int k = 0;
+
+    for (int i = 0; i <= r && i < R_COUNT; ++i)
+        if (row_visible(i))
+            ++k;
+    return k;
+}
+
+/* 上下移动时跳过隐藏行。环形 —— 和原来的 % R_COUNT 行为一致。 */
+static int step_row(int from, int delta)
+{
+    int r = from;
+
+    for (int guard = 0; guard < R_COUNT; ++guard) {
+        r += delta;
+        if (r < 0)
+            r = R_COUNT - 1;
+        if (r >= R_COUNT)
+            r = 0;
+        if (row_visible(r))
+            return r;
+    }
+    return from;
+}
+
 /* ★ 存编号不存字符串：静态初始化里 S() 放不下。
  * 早先 R_KEY 这一位写 0、由 row_label() 兜底返回字面量 "API Key"，
  * 结果是全屏唯一一行**英文**（其余都是中文）——用户报"这一行看着
@@ -101,7 +173,13 @@ static char g_msg[192];
 /* 保存按钮的矩形。**render 与 handle 共用这一份** ——
  * 两处各写一遍坐标的话，改版面时必然漂移成"看到的位置点不到"，
  * 而那种 bug 在截图里完全看不出来（见 widgets.h 的 w_hit 说明）。 */
-static const Rect SAVE_BTN = { 10, 156, 300, 36, 0 };
+/* ★ 2026-10-23：保存按钮从通栏 300 缩成一半，右边让给「测试连接」。
+ *   为什么测试要和保存并排：填完 Key 之后最想知道的永远是"这个 Key 能用吗"，
+ *   而原来唯一的验证方式是**保存 → 回主页 → 进对话 → 发一句话**，
+ *   失败了还得再走一遍。把验证放在保存旁边，改一个字段就能再测一次。
+ *   测试**不落盘**，与「按 B 返回不保存」那句承诺一致。 */
+static const Rect SAVE_BTN = { 10, 156, 146, 36, 0 };
+static const Rect TEST_BTN = { 164, 156, 146, 36, 0 };
 
 /* ★ 2026-10-22 新增：从卡上 key.txt 导入整个配置。
  *   用户要求「API 除了新手教程之外，在更多里也可以通过多种方法加进来 ——
@@ -280,6 +358,20 @@ static void cycle_svc(int delta)
         const ProviderDef *p = provider_at(cur);
         if (!p)
             return;
+        /* ★★ 2026-10-23 真机 bug：换了服务商，模型名还留着上一家的。
+         *
+         *   用户从 DeepSeek 切到智谱，模型那一栏仍然写着 `deepseek-chat` ——
+         *   而那是**DeepSeek 专属的 id**，拿去问智谱只会 400。
+         *   更糟的是界面上看着"填好了"，用户不会怀疑是这里的问题。
+         *
+         *   `save` 里的逻辑是 `g_model[0] ? g_model : p->default_model`，
+         *   也就是说：**只要 g_model 非空就信任它**。所以切换服务商时必须
+         *   主动清空，让它回落到新服务商的 default_model。
+         *
+         *   清空后值列会显示 S0384（"留空用默认"那一类提示），
+         *   用户一眼能看出"这里要重新选"。 */
+        if (strcmp(p->name, g_svc) != 0)
+            g_model[0] = '\0';
         snprintf(g_svc, sizeof g_svc, "%s", p->name);
     }
     g_msg[0] = '\0';
@@ -430,6 +522,90 @@ static void do_import(void)
 }
 
 /* --------------------------------------------------------------------------
+ * 测试连接
+ * ----------------------------------------------------------------------- */
+
+/* 用**当前屏幕上填的**参数发一个最小请求，看能不能通。
+ *
+ * 为什么打 /models 而不是发一条真的对话：
+ *   · /models 不消耗 token，用户会反复点（改个字段就想再测一次）
+ *   · 它同时验证了三件事：DNS/网络通不通、Key 认不认、base_url 对不对
+ *   · 缺点是有些服务商不实现它 —— 那时会拿到 404，
+ *     所以 404 的文案要写"服务商可能不支持这个探测"，别一口咬定 Key 错
+ *
+ * 为什么不落盘：这一屏的承诺是「按 B 返回不保存」。测试也照这条走 ——
+ * 用户测完发现不对，直接退出去什么都没改。
+ *
+ * ⚠️ 它会**阻塞**（hx_perform 是同步的），最长 8 秒。所以：
+ *   调用前先把状态栏改成"正在测试…"，让用户知道这是程序在等，
+ *   不是他按漏了。 */
+static void do_test(void)
+{
+    const ProviderDef *p = cur_def();
+    char  url[192];
+    char  auth[CREDFILE_KEY_MAX + 32];
+    char  err[96];
+    const char *hdrs[2];
+    HxReq req;
+    long  code;
+    const char *base;
+    size_t bl;
+
+    if (!g_key[0]) {
+        app_status_set(S(S0925));     /* 先填 Key */
+        return;
+    }
+
+    /* 优先用用户填的网址（自定义服务商只有这一条），没填才回落到服务商默认 */
+    base = g_url[0] ? g_url : (p ? p->base_url : "");
+    if (!base || !base[0]) {
+        app_status_set(S(S0926));     /* 没有网址可测 */
+        return;
+    }
+    /* 去掉末尾斜杠再拼 —— 否则会出现 //models，有些服务端会 404 */
+    bl = strlen(base);
+    while (bl > 0 && base[bl - 1] == '/')
+        --bl;
+    snprintf(url, sizeof url, "%.*s/models", (int)bl, base);
+
+    snprintf(auth, sizeof auth, "Authorization: Bearer %s", g_key);
+    hdrs[0] = auth;
+    hdrs[1] = NULL;
+
+    memset(&req, 0, sizeof req);
+    req.url         = url;
+    req.headers     = hdrs;
+    req.timeout_s   = 8;
+    req.follow      = true;
+    req.add_cookies = false;
+
+    app_status_set(S(S0927));         /* 正在测试… */
+    app_note("keyedit: test %s", url);
+
+    err[0] = '\0';
+    code = hx_perform(&req, NULL, NULL, err, sizeof err);
+
+    if (code > 0) {
+        if (code == 200) {
+            app_status_set(S(S0928), (int)code);
+            app_note("keyedit: test ok http=%ld", code);
+        } else if (code == 401 || code == 403) {
+            app_status_set(S(S0929), (int)code);
+            app_note("keyedit: test auth http=%ld", code);
+        } else if (code == 404) {
+            app_status_set(S(S0930), (int)code);
+            app_note("keyedit: test 404 (provider may lack /models)");
+        } else {
+            app_status_set(S(S0931), (int)code);
+            app_note("keyedit: test http=%ld", code);
+        }
+    } else {
+        app_status_set(S(S0932), err[0] ? err : S(S0933));
+        app_note("keyedit: test fail %ld %s", code, err);
+    }
+}
+
+/* --------------------------------------------------------------------------
  * 保存
  * ----------------------------------------------------------------------- */
 
@@ -529,10 +705,13 @@ static void render_top(void)
     float       y = ROW_Y0;
     char        pos[24];
 
-    snprintf(pos, sizeof pos, "%d/%d", g_row + 1, R_COUNT);
+    snprintf(pos, sizeof pos, "%d/%d", visible_index(g_row), visible_count());
     w_top_header(S(S0421), pos);
 
     for (int i = 0; i < R_COUNT; ++i) {
+        if (!row_visible(i))
+            continue;               /* 人设/上下文/思考强度已挪去设置屏 */
+
         /* 缓冲要装得下**最长的那一项**（自定义网址 95 字节），
          * 给 80 的时候编译器就报了 -Wformat-truncation —— 而那条警告
          * 在这类"值列"上特别容易被忽略，真被截断时用户看到的是一个
@@ -592,6 +771,10 @@ static void render_bottom(void)
      * 所以"可点的动作"必须落在下屏。 */
     w_button(&SAVE_BTN, S(S0383),
              (g_row == R_SAVE) ? W_BTN_SELECTED : W_BTN_PRIMARY);
+
+    /* 测试连接：只读当前屏幕上的值，不落盘、不写 key.txt。 */
+    w_button(&TEST_BTN, S(S0924),
+             W_BTN_NORMAL | (app_touch_on(&TEST_BTN) ? W_BTN_PRESSED : 0));
 
     /* 导入按钮：读 sdmc:/3ds/aiconsole/key.txt，把里面的
      * provider/model/base_url/key 一次性搬进本屏的字段（**不落盘**，
@@ -657,12 +840,12 @@ static void keyedit_handle(u32 down, u32 held)
     }
 
     if (down & KEY_UP) {
-        g_row = (g_row + R_COUNT - 1) % R_COUNT;
+        g_row = step_row(g_row, -1);
         g_msg[0] = '\0';
         return;
     }
     if (down & KEY_DOWN) {
-        g_row = (g_row + 1) % R_COUNT;
+        g_row = step_row(g_row, +1);
         g_msg[0] = '\0';
         return;
     }
@@ -685,6 +868,7 @@ static void keyedit_handle(u32 down, u32 held)
         int tx, ty;
         if (app_touch_down(&tx, &ty)) {
             if (w_hit(&SAVE_BTN, tx, ty))   { do_save();   return; }
+            if (w_hit(&TEST_BTN, tx, ty))   { do_test();   return; }
             if (w_hit(&IMPORT_BTN, tx, ty)) { do_import(); return; }
         }
     }

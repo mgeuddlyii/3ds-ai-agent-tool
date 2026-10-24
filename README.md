@@ -14,7 +14,7 @@ fully playable with buttons — touch only where it makes sense.
      the URL, so it must be bumped on every release (no CI yet).
      ───────────────────────────────────────────────────────────── -->
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.99.5%20beta-orange" alt="version">
+  <img src="https://img.shields.io/badge/version-0.99.6%20beta-orange" alt="version">
   <img src="https://img.shields.io/badge/platform-New%203DS-red" alt="platform">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="license">
   <img src="https://img.shields.io/badge/language-C-555" alt="language">
@@ -26,12 +26,12 @@ fully playable with buttons — touch only where it makes sense.
 </p>
 
 <p align="center">
-  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/tag/v0.99.5">
-    <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download_v0.99.5-2ea44f?style=for-the-badge" alt="Download">
+  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/tag/v0.99.6">
+    <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download_v0.99.6-2ea44f?style=for-the-badge" alt="Download">
   </a>
 </p>
 
-> ### ⚠️ This is a beta (v0.99.5)
+> ### ⚠️ This is a beta (v0.99.6)
 >
 > It works, but it's still being finished: real-hardware edge cases are being
 > chased down, the plugin and stereoscopic 3D backends aren't done.
@@ -126,16 +126,16 @@ Thirty seconds of honesty saves you a download.
 ## 📥 Download
 
 <p align="center">
-  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/tag/v0.99.5">
+  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/tag/v0.99.6">
     <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_Download_full_package-2ea44f?style=for-the-badge" alt="Download full package">
   </a>
   &nbsp;
-  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.3dsx">
+  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.6/AIConsole-0.99.6.3dsx">
     <img src="https://img.shields.io/badge/just_the_.3dsx-0969da?style=for-the-badge" alt="Just the 3dsx">
   </a>
 </p>
 
-> **Short version:** hit the green button → download `AIConsole-0.99.5-pack.zip`
+> **Short version:** hit the green button → download `AIConsole-0.99.6-pack.zip`
 > → unzip → copy the `.3dsx` into `3ds/` on your SD card → put the card back →
 > launch it from Homebrew Launcher.
 
@@ -143,17 +143,17 @@ Thirty seconds of honesty saves you a download.
 
 | File | Size | Who it's for |
 |---|---|---|
-| 🟢 **`AIConsole-0.99.5-pack.zip`** | 6.6 MB | **Most people.** Contains both binaries + install notes + verification tools |
-| **`AIConsole-0.99.5.3dsx`** | 5.1 MB | You just want the binary and already know homebrew |
-| **`AIConsole-0.99.5.cia`** | 3.8 MB | You want it on the HOME menu (install via FBI; needs signature patches) |
+| 🟢 **`AIConsole-0.99.6-pack.zip`** | 6.6 MB | **Most people.** Contains both binaries + install notes + verification tools |
+| **`AIConsole-0.99.6.3dsx`** | 5.1 MB | You just want the binary and already know homebrew |
+| **`AIConsole-0.99.6.cia`** | 3.8 MB | You want it on the HOME menu (install via FBI; needs signature patches) |
 
 ### Direct links
 
 | | |
 |---|---|
-| 📦 Full package (recommended) | [`AIConsole-0.99.5-pack.zip`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5-pack.zip) |
-| 🔧 3dsx only | [`AIConsole-0.99.5.3dsx`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.3dsx) |
-| 🎮 cia only | [`AIConsole-0.99.5.cia`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.cia) |
+| 📦 Full package (recommended) | [`AIConsole-0.99.6-pack.zip`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.6/AIConsole-0.99.6-pack.zip) |
+| 🔧 3dsx only | [`AIConsole-0.99.6.3dsx`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.6/AIConsole-0.99.6.3dsx) |
+| 🎮 cia only | [`AIConsole-0.99.6.cia`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.6/AIConsole-0.99.6.cia) |
 | 📋 All versions | [Releases](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases) |
 
 ### What's inside the package
@@ -329,10 +329,10 @@ python tools/build.py cia
 ### Packaging a release
 
 ```bash
-cp app/AIConsole.3dsx release/AIConsole-0.99.5.3dsx
-cp app/AIConsole.cia  release/AIConsole-0.99.5.cia
+cp app/AIConsole.3dsx release/AIConsole-0.99.6.3dsx
+cp app/AIConsole.cia  release/AIConsole-0.99.6.cia
 python tools/make_pack.py
-# -> dist/AIConsole-0.99.5-pack.zip (re-verified by sha256 on unpack)
+# -> dist/AIConsole-0.99.6-pack.zip (re-verified by sha256 on unpack)
 ```
 
 ### Running the automated tests
@@ -480,7 +480,7 @@ lost saves, account issues — that's on you. Back up your SD card first.
 |---|---|
 | **Design** | acrac |
 | **Implementation** | DeepSeek V4.1-Flash |
-| **Current version** | v0.99.5 (beta) |
+| **Current version** | v0.99.6 (beta) |
 | **Stable release** | Planned for late November 2026 |
 | **License** | MIT |
 

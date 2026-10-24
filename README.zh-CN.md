@@ -14,7 +14,7 @@
      注意：版本号是**手写**在 URL 里的，发新版时要一起改（没接 CI 自动读）。
      ───────────────────────────────────────────────────────────── -->
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.99.5%20beta-orange" alt="version">
+  <img src="https://img.shields.io/badge/version-0.99.6%20beta-orange" alt="version">
   <img src="https://img.shields.io/badge/platform-New%203DS-red" alt="platform">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="license">
   <img src="https://img.shields.io/badge/language-C-555" alt="language">
@@ -26,12 +26,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/tag/v0.99.5">
-    <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_%E4%B8%8B%E8%BD%BD_v0.99.5-2ea44f?style=for-the-badge" alt="下载">
+  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/tag/v0.99.6">
+    <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_%E4%B8%8B%E8%BD%BD_v0.99.6-2ea44f?style=for-the-badge" alt="下载">
   </a>
 </p>
 
-> ### ⚠️ 当前是测试版（v0.99.5）
+> ### ⚠️ 当前是测试版（v0.99.6）
 >
 > 功能已经能用，但**还在收尾**：真机的边界情况在补、插件和立体 3D 没做完。
 > **正式版预计一个月后（2026 年 11 月下旬）发布。**
@@ -116,33 +116,33 @@
 ## 📥 下载
 
 <p align="center">
-  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/tag/v0.99.5">
-    <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_%E4%B8%8B%E8%BD%BD%E5%AE%8C%E6%95%B4%E5%8C%85_v0.99.5-2ea44f?style=for-the-badge" alt="下载完整包">
+  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/tag/v0.99.6">
+    <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F_%E4%B8%8B%E8%BD%BD%E5%AE%8C%E6%95%B4%E5%8C%85_v0.99.6-2ea44f?style=for-the-badge" alt="下载完整包">
   </a>
   &nbsp;
-  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.3dsx">
+  <a href="https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.6/AIConsole-0.99.6.3dsx">
     <img src="https://img.shields.io/badge/%E5%8F%AA%E4%B8%8B%E8%BD%BD_.3dsx-0969da?style=for-the-badge" alt="只下载 3dsx">
   </a>
 </p>
 
-> **一句话**：点上面那个绿色的 → 下载 `AIConsole-0.99.5-pack.zip` → 解压 →
+> **一句话**：点上面那个绿色的 → 下载 `AIConsole-0.99.6-pack.zip` → 解压 →
 > 把 `.3dsx` 拷到 SD 卡 `3ds/` 目录 → 插回机器 → Homebrew Launcher 启动。
 
 ### 三个文件，选一个
 
 | 文件 | 大小 | 适合谁 |
 |---|---|---|
-| 🟢 **`AIConsole-0.99.5-pack.zip`** | 6.6 MB | **大多数人都选这个**。里面有下面两个 + 安装说明 + 校验工具 |
-| **`AIConsole-0.99.5.3dsx`** | 5.1 MB | 只想拿程序、已经会装 Homebrew |
-| **`AIConsole-0.99.5.cia`** | 3.8 MB | 想让它出现在主菜单（要用 FBI 装，需要签名补丁） |
+| 🟢 **`AIConsole-0.99.6-pack.zip`** | 6.6 MB | **大多数人都选这个**。里面有下面两个 + 安装说明 + 校验工具 |
+| **`AIConsole-0.99.6.3dsx`** | 5.1 MB | 只想拿程序、已经会装 Homebrew |
+| **`AIConsole-0.99.6.cia`** | 3.8 MB | 想让它出现在主菜单（要用 FBI 装，需要签名补丁） |
 
 ### 直达链接
 
 | | |
 |---|---|
-| 📦 完整包（推荐） | [`AIConsole-0.99.5-pack.zip`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5-pack.zip) |
-| 🔧 仅 3dsx | [`AIConsole-0.99.5.3dsx`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.3dsx) |
-| 🎮 仅 cia | [`AIConsole-0.99.5.cia`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.5/AIConsole-0.99.5.cia) |
+| 📦 完整包（推荐） | [`AIConsole-0.99.6-pack.zip`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.6/AIConsole-0.99.6-pack.zip) |
+| 🔧 仅 3dsx | [`AIConsole-0.99.6.3dsx`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.6/AIConsole-0.99.6.3dsx) |
+| 🎮 仅 cia | [`AIConsole-0.99.6.cia`](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases/download/v0.99.6/AIConsole-0.99.6.cia) |
 | 📋 所有版本 | [Releases 列表](https://github.com/mgeuddlyii/3ds-ai-agent-tool/releases) |
 
 ### 包里的东西
@@ -303,9 +303,9 @@ python tools/build.py
 
 ```bash
 # 把产物放进 release/（make_pack.py 从这里读）
-cp app/AIConsole.3dsx release/AIConsole-0.99.5.3dsx
+cp app/AIConsole.3dsx release/AIConsole-0.99.6.3dsx
 python tools/make_pack.py
-# -> dist/AIConsole-0.99.5-pack.zip（含 sha256 复核）
+# -> dist/AIConsole-0.99.6-pack.zip（含 sha256 复核）
 ```
 
 ### 跑自动验收
@@ -445,7 +445,7 @@ docs/                 设计文档与截图
 |---|---|
 | **设计** | acrac |
 | **制作** | DeepSeek V4.1-Flash |
-| **当前版本** | v0.99.5（测试版） |
+| **当前版本** | v0.99.6（测试版） |
 | **正式版** | 预计 2026 年 11 月下旬 |
 | **许可** | MIT |
 

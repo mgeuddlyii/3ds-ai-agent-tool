@@ -47,6 +47,7 @@ typedef enum {
     AR_ACTPROBE,     /* 设置类动作：解析 + 白名单 + 落盘读回（会改 config） */
     AR_XFER,         /* 互传页：清单 + 经典 Win 进度条（要有 PC 上的 HTTP 服务） */
     AR_HOLD,         /* 按住某键 N 帧（PTT 类交互只能这么驱动，见 parse_line） */
+    AR_STICK,        /* 合成摇杆纵向读数 N 帧（上屏滚动只能这么驱动） */
     AR_EXTTEST,      /* 抽取式回答验收（只读） */
 } ArOp;
 
@@ -64,6 +65,8 @@ static int  g_pc;            /* 程序计数器 */
 static int  g_delay;         /* wait 剩余帧数 */
 static int  g_hold;          /* AR_HOLD 剩余帧数（>0 时每帧都把同一批键报给主循环） */
 static u32  g_hold_keys;
+static int  g_stick_left;    /* AR_STICK 剩余帧数（>0 时每帧都报同一个 dy） */
+static int  g_stick_val;
 static char g_err[96];
 
 bool autorun_active(void) { return g_active; }
@@ -201,6 +204,37 @@ static void parse_line(char *line, int lineno)
             return;
         }
         push(AR_TOUCH, 0, arg);
+        return;
+    }
+
+    /* stick <dy> [帧数] —— 合成摇杆纵向读数。
+     *
+     * 为什么需要它：2026-10-23 起摇杆管"上屏滚动"，而回放层原来只会
+     * 合成**按键**。没有这条指令，那条滚动路径在验收里永远是
+     * "从没被执行过的代码" —— 而"没人走过"的代码正是最容易埋雷的地方。
+     *
+     * 语义：连续报 N 帧同一个 dy 值（默认 12 帧），模拟"推住不放"。
+     * 摇杆滚动是按**累积量**走格的（见 sc_chat.c 的 chat_stick_scroll），
+     * 只报一帧的话一格都走不动 —— 这不是缺陷，是手感设计的必然结果，
+     * 所以脚本这边必须配合，不能只推一下。
+     * dy 范围 -156..156，0 = 回中。 */
+    if (!strcmp(op, "stick")) {
+        char da[AR_ARG_MAX];
+        int  dy = 0, n = 12;
+
+        if (sscanf(arg, "%15s %d", da, &n) < 1) {
+            snprintf(g_err, sizeof g_err,
+                     "第 %d 行：stick 需要 'dy [帧数]'", lineno);
+            return;
+        }
+        dy = atoi(da);
+        if (dy < -156) dy = -156;
+        if (dy >  156) dy =  156;
+        if (n < 1)   n = 1;
+        if (n > 600) n = 600;
+        push(AR_STICK, n, NULL);
+        /* dy 折进 arg 里带下去（arg 是 char[32]，写个十进制足够） */
+        snprintf(g_steps[g_count - 1].arg, AR_ARG_MAX, "%d", dy);
         return;
     }
 
@@ -358,7 +392,8 @@ bool autorun_init(void)
  * 回放
  * ----------------------------------------------------------------------- */
 
-bool autorun_tick(u32 *keys, int *tx, int *ty, const char **shot, bool *quit)
+bool autorun_tick(u32 *keys, int *tx, int *ty, int *stick_y,
+                  const char **shot, bool *quit)
 {
     if (!g_active)
         return false;
@@ -366,14 +401,27 @@ bool autorun_tick(u32 *keys, int *tx, int *ty, const char **shot, bool *quit)
     *shot = NULL;
     *quit = false;
     *tx   = -1;
+    if (stick_y)
+        *stick_y = 0;
     *ty   = -1;
 
     /* hold 未走完：这一帧**照旧按着**（这一帧的返回值就是"还按着"）。
      * 走完之后 g_hold 变 0，下面自然落到"松手"那一帧 —— 也就是 down=0，
-     * 于是 PTT 那条"松手边沿"在回放里真的会发生。 */
-    if (g_hold > 0) {
+     * 于是 PTT 那条"松手边沿"在回放里真的会发生。 */    if (g_hold > 0) {
         --g_hold;
         *keys = g_hold_keys;
+        return true;
+    }
+
+    /* stick 未走完：这一帧继续报同一个 dy。
+     * 注意返回值是 true —— 主循环只在 true 时才采用合成输入（含摇杆）。
+     * 返回 false 的话合成摇杆不会被读，滚动一步都推不动，
+     * 而脚本看起来"正常跑完" —— 这种失败最难看出来。 */
+    if (g_stick_left > 0) {
+        --g_stick_left;
+        if (stick_y)
+            *stick_y = g_stick_val;
+        *keys = 0;
         return true;
     }
 
@@ -426,6 +474,21 @@ bool autorun_tick(u32 *keys, int *tx, int *ty, const char **shot, bool *quit)
                 *keys = KEY_TOUCH;
                 *tx   = x;
                 *ty   = y;
+                return true;
+            }
+
+            case AR_STICK: {
+                /* 连续报 N 帧同一个 dy，**不夹带按键** —— 摇杆与按键是
+                 * 两条独立输入路径，一起报会让"这次滚动是摇杆干的"
+                 * 变得不可分辨（断言时就分不清是键引起的还是杆引起的）。 */
+                int n = s->n;
+                if (n < 1)
+                    n = 1;
+                g_stick_val  = s->arg[0] ? atoi(s->arg) : 0;
+                g_stick_left = n - 1;
+                if (stick_y)
+                    *stick_y = g_stick_val;
+                *keys = 0;
                 return true;
             }
 

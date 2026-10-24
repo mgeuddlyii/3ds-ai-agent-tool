@@ -9,8 +9,10 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <3ds.h>          /* osGetTime —— w_bot_footer_roll 的轮播时钟 */
 #include "uistr.h"
 #include "anim.h"
+#include "app.h"          /* app_note —— 轮播探针写 status.txt */
 
 /* --------------------------------------------------------------------------
  * 主题表
@@ -331,6 +333,70 @@ void w_bot_footer(const char *hint)
            hint ? hint : "", w_c(C_SLOT_MUTED));
 }
 
+/* ★ 轮播式操作指引（2026-10-23）。
+ *
+ *   为什么是轮播而不是写死一行：底屏只有 300px 可用宽，汉字 16px 一个，
+ *   也就是**一行最多 18 个全角字**。而"十字键切格 + 上下选行 + 摇杆滚上屏
+ *   + A/SELECT/X 各自的功能"这套键位，用一行无论如何讲不完 ——
+ *   实测最短的那版也有 325px，会被右边缘裁掉半个"退"字。
+ *
+ *   所以改成"一次说一条，自动换下一条"：每条都完整可读，几秒后自动切。
+ *   代价是用户可能刚好错过某一条，但它会绕回来 —— 比一行永远看不全强。
+ *
+ *   为什么用 osGetTime 而不是帧计数：帧率在真机与模拟器上差很多
+ *   （实测 60fps vs ≈7fps），按帧算的话，模拟器上一屏提示要停二十几秒，
+ *   等于没轮播。毫秒是唯一在两边都成立的时间基准。
+ *
+ *   `ms` 传 0 = 不轮播，永远显示第一条（设置类静态提示用这条）。
+ *   返回值不是必需的，所以是 void —— 调用方只管每帧调一次。
+ */
+void w_bot_footer_roll(const char *const *items, int n, int ms)
+{
+    static int s_idx;
+    static u64 s_at;
+    static const char *const *s_owner;
+
+    /* 探针：轮播到底换了几次、当前第几条。写进 status.txt ——
+     * "页脚没换"有两种可能（没走到轮播 / 时间没到），
+     * 截图分不出来，这两个数字能分出来。
+     *
+     * ★ 只在**真的换条**时记一行（3.2 秒一行），不要每帧或每秒记：
+     *   app_note 的缓冲只有 6KB，一路写下去会把后面的证据挤掉，
+     *   而"证据被缓冲区吃掉"和"这段代码没跑"在 status.txt 里长得一模一样。
+     *   2026-10-24 排查时曾临时加过一条"每秒记时钟读数"的探针，
+     *   它的作用只是证明 osGetTime 在模拟器里确实在走 —— 结论已确认
+     *   （t 从 3201566447 递增），那条就不再留着。 */
+    static int s_step;
+    if (!items || n <= 0) {
+        w_bot_footer("");
+        return;
+    }
+    if (n == 1 || ms <= 0) {
+        w_bot_footer(items[0]);
+        return;
+    }
+
+    /* 换了另一组提示 → 从头开始，别让上一组的序号带过来 */
+    if (s_owner != items) {
+        s_owner = items;
+        s_idx   = 0;
+        s_at    = osGetTime();
+    }
+
+    u64 now = osGetTime();
+    if (now - s_at >= (u64)ms) {
+        /* 用 while 而不是 if：帧率低时一步就可能错过好几轮，
+         * 只减一次会让轮播越走越慢，最后停在某一条上。 */
+        while (now - s_at >= (u64)ms) {
+            s_at += (u64)ms;
+            s_idx = (s_idx + 1) % n;
+            ++s_step;
+        }
+        app_note("hintroll: idx=%d step=%d dt=%d", s_idx, s_step,
+                 (int)(now - s_at));
+    }
+    w_bot_footer(items[s_idx]);
+}
 /* --------------------------------------------------------------------------
  * 内容
  * ----------------------------------------------------------------------- */

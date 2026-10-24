@@ -37,6 +37,7 @@ typedef enum {
     SCREEN_XFER,         /* 从电脑取文件：清单 + 分段进度（经典 Win 进度条） */
     SCREEN_PLUGINS,      /* 插件：luma/plugins 下的 3gx，能看能开关（不能删） */
     SCREEN_MORE,         /* 二级菜单：不常用的入口（区域/内容更新/传文件/插件） */
+    SCREEN_PICKAPI,      /* 选 API：新建任务后进来，列已添加且有 Key 的条目 */
     SCREEN_DOCK,         /* 滑轨工作台：下屏四格（键盘/项目/文件/浏览），切面板不切屏 */
     SCREEN_COUNT,
 } ScreenId;

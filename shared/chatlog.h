@@ -29,7 +29,28 @@
 #define CHATLOG_MAX_TURNS 40
 
 const char *chatlog_dir(void);    /* sdmc:/3ds/aiconsole */
-const char *chatlog_path(void);   /* sdmc:/3ds/aiconsole/chat.json */
+const char *chatlog_path(void);   /* 当前槽的路径（见 chatlog_set_slot） */
+
+/* 选一个"槽"= 一份独立的会话记录。
+ *
+ * 用途：每个任务（项目）各有一份对话历史，切任务就切历史 ——
+ * 否则"新建任务"之后上屏还挂着上一个任务的对话，看着像没切成功。
+ *
+ * slot 为 NULL/"" → 回到老的 sdmc:/3ds/aiconsole/chat.json
+ * （升级前的老数据要在这一份里，不能因为加了槽就"看不见了"）。
+ *
+ * ⚠️ 调用时机只有两处：进对话屏时、切换任务时。**不要**在渲染里调 ——
+ *   渲染每帧都跑，一旦哪次漏设就会把内容写进别的任务的记录里。 */
+void chatlog_set_slot(const char *slot);
+
+/* 删掉第 idx 个任务的槽（连同它的历史文件），并把后面所有槽前移一位。
+ *
+ * 必须和 `projects_remove()` **一起**调：槽名是序号，删掉中间一个之后
+ * 后面的序号全都会前移，不挪文件的话"任务丙"会读到"任务乙"的历史 ——
+ * 屏幕上看起来完全正常，只是内容变成了别人的。
+ *
+ * total = 删除**之前**的任务个数（拿它算要挪几个）。 */
+void chatlog_drop_slot(int idx, int total);
 
 /* --------------------------------------------------------------------------
  * 写：open → item* → close 的状态机

@@ -240,6 +240,16 @@ static void app_thread_main(void *arg)
         if (down & KEY_TOUCH)
             boot_mark("touch", "x=%d y=%d frame=%d", tpos.px, tpos.py, frames);
 
+        /* 摇杆采集（2026-10-23 新增）。
+         * 用户定的分工：十字键管下屏内容，摇杆上下管上屏文字滚动。
+         * 摇杆回中时 hidCircleRead 也会吐出 ±3~6 的抖动值，
+         * 所以这里**不做**死区 —— 死区留给用它那一屏判（各屏灵敏度不同）。
+         * 回放脚本推的是按键，摇杆只对真实硬件有效；这也是它必须
+         * 经 app 层转一手、而不是在屏幕里直接 hidCircleRead 的原因。 */
+        circlePosition cpos;
+        hidCircleRead(&cpos);
+        app_circle_frame((int)cpos.dx, (int)cpos.dy);
+
         /* 按键探针：任何 down/held 都记录 —— 「按了没反应」类问题
          * 用它一锤定音：guest 到底有没有看见键盘。
          *
@@ -255,21 +265,32 @@ static void app_thread_main(void *arg)
          * 只在真有按键的帧写（wait 帧不写），所以不会把 boot.log 灌满。 */
         u32         synth_keys = 0;
         int         synth_tx = -1, synth_ty = -1;
+        int         synth_stick_y = 0;
         const char *synth_shot = NULL;
         bool        synth_quit = false;
 
         if (autorun_tick(&synth_keys, &synth_tx, &synth_ty,
-                         &synth_shot, &synth_quit)) {
+                         &synth_stick_y, &synth_shot, &synth_quit)) {
             /* 合成输入替换真实输入。held 也清空 —— 回放里没有"按住"的概念，
              * 留着会触发出真实按键重复的效果。 */
             down = synth_keys;
             held = 0;
+
+            /* 合成摇杆：只有脚本真的推了（非 0）才覆盖。
+             * 不判非 0 的话，回放的每一帧都会把摇杆"按回中位"——
+             * 真机上用户推着摇杆、脚本却在跑别的趟次时，滚动会失灵。
+             * 这条规则与"合成触摸覆盖真实"不同：触摸那条是**每一帧
+             * 都要有明确答案**（-1 表示松开），而摇杆没有"松开"指令，
+             * 回中就是 0，两者语义不同，不能共用一套写法。 */
+            if (synth_stick_y != 0)
+                app_circle_frame(0, synth_stick_y);
+
             if (down & KEY_TOUCH)
                 app_touch_frame(synth_tx, synth_ty, true);   /* 合成触摸覆盖真实 */
 
-            if (down || held)
-                boot_mark("key", "down=%08x held=%08x frame=%d (synth)",
-                          down, held, frames);
+            if (down || held || synth_stick_y)
+                boot_mark("key", "down=%08x held=%08x stick=%d frame=%d (synth)",
+                          down, held, synth_stick_y, frames);
         } else if (down || held) {
             boot_mark("key", "down=%08x held=%08x frame=%d", down, held, frames);
         }

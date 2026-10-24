@@ -43,12 +43,14 @@
 #include "credfile.h"
 #include "keystore.h"
 #include "phrases.h"
+#include "projects.h"        /* projects_active/count —— 按任务分历史（proj_slot） */
 #include "provider.h"
 #include "doubao.h"
 #include "render.h"
 #include "shot.h"
 #include "voice.h"
 #include "widgets.h"
+#include "ime.h"   /* B 键统一处理要读 ime_input() / ime_reset() */
 
 #include <3ds.h>
 #include <math.h>            /* ctx_ring_draw 每环一次 cosf/sinf */
@@ -128,6 +130,25 @@ static void text_changed(int i)
         g_lines[i] = 0;
 }
 static int  g_scroll;
+
+/* ★ 摇杆滚动（2026-10-23）：连续量 + 余数。
+ *
+ *   摇杆是**模拟量**，十字键是**开关量**，两者不能共用同一份计数：
+ *   开关量每次按下走一格，模拟量则在按住期间每帧都要按"推了多少"累积。
+ *   所以这里加两个状态：
+ *     g_stick_acc  推杆累积量，累到 STICK_STEP 才走一格（推得深累得快，
+ *                  轻推慢、推到底快 —— 手感靠这个，不是靠加速度）
+ *     g_stick_was  上一帧有没有推到死区外。**松手要清累积**：不清的话，
+ *                  轻轻推一下攒了半格，松手后再推一下就会"凭空"多跳一格，
+ *                  用户会觉得滚动在乱跑。
+ *   方向：上推（dy 为负）= 往回看更早的消息（g_scroll 减）。
+ */
+#define STICK_DEAD   40      /* 死区：回中抖动约 ±5，40 大约"推到 1/4 才算动" */
+#define STICK_ACC    10      /* 每帧最小累积量（死区边缘时的速度） */
+#define STICK_STEP   48      /* 累积到这个数走一格（死区边缘约 5 帧一格） */
+
+static int  g_stick_acc;
+static bool g_stick_was;
 
 /* 下屏滑轨当前格：0 = 聊天，1..4 = 键盘/项目/文件/浏览。
  * 声明放这么靠前，是因为 chat_enter() 要用它，而它在文件前半部分。 */
@@ -255,13 +276,63 @@ static char g_conv_id[32];
 
 #define CONV_PATH "sdmc:/3ds/aiconsole/chat_conv.txt"
 
+/* ---- 按任务分开存（2026-10-24 用户要求）----
+ *
+ * 用户原话：「我现在选择新项目后，上屏的页面没有变化，没有进入新项目的空间。
+ * 同理，当我打开新项目的时候，也要看到那个项目之前做的内容。」
+ *
+ * 根因：切换任务只改 provider/model，而**对话历史一直是一份全局 chat.json**，
+ * 会话 id 也只有一个 chat_conv.txt。于是换项目之后上屏毫无变化，
+ * 两个项目的对话混在同一条时间线上。
+ *
+ * 判据：只按 `projects_active()` 下标分文件（见 chatlog.c 里为什么用序号
+ * 不用名字）。
+ *
+ * ★ 为什么**不**做"单任务时用老路径 chat.json"的兼容（2026-10-24 改口）：
+ *   我第一版就是这么写的，想着老用户只有一个任务，直接沿用老文件最省事。
+ *   但它有个必然踩到的坑 —— 用户从两个任务删回到一个时，槽突然从 p1
+ *   变回"老路径"，那个任务的历史**当场消失**（chat_p0.json 还在，只是没人读了）。
+ *   "删掉一个项目，剩下的项目对话全没了"这种 bug 比升级兼容难解释得多。
+ *
+ *   改成**一律按任务号**取槽，老数据由 chatlog.c 的 migrate_default_to_p0()
+ *   在第一次用到 p0 时搬过去 —— 兼容只在一个地方做，不散在判据里。
+ */
+static void proj_slot(char *out, size_t n)
+{
+    snprintf(out, n, "p%d", projects_active());
+}
+
+/* 会话 id 的文件路径也跟着任务走 —— 正文分开了 id 却共用一份，
+ * 就会出现"这个项目的对话接着上一个项目的服务端会话"，
+ * 而豆包那边直接答非所问（它记得的是另一个项目的事）。 */
+static void conv_path(char *out, size_t n)
+{
+    char slot[16];
+
+    proj_slot(slot, sizeof slot);
+    if (!slot[0])
+        snprintf(out, n, "%s", CONV_PATH);   /* 兜底：不该发生 */
+    else
+        snprintf(out, n, "sdmc:/3ds/aiconsole/chat_conv_%s.txt", slot);
+}
+
+/* 切任务后让上屏立刻换成新任务的历史。
+ *
+ * 由 sc_dock.c 的 apply_project() 调用（它切完 provider/model 之后）。
+ * 不在这里判"现在是不是对话屏"：调用方在切任务时一定在对话屏的项目格里，
+ * 而"不在对话屏"时做这件事也无害（只是把消息表重建了一遍）。
+ *
+ * ⚠️ 必须连 g_conv_id 一起重读：只换正文不换 id，续聊会接到上一个任务的
+ *   服务端会话上去，症状是"新任务里 AI 莫名其妙记得旧任务的事"。 */
 static void save_conv_id(void)
 {
     FILE *f;
 
     if (!g_conv_id[0])
         return;                 /* 还没会话 id，别把空文件留在卡上 */
-    f = fopen(CONV_PATH, "wb");
+    char path[96];
+    conv_path(path, sizeof path);
+    f = fopen(path, "wb");
     if (!f)
         return;
     fprintf(f, "%s\n", g_conv_id);
@@ -270,7 +341,9 @@ static void save_conv_id(void)
 
 static void load_conv_id(void)
 {
-    FILE *f = fopen(CONV_PATH, "rb");
+    char path[96];
+    conv_path(path, sizeof path);
+    FILE *f = fopen(path, "rb");
 
     g_conv_id[0] = '\0';
     if (!f)
@@ -713,8 +786,9 @@ static void do_asr(void)
 
     boot_mark("asr", "begin provider=%s model=%s bytes=%d",
               d->name, d->model, (int)n);
-    app_note("voice: asr provider=%s model=%s bytes=%d key=%d",
-             d->name, d->model, (int)n, asr_key()[0] ? 1 : 0);
+    app_note("voice: asr provider=%s model=%s bytes=%d key=%d refilled=%d",
+             d->name, d->model, (int)n, asr_key()[0] ? 1 : 0,
+             asr_key_refilled());
 
     asr_transcribe(pcm, n, &r);
 
@@ -955,6 +1029,7 @@ static void pump_autorun(void)
     static u64 last;
     u32 keys = 0;
     int tx = -1, ty = -1;
+    int stick_y = 0;
     const char *shot = NULL;
     bool quit = false;
     u64 now;
@@ -970,11 +1045,12 @@ static void pump_autorun(void)
         return;
     last = now;
 
-    autorun_tick(&keys, &tx, &ty, &shot, &quit);
+    autorun_tick(&keys, &tx, &ty, &stick_y, &shot, &quit);
 
     /* keys 丢掉：流式期间不响应按键（"取消"是 M7 的事）。
      * quit 也丢掉：脚本喊退出也不能在这儿退，会把连接留在半路。
-     * 两者都只能等回到主循环再处理。 */
+     * stick_y 同样丢掉：流式期间上屏在自动跟随最新内容（reanchor），
+     * 这时让摇杆插一脚只会和"边收边滚"打架。两者都只能等回到主循环再处理。 */
 
     if (shot) {
         char name[48];
@@ -1730,6 +1806,64 @@ static void hist_cb(bool mine, const char *text, void *user)
     push_msg(mine ? MSG_ME : MSG_AI, text, true);
 }
 
+void chat_reload_project(void)
+{
+    char slot[16];
+
+    proj_slot(slot, sizeof slot);
+    chatlog_set_slot(slot);
+
+    /* 消息表清空重建。不清的话新任务的历史会**接**在旧任务的后面，
+     * 而那正是用户抱怨的现象（"换项目了但上屏没变"）。 */
+    g_count       = 0;
+    g_scroll      = 0;
+    g_think_open  = -1;
+    g_pending     = false;
+    g_pending_slot = -1;
+    g_input[0]    = '\0';
+    g_conv_id[0]  = '\0';
+
+    int restored = chatlog_load(hist_cb, NULL);
+    if (restored > 0)
+        load_conv_id();
+    reanchor();
+    app_note("chat: project switch -> slot=%s restored=%d",
+             slot[0] ? slot : "(default)", restored);
+}
+
+/* 删掉一个任务时，把**它那一份**历史一起收走（2026-10-24）。
+ *
+ * 由 sc_dock.c 的 proj_remove() 在 projects_remove() 成功后调用。
+ *
+ * 两件事必须一起做：
+ *   ① 正文文件（chat_p<k>.json）—— chatlog_drop_slot 负责
+ *   ② 会话 id 文件（chat_conv_p<k>.txt）—— 这里负责
+ * 只挪正文不挪 id 的后果很隐蔽：项目丙的对话正文对上了，
+ * 但 g_conv_id 还是乙的会话 id，于是"接着聊"接到的是乙在服务端的会话。
+ *
+ * 挪完立刻重载 —— 当前上屏显示的可能就是刚被删掉那个项目的内容。 */
+void chat_drop_project(int idx, int total)
+{
+    char src[96];
+    char dst[96];
+
+    chatlog_drop_slot(idx, total);
+
+    snprintf(dst, sizeof dst, "sdmc:/3ds/aiconsole/chat_conv_p%d.txt", idx);
+    remove(dst);
+    for (int k = idx; k + 1 < total; ++k) {
+        snprintf(src, sizeof src, "sdmc:/3ds/aiconsole/chat_conv_p%d.txt", k + 1);
+        snprintf(dst, sizeof dst, "sdmc:/3ds/aiconsole/chat_conv_p%d.txt", k);
+        if (rename(src, dst) != 0) {
+            remove(dst);
+            rename(src, dst);
+        }
+    }
+
+    app_note("chat: drop slot p%d (total was %d)", idx, total);
+    chat_reload_project();
+}
+
 static void chat_enter(void)
 {
     boot_mark("chat_enter", "begin");
@@ -1737,6 +1871,25 @@ static void chat_enter(void)
      * 用户可能刚在电脑上往 out/ 里放了东西。 */
     g_tab = 0;
     dockui_init();
+    /* ★ 键盘格编辑的**就是**这条 g_input（2026-10-24）。
+     *
+     *   不绑的后果不是"不好用"，而是"改了看不见的东西"：键盘格有它自己的
+     *   g_text，对话屏有 g_input，两边互不相识。于是那里打的字在上屏
+     *   看得见、发出去却还是空的，而"送到对话"只能写一句"按 A 进对话继续"。
+     *   绑上之后两处是**同一个缓冲**，不存在"同步"这一步，也就不会不同步。
+     *
+     *   解绑放在 leave（见 chat_leave）：本屏退出后那块内存在别处可能已经
+     *   不是输入框了，留着指针就是悬空的。 */
+    dockui_bind_text(g_input, sizeof g_input);
+    /* ★ 先定"这次是哪一份历史"，再读它（2026-10-24）。
+     *   顺序反了就会读到上一个任务的记录 —— 而读出来的东西看起来完全
+     *   正常（就是那个任务聊过的话），没有任何报错，只能靠"上屏没换"
+     *   这种主观感受发现。 */
+    {
+        char slot[16];
+        proj_slot(slot, sizeof slot);
+        chatlog_set_slot(slot);
+    }
     g_scroll = 0;
     g_pending = false;
     g_pending_slot = -1;
@@ -1756,9 +1909,14 @@ static void chat_enter(void)
     g_asr_armed = false;
     voice_init();
     asr_load_file(ASR_CFG_PATH);
-    if (!voice_available())
+    /* ★ 2026-10-23：原先这里**无条件** app_status_set(S0104)，
+     *   而 S0104 是「麦克风不可用 · 诊断见 status.txt」——
+     *   于是每次进对话屏，状态行都会摆着一句"麦克风不可用"，
+     *   哪怕麦克风好得很。用户看到这行只会得出"语音坏了"的结论。 */
+    if (!voice_available()) {
         app_note("voice: mic unavailable rc=%d", voice_mic_rc());
-    app_status_set(S(S0104));
+        app_status_set(S(S0104));   /* 只有**真的**不可用才说这句话 */
+    }
 
     /* 每次进屏重新读一遍短语文件：用户可能刚在电脑上改过它，
      * 而对话屏是它唯一被用到的地方。 */
@@ -2165,8 +2323,17 @@ static void render_top(void)
 #define CHAT_RAIL_W   44.0f
 #define CHAT_RAIL_GAP  2.0f
 
+/* ★ 2026-10-23 用户要求：「把聊天那一页改成选项，加入一些可以及时控制的选项」。
+ *
+ *   第 0 格原来的作用只是"收起面板"（回到纯输入框视图），
+ *   而那块地皮正是对话时最想快速改设置的地方 —— 现在给它内容：
+ *   思考强度 / 上下文轮数 / 回复长度 / 回答语言，改完立刻生效。
+ *
+ *   ⚠️ 输入与发送现在只走「键盘」格。第 0 格不再画输入框，因为
+ *      4 行选项 + 输入框 + 发送按钮在 320×240 上挤不下（算过：
+ *      滑轨占到 42，剩下 198px 只够 4×26 + 一行提示）。 */
 static const char *const CHAT_RAIL_LABEL[CHAT_RAIL_N] = {
-    "聊天", "键盘", "项目", "文件", "浏览",
+    "选项", "键盘", "项目", "文件", "浏览",
 };
 
 static Rect chat_rail_rect(int i)
@@ -2227,6 +2394,121 @@ static void chat_voice_button_draw(void)
     w_button(&CHAT_BTN_MIC, mic_lbl, mic_flags);
 }
 
+/* 换下一条常用短语，填进输入框。
+ *
+ * ★ 2026-10-24 抽成函数并在**每个格子**都接上（见 chat_handle）。
+ *   原先它只挂在第 0 格那条路上，而发送挪到键盘格之后，用户想"用短语发一条"
+ *   就得：键盘格 → 左回选项格 → SELECT → 右去键盘格 → Y。
+ *   绕三下才能发一句现成的话，比手打还慢 —— 那就等于把短语功能废了。
+ *   短语填的是**同一条**输入框（键盘格也在编辑它），所以在哪一格按都一样。
+ *   唯一让位的是项目格：那里的 SELECT 是"删掉这个任务"，不能抢。 */
+static void chat_fill_phrase(void)
+{
+    int n = phrases_count();
+
+    if (n <= 0) {
+        app_status_set(S(S0173));
+        return;
+    }
+    /* 列表长度可能变小（用户按 R 删掉了一条），所以每次都夹一次 ——
+     * 只靠 %n 也能防越界，但那样删到只剩一条时会停在"永远是第 0 条"，
+     * 再按 SELECT 换不动，看着像卡了。夹一次就回到轮换的语义。 */
+    if (g_qp < 0 || g_qp >= n)
+        g_qp = 0;
+
+    g_qp_last = g_qp;
+    snprintf(g_input, CHAT_TEXT, "%s", phrases_at(g_qp_last));
+    g_qp = (g_qp_last + 1) % n;
+    app_status_set(S(S0174));
+}
+
+/* ★ 最下行操作指引（2026-10-23 用户要求：「最下行给出操作指引」）。
+ *
+ *   为什么抽成函数：这段逻辑**两处要用** —— 输入框视图（g_tab==0 的老路）
+ *   与面板格（g_tab>0）。抽之前它只挂在输入框那条路上，而那条路现在
+ *   走不到了（第 0 格由选项面板接管、其余格由面板接管），结果面板格的
+ *   页脚**根本没人画**：看到的是上一帧残留的像素。
+ *
+ *   这种"看着有内容、其实没人画"的现象在截图里完全正常 —— 它一直是
+ *   旧的那一行（S0170，265px），直到有人去改它才会暴露。所以验收里
+ *   "页脚会变"这条判据必须**在面板格上测**，光看第 0 格会永远通过。
+ *
+ *   原来的底部栏是**一句固定文案**（[A] 发送 [Y] 键盘 [SELECT] 短语
+ *   [ZL] 说话），而那时键位是另一套；现在十字键接管了"下屏"、摇杆接管了
+ *   "上屏滚动"，再挂着一行不完整的旧键位只会误导。所以改成**轮播**：
+ *   一次说一条，几秒自动换下一条，循环。
+ *
+ *   为什么必须轮播而不是排成一行：底屏可用宽 300px = 18 个全角字，
+ *   而"十字键切格 / 上下选行 / 摇杆滚上屏 / A 发送 / Y 键盘 / ZL 语音 /
+ *   SELECT 短语 / B 返回 / X 配 Key"这一整套，最短写法也要 325px
+ *   —— 硬排一行的结果是右边缘裁掉半个字，而裁掉的恰好是最后一句话的
+ *   结尾，看起来像程序没写完整。
+ *
+ *   顺序是**按用到的频率**排的：先讲方向键与摇杆（每次都要用），
+ *   再讲发送/键盘/语音，最后才是 B 与 X 这类偶尔用的。
+ *
+ *   ★★ 2026-10-24：**发送这一条按格子分开讲**。
+ *   用户定的分工是「A 在选项格=改值、发送放在键盘格」，于是
+ *   "A 发送"这句话在哪个格都不对了：
+ *     · 键盘格：A = 改文字，Y = 发送
+ *     · 选项格：A = 改值（它自己的页脚 S0963 已经这么写了）
+ *     · 项目/文件/浏览：A 是"打开/应用/进入"，Y 是刷新/新建
+ *   所以键盘格单独一套（含发送那条），其余格用一套**处处成立**的。
+ *   把发送那条写进公共那套，就等于在四个格里有三个说谎 ——
+ *   而"屏上写着但按不出来"比不写更坏。
+ *
+ *   没配 Key 时不提发送 —— 按了也发不出去，先把人引到配 Key 上。
+ *   豆包那支也不提 Key：它的凭据是登录态，写"配 API Key"会让人去找
+ *   一个豆包根本没有的东西。这两条与轮播是**并列**的替换关系。
+ */
+static void chat_footer_hint(void)
+{
+    if (chat_ready()) {
+        /* ★ 为什么是一张**函数内静态**表 + 懒加载，而不是文件级 const 数组：
+         *   S() 展开成 uistr(id)（运行时查表），不是编译期常量，
+         *   放不进静态初始化器。而每次渲染都重建一遍数组又太浪费
+         *   （w_bot_footer_roll 靠**指针身份**判断"换没换组"，数组
+         *   每帧换个地址会让轮播永远停在第 0 条）。
+         *   所以这里只初始化一次，地址恒定。
+         *
+         * ⚠️ 两张表的**地址必须不同**（本就是两个数组），否则轮播会把
+         *   "换了一组"误判成"同一组"，序号不归零。 */
+        static const char *HINT_KBD[7];     /* 键盘格：有发送这一条 */
+        static const char *HINT_GEN[6];     /* 其余格：处处成立的六条 */
+        static bool hint_init;
+        if (!hint_init) {
+            hint_init = true;
+            /* 键盘格：顺序按**用到的频率**，发送放第一条 ——
+             * 进了这一格，最想干的通常就是"把这段字发出去"。 */
+            HINT_KBD[0] = S(S0958);     /* Y 发送 · A 改文字 */
+            HINT_KBD[1] = S(S0956);     /* ←→ 切格 · ↑↓ 选行 */
+            HINT_KBD[2] = S(S0957);     /* 摇杆滚上屏 */
+            HINT_KBD[3] = S(S0959);     /* ZL 说话 */
+            HINT_KBD[4] = S(S0960);     /* SELECT 换短语 */
+            HINT_KBD[5] = S(S0961);     /* B 返回 · X 配 Key */
+            HINT_KBD[6] = S(S0962);     /* L/R 也能切格 */
+
+            /* 其余格：不提 A/Y —— 它们每一格的语义都不一样，
+             * 由各自的格子自己讲（选项格有自己的 S0963）。 */
+            HINT_GEN[0] = S(S0956);
+            HINT_GEN[1] = S(S0957);
+            HINT_GEN[2] = S(S0959);
+            HINT_GEN[3] = S(S0960);
+            HINT_GEN[4] = S(S0961);
+            HINT_GEN[5] = S(S0962);
+        }
+        if (g_tab == 1)
+            w_bot_footer_roll(HINT_KBD, 7, 3200);
+        else
+            w_bot_footer_roll(HINT_GEN, 6, 3200);
+    } else {
+        /* 没配 Key（或豆包）：只给一条，不轮播 —— 这时候"怎么聊"不是问题，
+         * "怎么连上"才是，多讲键位反而把那一句关键指引淹掉。 */
+        w_bot_footer(chat_provider()->fmt == PROVIDER_FMT_DOUBAO
+                         ? S(S0171) : S(S0172));
+    }
+}
+
 static void render_bottom(void)
 {
     /* 拼音键盘展开 → 整屏让给它 */
@@ -2234,6 +2516,16 @@ static void render_bottom(void)
         dockui_render_ime();
         return;
     }
+    /* ★ 第 0 格现在是「选项」：画四项即时控制 + 滑轨。
+     *   这条路必须在"g_tab > 0"之前判，否则 g_tab==0 会掉到下面的
+     *   输入框视图去 —— 而输入框视图已经不再承担第 0 格的内容了。 */
+    if (g_tab == 0) {
+        w_bot_header(S(S0948));      /* 「选项」 */
+        dockui_render_opt();
+        chat_rail_draw();            /* 滑轨本身最后画，压在最上面 */
+        return;
+    }
+
     /* 选的是滑轨上某一格 → 只画面板 + 滑轨 */
     if (g_tab > 0) {
         dockui_render(g_tab - 1);
@@ -2247,6 +2539,7 @@ static void render_bottom(void)
         if (g_tab == 1)
             chat_voice_button_draw();
         chat_rail_draw();
+        chat_footer_hint();
         return;
     }
 
@@ -2349,24 +2642,95 @@ static void render_bottom(void)
                          : S(S0169),
              w_c(C_SLOT_FAINT));
 
-    /* 主操作只留底部栏这一处。这里曾经另有一行写着几乎相同的内容，
-     * 两行并排显示，看着就像没做完 —— 而且两处措辞都不一致
-     * （一处"快捷短语"、一处"短语"），本来就在暗示其中一处是多的。
-     *
-     * 没配 Key 时不提 [A] 发送：按了也发不出去，先把人引到配 Key 上；
-     * 但 [Y] 键盘要留着，先打几个字看看界面是完全允许的。
-     *
-     * 豆包那支的文案必须不一样：它的凭据是登录态，写"配 API Key"
-     * 会让人去找一个豆包根本没有的东西。 */
-    w_bot_footer(chat_ready() ? S(S0170)
-                 : (chat_provider()->fmt == PROVIDER_FMT_DOUBAO
-                        ? S(S0171)
-                        : S(S0172)));
+    chat_footer_hint();
+}
+
+/* ★ 摇杆 → 上屏滚动（2026-10-23 用户定的分工）。
+ *
+ *   「十字键控制下屏内容，摇杆上下控制上屏文字上下滑动」
+ *
+ *   为什么摇杆不用"每帧一格"：摇杆是连续量，按住不动时它每帧都给读数。
+ *   按帧走格的话，稍微推一下就窜十几格，用户根本追不上看到哪。
+ *   所以按"累积位移"走格：推得浅（|dy| 刚到死区外）几帧才一格，
+ *   推到底则每帧一格，快慢由手决定 —— 这比加快捷键更符合直觉。
+ *
+ *   为什么要**清余数**：轻推一下、松手，余数若留着，下一次轻推就会
+ *   多跳一格。表现是"滚动有时候会自己多跑一步"，只在慢推时出现，
+ *   截图看不出来，只能靠这段注释记住。
+ *
+ *   为什么只在第 0 格（选项）之外生效：下屏面板（键盘/项目/文件/浏览）
+ *   本身有上下选行的键位，摇杆若也抢着用，会变成"推摇杆改的是上屏、
+ *   光标却在下屏乱动"。滚动只跟"看对话"有关，就该只在看对话时活着。
+ *   —— 反过来说，用户在下屏翻文件时上屏滚走也是莫名其妙的行为。 */
+static void chat_stick_scroll(void)
+{
+    int  dy    = app_circle_y();
+    bool moved = (dy > STICK_DEAD) || (dy < -STICK_DEAD);
+
+    if (!moved) {
+        /* 松手（或回中）：余数清零，见上面那段"为什么清余数" */
+        g_stick_acc = 0;
+        g_stick_was = false;
+        return;
+    }
+
+    /* 推得越深走得越快：|dy| 从死区到满推（~156）线性映射到 min..max 两步长。
+     * 死区边缘 STICK_STEP 走一格需要十几帧（慢慢挪），推到底 4 帧一格 */
+    int mag  = (dy > 0 ? dy : -dy);
+    int step = STICK_ACC + (mag - STICK_DEAD) / 8;
+    if (step < STICK_ACC) step = STICK_ACC;
+
+    g_stick_acc += step;
+    g_stick_was  = true;
+
+    if (g_stick_acc < STICK_STEP)
+        return;
+    g_stick_acc = 0;
+
+    if (dy < 0) {                        /* 上推 = 往回看更早的 */
+        if (g_scroll > 0) --g_scroll;
+    } else {                             /* 下推 = 往新的方向 */
+        if (g_scroll + 1 < g_count) ++g_scroll;
+    }
 }
 
 static void chat_handle(u32 down, u32 held)
 {
     (void)held;
+
+    /* ★★ 2026-10-23 真机反馈：「只要选进去，就按 B 退不回主页面」。
+     *
+     *   查下来 B 在这条链上有三个吃法，用户得按 2~3 次才出得去：
+     *     ① 键盘展开  → 清空输入串（看起来只是光标没了）
+     *     ② 键盘/面板展开 → g_tab 归零，"收起面板"而不是退屏
+     *     ③ 都没有时才 app_pop()
+     *   每一次都有视觉变化，但**变化都不像"退出"**，于是主观感受就是
+     *   "按 B 没反应"。
+     *
+     *   现在改成一条路：**B 就是"离开这一屏"**。
+     *   唯一的例外是"输入框里有字母" —— 那时先清输入，因为用户
+     *   敲错拼音时最想按的就是 B，直接退屏会把整句话丢掉。
+     *   清完再按一次就退，最多两次，而且第二次一定退。
+     *
+     *   放在函数最前面：不能有任何一个分支抢在它之前（以前就抢了）。 */
+    if (down & KEY_B) {
+        if (dockui_ime_active()) {
+            if (ime_input()[0]) {
+                ime_reset();            /* 敲错了：先清，不退 */
+                return;
+            }
+            dockui_ime_close();         /* 键盘空着：收起并继续往下走 */
+        }
+        /* 录音中离开要收尾，否则采样会一路涨到 5 秒上限 */
+        if (g_rec || g_asr_armed) {
+            g_rec       = false;
+            g_asr_armed = false;
+            voice_stop();
+            app_note("voice: cancelled by leaving screen");
+        }
+        app_pop();
+        return;
+    }
 
     /* 滑轨常驻，**最先判**：它是这一屏的"底盘"，
      * 排在输入逻辑后面的话，点滑轨会先被输入区吃掉。
@@ -2390,6 +2754,121 @@ static void chat_handle(u32 down, u32 held)
                     return;
                 }
             }
+        }
+    }
+
+    /* ★★ 2026-10-23 真机反馈：「对话的那个 ZL 没反应」。
+     *
+     *   查下来 ZL 的处理原本排在**整条链的末尾**（触摸 → 键盘 → 弹窗 →
+     *   短语 → 导出…之后），而中间任何一个 return 都会把它吃掉。
+     *   最容易踩的就是**键盘展开**那一段：`dockui_ime_active()` 为真时
+     *   整帧归 IME，ZL 根本走不到。
+     *
+     *   现在提到 B 的旁边 —— 语音是"按住说话"，它不该依赖任何别的状态。
+     *   只认**边沿**：按住期间反复进 voice_begin 会把录到一半的缓冲 reset 掉。
+     *   `held` 也要算进去：ZL 按住不放时 down 只有第一帧有。 */
+    if ((down | held) & KEY_ZL) {
+        bool zl_now  = true;
+        bool zl_edge = !g_zl_prev;
+
+        g_zl_prev = zl_now;
+        if (zl_edge)
+            voice_begin();          /* 返回 void；成功/失败它自己设状态行 */
+        /* ★★ 按住期间**必须自己搬采样**（2026-10-24 修）。
+         *
+         *   这一句 return 挡住了函数末尾那段 voice_pump()，于是按住 ZL
+         *   期间一个采样都没搬进来：松手时 voice_ms()=0、bytes=0，
+         *   被判成"太短，请再说一遍"，而用户明明按了整整一秒多。
+         *   症状极具误导性 —— 屏上只有"太短"两个字，看起来像麦克风没收到声音；
+         *   而 micprobe（自己单开一轮采集）一切正常，于是很容易得出
+         *   "模拟器麦克风不行"的错误结论。两条路互不替证，正是这个道理。
+         *
+         *   这个 bug 是 2026-10-23「把 ZL 提到最前面」时带出来的：
+         *   原来只在**边沿那一帧** return，按住期间会落到函数末尾的
+         *   pump 那里；改成"按住期间每帧都 return"之后，pump 就永远轮不到。
+         *   教训：为了让某个键"不被别人抢"而提前 return，就得把它
+         *   自己那份每帧工作一并搬进来 —— 否则挡掉的不只是别的键。 */
+        if (g_rec) {
+            voice_pump();
+            if (voice_full())
+                voice_finish();
+        }
+        return;                     /* 按住期间每帧都停在这里，别往下走 */
+    } else if (g_zl_prev) {
+        g_zl_prev = false;
+        voice_finish();             /* 松手：收尾并发识别 */
+        return;
+    }
+
+    /* ★ 摇杆 = 上屏滚动（见 chat_stick_scroll 上方那段）。
+     *   放在这里（ZL 之后、各面板之前）的理由：
+     *     ① ZL 是语音，按住期间每帧都 return —— 摇杆不该抢它的帧；
+     *     ② 面板格（键盘/项目/文件/浏览）要自己吃上下键，摇杆在那些格
+     *        里不该动上屏，所以判在 g_tab == 0 之前但**只对第 0 格与
+     *        键盘格生效**（那两格看对话最多）。
+     *   键盘展开时不生效：那时整屏是候选字，滚动上屏没有意义。 */
+    if (!dockui_ime_active() && g_tab <= 1)
+        chat_stick_scroll();
+
+    /* ★★ 上一帧按了发送：占位消息已经画出来了，现在才真的发请求。
+     *
+     *   ★ 2026-10-24：这一段**从"输入框视图"尾部搬到这里**（第 0 格与
+     *   面板格的分支之前）。原先它在函数很靠后的位置，而那两个分支都以
+     *   `return` 结尾 —— 于是从键盘格发出的消息，g_pending 永远等不到
+     *   处理：占位气泡画在屏上、请求一个字节都没出去，而且**没有任何报错**。
+     *   现象是"按了发送，屏上多了一条'正在想…'，然后就一直想下去"。
+     *
+     *   这个 bug 只在"发送入口不在第 0 格"之后才可能出现 —— 所以它不是
+     *   老代码的错，是搬动键位时带出来的。教训：凡是 `if (x) { ...; return; }`
+     *   的分支，后面挂的收尾逻辑都要重新问一遍"还有没有别的路能到这里"。
+     */
+    if (g_pending) {
+        g_pending = false;
+        do_real_send();
+        /* 回复已经画出来了。这条回复里如果带着动作，现在才推确认屏 ——
+         * 放在这里的理由：do_real_send 是阻塞的，在里面 push 会把刚画好的
+         * 回复盖过去，用户还没看清 AI 说了什么就被要求做决定。 */
+        if (g_action_ready) {
+            g_action_ready = false;
+            app_push(SCREEN_CONFIRM);
+        }
+        return;
+    }
+
+    /* ★ 第 0 格（选项）：点某一行 = 切一格。
+     *   放在滑轨判定**之后** —— 滑轨压在选项行上方，点滑轨要优先切格。 */
+    if (g_tab == 0) {
+        int tx, ty;
+        if (app_touch_down(&tx, &ty)) {
+            dockui_touch_opt(tx, ty);
+            return;
+        }
+        /* ★★ **LEFT/RIGHT 不能交给 dockui_keys_opt**（2026-10-24 修）。
+         *
+         *   dockui_keys_opt 里 LEFT/RIGHT 的语义是"把当前行的值减/加一档"，
+         *   而用户定的分工是"左右切滑轨那五格"（见下方 KEY_LEFT/KEY_RIGHT
+         *   那段的注释）。这两件事撞在一起时，**后者必须赢** ——
+         *   因为紧接着的 return 挡在切格代码前面：左右被吃掉，人却看到
+         *   画面变了（某一行的值少了一档），看着像"切了格"，其实一直
+         *   停在第 0 格。
+         *
+         *   这个坑的代价在验收里非常具体：趟 7 的"←→ 切格"判据**假通过**
+         *   ——它只比对"底屏变了"，而改值也会让底屏变。于是一路绿灯，
+         *   直到有人去量"页脚为什么从不轮播"才发现人根本没离开过第 0 格。
+         *
+         *   顺带把文案也说通了：这一格自己的页脚 S0963 写的就是
+         *   「[←→] 切格  [↑↓] 选行  [A] 动作  [B] 返回」——
+         *   屏上说的和按键做的本来就该是同一件事。
+         *
+         *   A 仍归选项面板（"动作"= 把这一行的值换下一档）。
+         *   UP/DOWN 也仍归它（选行）。 */
+        if (down & (KEY_UP | KEY_DOWN)) {
+            dockui_keys_opt(down);
+            return;
+        }
+        if (down & KEY_A) {
+            dockui_keys_opt(down);
+            return;
         }
     }
 
@@ -2428,14 +2907,46 @@ static void chat_handle(u32 down, u32 held)
                 return;
             }
             dockui_touch(g_tab - 1, tx, ty);
+            /* 触摸「送到对话」同样只登记、由本屏发（见按键那段的说明）。
+             * ⚠️ 这一句不能省：点了按钮却要再按一下 Y 才发，
+             *   用户会认定"这个按钮是坏的"。 */
+            if (dockui_take_send())
+                do_send();
             return;
         }
-        if (down & KEY_B) {
-            g_tab = 0;
+        /* ★ B 不再在这里处理 —— 它已经在 chat_handle 开头统一退屏。
+         *   原先这里 `g_tab = 0; return;` 只收起面板不退屏，
+         *   是"按 B 出不去"的第二个原因。 */
+        /* ★★ ←/→ 不交给面板（2026-10-24 修）：它们是"切滑轨那五格"。
+         *
+         *   这条 return 原先挡在切格代码前面，于是**进了键盘格就再也
+         *   按不回来** —— 左右被面板吃掉，屏幕没有任何反应（面板里
+         *   本来就不用左右）。表现是"十字键只能往一个方向走"，
+         *   而第 0 格那边（见上）同样吞左右，两头一堵，人就锁在原地。
+         *
+         *   唯一的例外是项目页的"挑模型"子状态（g_pick >= 0）：
+         *   那里 ←/→ 是"换一家的下一把"，是个模态。这时候让位给切格，
+         *   挑到一半的界面会直接消失，用户会以为自己点错了什么。
+         *   所以用 dockui_wants_lr() 问一句，而不是在这里猜。 */
+        /* ★ SELECT 在**任何格子**都换短语（见 chat_fill_phrase 的注释）。
+         *   必须问一句面板要不要它：项目格的 SELECT 是"删掉这个任务"，
+         *   抢过来就会变成"想删任务却把输入框填满了"，而且删不掉。 */
+        if ((down & KEY_SELECT) && !dockui_wants_select()) {
+            chat_fill_phrase();
             return;
         }
-        dockui_keys(g_tab - 1, down);
-        return;
+        if (!(down & (KEY_LEFT | KEY_RIGHT)) || dockui_wants_lr()) {
+            dockui_keys(g_tab - 1, down);
+            /* ★ 面板可能登记了"发送"（键盘格按 Y / 点「送到对话」）。
+             *   必须在这一帧就取走并发出去：面板自己不知道怎么发 ——
+             *   它没有 g_pending、不会画占位、也不认识 chat_ready()。
+             *   放在这里而不是面板里回调，是为了让"发送只有一条路"
+             *   （do_send），否则"两条发送路径行为不一致"迟早会出问题。 */
+            if (dockui_take_send())
+                do_send();
+            return;
+        }
+        /* 落到下面那条统一的 ←/→ 切格处理 */
     }
 
     /* 语音：**先于一切**处理。
@@ -2456,20 +2967,6 @@ static void chat_handle(u32 down, u32 held)
          * 否则说话中途一停顿就被误停、要重录。 */
         if (voice_full())
             voice_finish();
-    }
-
-    /* 上一帧按了发送：占位消息已经画出来了，现在才真的发请求 */
-    if (g_pending) {
-        g_pending = false;
-        do_real_send();
-        /* 回复已经画出来了。这条回复里如果带着动作，现在才推确认屏 ——
-         * 放在这里的理由：do_real_send 是阻塞的，在里面 push 会把刚画好的
-         * 回复盖过去，用户还没看清 AI 说了什么就被要求做决定。 */
-        if (g_action_ready) {
-            g_action_ready = false;
-            app_push(SCREEN_CONFIRM);
-        }
-        return;
     }
 
     /* ── 环弹窗的模态吞键 ────────────────────────────────────────
@@ -2542,49 +3039,33 @@ static void chat_handle(u32 down, u32 held)
          *   莫名开始录音，而屏上没有任何按钮提示。 */
     }
 
-    /* ZL = 按住说话。全局键位只有 START（退出）和 ZR（手动截图），
-     * 所以 ZL 是空的；而 R 在这个屏已经给了"改当前短语"，不能挪。
-     * 只认**边沿**：按住期间反复进不了 voice_begin，
-     * 否则每一帧都会 reset 录到一半的缓冲。 */
-    {
-        bool zl_now  = ((down | held) & KEY_ZL) != 0;
-        bool zl_edge = zl_now != g_zl_prev;
-
-        g_zl_prev = zl_now;
-        if (zl_edge) {
-            if (zl_now) voice_begin();
-            else        voice_finish();
-            return;
-        }
-    }
-
     if (down & KEY_SELECT) {
-        int n = phrases_count();
-
-        if (n <= 0) {
-            app_status_set(S(S0173));
-            return;
-        }
-        /* 列表长度可能变小（用户按 R 删掉了一条），所以每次都夹一次 ——
-         * 只靠 %n 也能防越界，但那样删到只剩一条时会停在"永远是第 0 条"，
-         * 再按 SELECT 换不动，看着像卡了。夹一次就回到轮换的语义。 */
-        if (g_qp < 0 || g_qp >= n)
-            g_qp = 0;
-
-        g_qp_last = g_qp;
-        snprintf(g_input, CHAT_TEXT, "%s", phrases_at(g_qp_last));
-        g_qp = (g_qp_last + 1) % n;
-        app_status_set(S(S0174));
+        chat_fill_phrase();
         return;
     }
-    /* R = 改刚才那条
-     * L = 导出全部对话到卡上 */
-    if (down & KEY_R) {
-        edit_phrase();
-        return;
-    }
+    /* ★★ 2026-10-23 用户要求：「上面那个滑轨改成 L2 键，可以移动，移动光标」。
+     *
+     *   也就是 L / R 两个肩键用来**切滑轨那五格**（选项/键盘/项目/文件/浏览），
+     *   不必再伸手指去点屏幕。
+     *
+     *   代价：这两个键原来绑着「R = 改当前短语」「L = 导出全部对话」。
+     *   **功能没删，只是暂时没有快捷键入口**（函数都还在，见下方注释）。
+     *   下一轮要补的话，最合适的位置是「更多」菜单里加两项 ——
+     *   它们是低频动作，不该占着最顺手的肩键。
+     *
+     *   注意用 g_tab 的**环形**移动：滑轨是 5 格，从第 0 格按 L 要绕到第 4 格。 */
     if (down & KEY_L) {
-        export_history();
+        g_tab = (g_tab + CHAT_RAIL_N - 1) % CHAT_RAIL_N;
+        if (g_tab > 0)
+            dockui_init();
+        app_note("chat: rail(L) -> %d", g_tab);
+        return;
+    }
+    if (down & KEY_R) {
+        g_tab = (g_tab + 1) % CHAT_RAIL_N;
+        if (g_tab > 0)
+            dockui_init();
+        app_note("chat: rail(R) -> %d", g_tab);
         return;
     }
     if (down & KEY_Y) {
@@ -2606,40 +3087,63 @@ static void chat_handle(u32 down, u32 held)
         do_send();
         return;
     }
-    /* 左右 = 翻"展开哪一条的思考"。这两个键在对话屏一直是空的，
-     * 而上下已经给了滚动 —— 滚动是这里最要紧的动作，不能让位。 */
-    if (down & (KEY_LEFT | KEY_RIGHT)) {
-        think_step((down & KEY_RIGHT) ? +1 : -1);
+    /* ★★ 2026-10-23 用户定的分工：「十字键控制下屏内容，摇杆上下控制上屏文字」。
+     *
+     *   **左/右** = 切下屏滑轨（5 格环形）。原来这两个键是"翻哪一条的思考"，
+     *   现在整条滑轨都交给十字键，L/R 就能还回它们原本抢走的那两个活
+     *   （改短语 / 导出对话，见 BACKLOG）。
+     *
+     *   **上/下** = 下屏当前格里的行光标。第 0 格（选项）已有自己的
+     *   dockui_keys_opt；面板格交给 dockui_keys 的 KEY_UP/DOWN 分支 ——
+     *   它跟触摸点行是**同一份** g_sel，所以"推十字键"和"点屏幕"永远一致。
+     *
+     *   ⚠️ 上屏滚动的快捷键**删掉**了：现在只有摇杆能滚（见 chat_stick_scroll）。
+     *      留着快捷键的话，同一件事有两个入口，而用户刚被要求"分工"，
+     *      再留一条暗路就等于没分工。
+     */
+    if (down & KEY_LEFT) {
+        g_tab = (g_tab + CHAT_RAIL_N - 1) % CHAT_RAIL_N;
+        if (g_tab == 2)
+            dockui_init();          /* 项目格：重读任务表，和 L 键那条路一致 */
+        /* 记一行：验收要能证明"十字键真的切了格"。
+         * 只看底屏变了是不够的 —— 在第 0 格里改某一行的值，底屏也会变，
+         * 而人还停在第 0 格（2026-10-24 趟 7 就是这样假通过的）。 */
+        app_note("chat: dpad(L) -> %d", g_tab);
         return;
     }
-    if (down & KEY_UP) {
-        if (g_scroll > 0) --g_scroll;
+    if (down & KEY_RIGHT) {
+        g_tab = (g_tab + 1) % CHAT_RAIL_N;
+        if (g_tab == 2)
+            dockui_init();
+        app_note("chat: dpad(R) -> %d", g_tab);
         return;
     }
-    if (down & KEY_DOWN) {
-        if (g_scroll + 1 < g_count) ++g_scroll;
+    /* 上下交给下屏的当前格。第 0 格与面板格各有各的处理，这里统一转交 ——
+     * 好处是"十字键改的是下屏"这件事只有这一处，不会再有人另开一条链。 */
+    if (down & (KEY_UP | KEY_DOWN)) {
+        if (g_tab == 0)
+            dockui_keys_opt(down);
+        else
+            dockui_keys(g_tab - 1, down);
         return;
     }
-    if (down & KEY_B) {
-        /* 离开这一屏时不能把"正录着"带进去：别的屏的 handle 里
-         * 没有 voice_pump，采样会一路涨到 5 秒上限才停，
-         * 而界面上一句提示都没有 —— 用户会以为程序卡了。 */
-        if (g_rec || g_asr_armed) {
-            g_rec       = false;
-            g_asr_armed = false;
-            voice_stop();
-            app_note("voice: cancelled by leaving screen");
-        }
-        app_pop();
-        return;
-    }
+    /* B 已上移到函数开头统一处理（见那里的长注释）。 */
+}
+
+/* 退出对话屏：把键盘格绑着的输入框解掉。
+ * 不解绑 = 面板还指着一个"可能已经不是输入框"的地址，
+ * 下次谁在别的屏里开键盘格，字就写进了对话屏的静态缓冲里，
+ * 而那个屏自己什么都看不见。 */
+static void chat_leave(void)
+{
+    dockui_bind_text(NULL, 0);
 }
 
 const Screen g_screen_chat = {
     .id            = SCREEN_CHAT,
     .name          = "SCREEN_CHAT",
     .enter         = chat_enter,
-    .leave         = NULL,
+    .leave         = chat_leave,
     .render_top    = render_top,
     .render_bottom = render_bottom,
     .handle        = chat_handle,
