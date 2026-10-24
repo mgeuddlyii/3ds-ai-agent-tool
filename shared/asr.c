@@ -79,6 +79,38 @@ static const AsrDef kAsrTable[] = {
         "whisper-1",
         "zh",
     },
+    /* ★★ 海外那家（2026-10-24 用户要求：「中文用国内、英文用国外」）。
+     *
+     *   为什么是 Groq 而不是 OpenAI：**api.openai.com 在本机 TCP 直接超时**
+     *   （同一时刻 api.siliconflow.cn 0.35s、api.groq.com 0.42s 全通）。
+     *   换一家更好的写法没有意义 —— 连不上就是连不上。
+     *
+     *   为什么 Groq 改动最小：它的语音接口是 **OpenAI 兼容**的
+     *   （同一个 multipart 字段名、同一个 `{"text":...}` 响应），
+     *   所以 multipart 拼装、响应解析**一行都不用改**，只多一行表项。
+     *   Deepgram / AssemblyAI 虽然也通，但它们要另写请求与解析
+     *   （后者还是异步的，要轮询），为"换一家"付出那份代价不值得。
+     *
+     *   ⚠️ Groq **要自己的 Key**（免费注册 console.groq.com）。免费档实测够用：
+     *   20 次/分钟、2000 次/天、每天 8 小时音频，不要信用卡。
+     *   内置那把是硅基流动的，Groq 不认 —— 没配 `key_groq=` 时回退 siliconflow
+     *   （见 asr_current）：宁可"用回国内那家但能用"，也不要"选了 Groq、一按就说没 Key"。
+     *
+     *   ★★ 2026-10-24 用户拍板：**中文也不再用硅基流动**，中英一律走这家。
+     *   所以这里 lang 给 NULL（不传 language 字段）—— 语言只决定界面文字，
+     *   不决定你说什么话（中文界面夹英文很常见）；5 秒短句让 Whisper 自己检测
+     *   就够，按界面语言锁死反而更差。实测中文 CER 约 7.5%（短句），
+     *   与国内最好那档只差不到 1 个点，而它是唯一真·永久免费的。
+     *
+     *   模型用 whisper-large-v3 而不是 -turbo：音频只有 5 秒，两者在这个长度上
+     *   都远快于上传耗时（真正的瓶颈是 3DS 的 28 KB/s 上行），
+     *   那就选更准、幻觉更少的那个（turbo 是蒸馏版，长音频 CER 差约 1.7 个点）。 */
+    {
+        "groq",
+        "https://api.groq.com/openai/v1/audio/transcriptions",
+        "whisper-large-v3",
+        NULL,               /* 不传 language：中英混说交给模型自己判 */
+    },
 };
 #define ASR_TABLE_N ((int)(sizeof kAsrTable / sizeof kAsrTable[0]))
 
@@ -88,7 +120,22 @@ static const AsrDef kAsrTable[] = {
 #define ASR_BOUNDARY "3dsAICONSOLEasr0"
 
 static char g_provider[24];              /* 空 = 用默认那家 */
-static char g_key[ASR_KEY_MAX];
+static char g_key[ASR_KEY_MAX];          /* **当前生效**的那把（发送时用它） */
+
+/* ★ 两把 Key 分开存（2026-10-24）。
+ *
+ *   原来只有一个 g_key，它同时承担"用户覆盖值"和"当前生效值"两个角色 ——
+ *   在只有一家服务商时没问题。但"中文走国内、英文走海外"要**同时**记住两把，
+ *   一个变量装不下：切到 groq 时把 g_key 改成 groq 的，再切回中文就发现
+ *   硅基那把不见了（表现为"中文语音突然说没配 Key"）。
+ *
+ *   所以拆成三个：
+ *     g_key_cfg  —— asr.txt 里 `key=` 给的那把（空 = 没给）
+ *     g_key_groq —— asr.txt 里 `key_groq= gsk_...`（空 = 没配海外）
+ *     g_key      —— 派生值：按当前服务商挑上面某一把（或内置那把）
+ *   只有 g_key 会进请求头，另外两个是配置来源。 */
+static char g_key_cfg[ASR_KEY_MAX];
+static char g_key_groq[ASR_KEY_MAX];
 
 /* ---- 请求体缓冲 ----
  * 容量必须按 **VOICE_CAP_BYTES（满 5 秒录音）** 算，不能拍脑袋给几 KB：
@@ -121,22 +168,72 @@ static const char *asr_boundary(void) { return ASR_BOUNDARY; }
 void asr_reset(void)
 {
     g_provider[0] = '\0';
+    g_key_cfg[0]  = '\0';
+    g_key_groq[0] = '\0';
     /* 先填内置 Key；asr.txt 若给了 key 会覆盖它（见 asr_load 的解析）。
      * 这样"没配文件"= 用内置（能用），"配了文件"= 用用户的（更安全）。 */
     snprintf(g_key, sizeof g_key, "%s", ASR_BUILTIN_KEY);
 }
 
-const AsrDef *asr_current(void)
+/* 按当前服务商，把"生效 Key"算出来（g_key 是派生值）。
+ *
+ * 每次发请求前都会调一次 —— 因为**界面语言可能在两次录音之间被改掉**
+ * （用户在设置屏切了语言），而"用哪一家"是跟着语言走的。不重算的话
+ * 会出现"切了英文还在用国内那家 / 切回中文却拿着 groq 的 Key"。 */
+static void asr_apply_key(void)
+{
+    const AsrDef *d = asr_current();
+    const char *k;
+
+    if (strcmp(d->name, "groq") == 0) {
+        /* 海外那家**必须**用它自己的 Key —— 内置那把是硅基流动的，它不认。
+         * 没配就给空串：上层会老实说"没配语音 Key"，比拿错 Key 去换一个
+         * 401 强得多（401 会把人引去"检查 Key 对不对"，而问题在"根本没配"）。 */
+        k = g_key_groq;
+    } else {
+        k = g_key_cfg[0] ? g_key_cfg : ASR_BUILTIN_KEY;
+    }
+    if (strcmp(g_key, k) != 0)
+        snprintf(g_key, sizeof g_key, "%s", k);
+}
+
+/* 按名字查表；找不到返回 NULL */
+static const AsrDef *asr_find(const char *name)
 {
     for (int i = 0; i < ASR_TABLE_N; ++i) {
-        if (strcmp(g_provider, kAsrTable[i].name) == 0)
+        if (strcmp(name, kAsrTable[i].name) == 0)
             return &kAsrTable[i];
     }
-    for (int i = 0; i < ASR_TABLE_N; ++i) {
-        if (strcmp(kAsrTable[i].name, ASR_DEFAULT_NAME) == 0)
-            return &kAsrTable[i];
+    return NULL;
+}
+
+const AsrDef *asr_current(void)
+{
+    /* 1) asr.txt 显式写了 provider → 就是它（老行为，一个字节都不变） */
+    if (g_provider[0]) {
+        const AsrDef *d = asr_find(g_provider);
+        if (d)
+            return d;
     }
-    return &kAsrTable[0];
+
+    /* 2) 没写 → **有 Groq 的 Key 就走 Groq**（中英一视同仁）。
+     *
+     *    ★ 2026-10-24 用户拍板：「后面中文也不要用硅基流动了」。
+     *    所以不再按界面语言分流 —— 语言只决定界面文字，不决定你说什么话。
+     *
+     *    ⚠️ 但必须**先检查 Key**。Groq 没有内置 Key（内置那把是硅基的），
+     *    没配 `key_groq=` 就选 Groq 等于"一按 ZL 就报没配 Key"；
+     *    硅基那把是多语言的、中文英文都能认 —— 宁可绕远，也不要"看起来坏了"。 */
+    if (g_key_groq[0]) {
+        const AsrDef *d = asr_find("groq");
+        if (d)
+            return d;
+    }
+
+    {
+        const AsrDef *d = asr_find(ASR_DEFAULT_NAME);
+        return d ? d : &kAsrTable[0];
+    }
 }
 
 const char *asr_key(void) { return g_key; }
@@ -158,9 +255,12 @@ bool asr_set(const char *provider, const char *key)
         snprintf(g_provider, sizeof g_provider, "%s", provider);
     else
         g_provider[0] = '\0';
-    g_key[0] = '\0';
+    /* 存进"配置源"，再由 asr_apply_key 算出真正生效的那把 ——
+     * 直接写 g_key 的话，切到 groq 再切回来就丢了硅基这把。 */
+    g_key_cfg[0] = '\0';
     if (key)
-        snprintf(g_key, sizeof g_key, "%s", key);
+        snprintf(g_key_cfg, sizeof g_key_cfg, "%s", key);
+    asr_apply_key();
     return true;
 }
 
@@ -223,6 +323,11 @@ bool asr_load_file(const char *path)
             snprintf(lp, sizeof lp, "%s", val);
         else if (strcmp(p, "key") == 0)
             snprintf(lk, sizeof lk, "%s", val);
+        /* 海外那家的 Key（2026-10-24）。单独一个键，因为它和上面那把
+         * **不能互相顶替**：一把硅基流动、一把 Groq，各自只认自己的。
+         * 写在同一行（`key=`）会让中文和英文里必有一边用错 Key。 */
+        else if (strcmp(p, "key_groq") == 0)
+            snprintf(g_key_groq, sizeof g_key_groq, "%s", val);
         /* 别的键一律忽略：这个文件是给人手敲的，
          * 写坏一行不该让整个语音功能跟着哑掉。 */
     }
@@ -462,6 +567,12 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
 
     memset(out, 0, sizeof *out);
     out->http  = -1;
+
+    /* ★ 发之前重算一次生效 Key（2026-10-24）。
+     *   "用哪一家"跟着界面语言走，而语言可能在上次录音之后被改过
+     *   （用户在设置屏切了语言），所以不能只在 asr_set 那一刻算一次。 */
+    asr_apply_key();
+    d = asr_current();          /* 后面的兜底与文案都要知道"当前是哪一家" */
     out->bytes = (int)bytes;
 
     if (!pcm || bytes < 2) {
@@ -497,8 +608,19 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
      *   空就补回来。这不是掩盖 bug，是把底线焊死；真要追责，
      *   下面那条 app_note 会把"补过几次"记进 status.txt。 */
     if (!g_key[0]) {
-        asr_reset();
-        g_key_refilled++;
+        /* ★ 只有"有内置 Key 的那家"才能补（2026-10-24 修）。
+         *
+         *   Groq 没有内置 Key，它的空是**正确状态**（用户没配 key_groq）。
+         *   以前这里不分服务商地 asr_reset()，等于把内置的硅基 Key 塞进 g_key，
+         *   然后拿硅基的凭据去请求 Groq —— 服务端回 403，屏上又写"Key 被拒"，
+         *   把人往"换 Key"上引，而真因是"这家根本没配 Key"。
+         *
+         *   另外 asr_reset() 会连 g_key_cfg / g_key_groq 一起清空 ——
+         *   补一次就把用户配的 Key 忘了。所以只补生效值，不动配置源。 */
+        if (!d || strcmp(d->name, "groq") != 0) {
+            snprintf(g_key, sizeof g_key, "%s", ASR_BUILTIN_KEY);
+            g_key_refilled++;
+        }
     }
 
     if (!g_key[0]) {
@@ -511,9 +633,13 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
          * ⚠️ out->err 只有 ASR_ERR_MAX(96) 字节，**写完要数字节**：
          *   超了 snprintf 会截断，而半截提示比"没连上"更难懂。
          *   本句 UTF-8 实测 83 字节（中文 3 字节/字），留 13 字节余量。 */
-        snprintf(out->err, sizeof out->err,
-                 "没配语音 Key：建 SD:/3ds/aiconsole/asr.txt"
-                 "（provider=siliconflow + key=…）");
+        if (d && strcmp(d->name, "groq") == 0)
+            snprintf(out->err, sizeof out->err,
+                     "没配 Groq 语音 Key：asr.txt 加 key_groq=gsk_…");
+        else
+            snprintf(out->err, sizeof out->err,
+                     "没配语音 Key：建 SD:/3ds/aiconsole/asr.txt"
+                     "（provider=siliconflow + key=…）");
         return;
     }
 
@@ -603,10 +729,15 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
          *   服务端几乎总会回一句人能读的 JSON（{"code":...,"message":"..."}），
          *   那比我们猜一句有用得多。 */
         if (http == 401 || http == 403) {
+            /* ⚠️ out->err 只有 96 字节。原来那句（"…写一行 key=你的Key（硅基流动）
+             *   覆盖内置 Key"）展开后 120 字节以上，**每次都被截成半句** ——
+             *   用户看到的就是"siliconflow 拒绝了 Key（HTTP 401）。可在 SD:/3ds/ai"。
+             *   现在压短，并给出**当前这一家**该写哪个键。 */
             snprintf(out->err, sizeof out->err,
-                     "%s 拒绝了 Key（HTTP %ld）。可在 SD:/3ds/aiconsole/asr.txt "
-                     "写一行 key=你的Key（硅基流动）覆盖内置 Key",
-                     nm, http);
+                     "%s 拒绝了 Key（HTTP %ld）。asr.txt 写 %s",
+                     nm, http,
+                     strcmp(nm, "groq") == 0 ? "key_groq=你的Key"
+                                             : "key=你的Key");
         } else {
             char detail[120];
             size_t n = g_resp_len < sizeof detail - 1 ? g_resp_len : sizeof detail - 1;

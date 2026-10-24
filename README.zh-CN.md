@@ -227,12 +227,17 @@ key=sk-你的key
 
 在对话屏**按住 `ZL`** 说话，松开自动识别上屏。
 
-语音识别默认走硅基流动（`XingChenASR-V3.2-Ultra`，免费档）。
-想用自己的 Key，写 SD 卡 `SD:/3ds/aiconsole/asr.txt`：
+语音识别中英文都走 **Groq**（`whisper-large-v3`）—— 永久免费档、不用信用卡：
+20 次/分钟、2000 次/天、每天 8 小时音频。Groq 要自己的 Key，
+去 [console.groq.com/keys](https://console.groq.com/keys) 免费领一个，
+写进 SD 卡 `SD:/3ds/aiconsole/asr.txt`：
 
 ```
-sk-你自己的key
+key_groq=gsk_你的Key
 ```
+
+还没配 Groq Key 时会退回内置的硅基流动 Key，语音照样能用 ——
+但那只是过渡方案，不是推荐路径。
 
 ---
 

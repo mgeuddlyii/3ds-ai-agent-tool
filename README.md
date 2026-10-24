@@ -243,12 +243,18 @@ script, no network involved. Good for seeing what the UI does.
 
 On the chat screen, **hold `ZL`** and speak. Release and it transcribes.
 
-Speech recognition defaults to SiliconFlow (`XingChenASR-V3.2-Ultra`, free tier).
-To use your own key, write `SD:/3ds/aiconsole/asr.txt`:
+Speech recognition runs on **Groq** (`whisper-large-v3`) for both Chinese and
+English — permanent free tier, no credit card: 20 requests/min, 2,000 requests/day,
+8 hours of audio/day. Groq needs its own key: grab one free at
+[console.groq.com/keys](https://console.groq.com/keys), then write
+`SD:/3ds/aiconsole/asr.txt`:
 
 ```
-sk-your-own-key
+key_groq=gsk_your_key_here
 ```
+
+No Groq key yet? It falls back to the built-in SiliconFlow key, so voice input
+works out of the box — treat that as a stopgap, not the recommended path.
 
 ---
 
