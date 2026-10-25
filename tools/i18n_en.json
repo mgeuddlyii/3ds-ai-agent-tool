@@ -970,5 +970,10 @@
   "S0969": "Package",
   "S0970": "Already up to date.",
   "S0971": "[A] Check   [B] Back",
-  "S0972": "[A] Choose   [B] Back"
+  "S0972": "[A] Choose   [B] Back",
+  "S0973": "Content packs",
+  "S0974": "[A] Go   [Y] Rescan   [L/R] App",
+  "S0975": "[L/R] Content packs",
+  "S0976": "[Up/Dn] Pick [Y] Rescan [L/R] App",
+  "S0977": "[A] Go [Y] Rescan [L/R] App"
 }

@@ -30,7 +30,6 @@ typedef enum {
     SCREEN_LAB,          /* M1 验收页：字样 / 帧缓冲 / 字库巡检（回归用） */
     SCREEN_GUIDE,        /* 离线攻略：内嵌索引检索，命中段落原文直出 */
     SCREEN_LOCALES,      /* 已设区域：列出设过 locale 的游戏，可逐个撤销 */
-    SCREEN_CONTENT,      /* 内容更新：模型/攻略库/硬件知识库，逐条独立装或回滚 */
     SCREEN_DOUBAO,       /* 豆包登录：扫码把机器连到账号上（不用 API Key） */
     SCREEN_PROVIDERS,    /* 服务目录：列全部服务商，切换 + 按需配凭据 */
     SCREEN_KEYEDIT,      /* 录入凭据：在机器上直接敲 Key / 模型 / 网址 / 思考强度 */

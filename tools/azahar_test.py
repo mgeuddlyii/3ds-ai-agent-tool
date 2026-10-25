@@ -1781,6 +1781,24 @@ wait 2
 quit
 """
 
+# 软件更新屏的两页（2026-10-25）：程序(L/R)->内容包(L/R)->程序。
+# 内容包原来是一个独立屏「内容更新」，已并入本屏当第二页；
+# 这趟要证的正是"合并后它还能进、还能画、还能退回"。
+SCRIPT_CP = """\
+wait 20
+key R
+wait 8
+shot 1_prog_page
+key L
+wait 8
+shot 2_content_page
+key R
+wait 6
+shot 3_back_prog
+wait 2
+quit
+"""
+
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
     "B": dict(script=SCRIPT_B, shots=1, title="二次启动 · 跳过引导"),
@@ -1874,6 +1892,9 @@ PASSES = {
                title="远程更新下载 · 流式写盘 + sha256 + rename"),
     # ★ 2026-10-25：更新屏的按钮与进度（用户要求的"专门按钮 + 读条"）
     # ★ 2026-10-25：滑轨第 6 格「状态」——帧率/主循环占用/内存
+    # ★ 2026-10-25：软件更新的「内容包」页（原「内容更新」屏已并入）
+    "CP": dict(script=SCRIPT_CP, shots=3,
+               title="软件更新 · 程序/内容包 两页切换"),
     "ST": dict(script=SCRIPT_ST, shots=2,
                title="滑轨状态页 · CPU/帧耗时/内存三块图"),
     "CH": dict(script=SCRIPT_CH, shots=3,
@@ -3012,6 +3033,21 @@ def assertions(res):
                problems)
         expect(kv(st, "end_screen") == "SCREEN_UPDATE",
                "end_screen = SCREEN_UPDATE（没有误退回主界面）", problems)
+
+    elif tag == "CP":
+        print("-- 断言 CP：软件更新屏两页能来回切，内容包还能自己扫 --")
+        st = res["status"]
+        expect(len(res["shots"]) == res["expect"] * 2, "截图数 = 6", problems)
+        expect("ota: tab -> content" in st,
+               "L 切到了内容包页（status 有记录）", problems)
+        expect("ota: tab -> program" in st,
+               "R 又切回了程序页", problems)
+        # 面板一进去就重扫本地清单 —— 这是它唯一刷新"本机版本/有无备份"的时机。
+        # 没有这一行说明面板没被真正初始化（只是把上半屏盖住了）。
+        expect("content: scan avail=" in st,
+               "内容包面板初始化过（有 content: scan 记录）", problems)
+        expect(kv(st, "end_screen") == "SCREEN_UPDATE",
+               "end_screen = SCREEN_UPDATE（没有误退屏）", problems)
 
     elif tag == "ST":
         print("-- 断言 ST：滑轨第 6 格能进，三块图都画了 --")
@@ -4672,17 +4708,13 @@ def assertions(res):
                "命中的答案都含可辨认的关键片段%s"
                % ("" if not badc else " -> " + badc[0]), problems)
 
-        # ---- 判据 6（2026-10-25 改为**反向**断言）----
-        # 原判据是"内容更新屏必须被进过"，用来防"后端能装、界面却摸不到"。
-        # 但 2026-10-25 用户要求**把这个入口删掉**：它和「软件更新」只差两个字，
-        # 他自己就点错了一次，以为改版没生效。屏与 cupd 后端都保留，只是没有入口。
-        #
-        # 于是原判据从此**必然为假**（没人能进那屏），留着只会天天红。
-        # 换成反向断言：**不该再出现 content: scan**。哪天有人把它挂回菜单，
-        # 这条会立刻红 —— 提醒把 SCRIPT_W 里那段导航一起恢复，而不是默默一半。
+        # ---- 判据 6（2026-10-25 退休）----
+        # 原判据是"内容更新屏必须被进过"。但那屏后来被并进「软件更新」当第二页
+        # （L/R 切换），不再有独立入口 —— 这一趟也不去碰它，覆盖改由 **CP 趟**负责。
+        # 这里只留一条记录，不再断言；否则两个趟会互相打架。
         cscan = pick("content: scan", st.splitlines())
-        expect(cscan is None,
-               "内容更新屏已无入口（status 里不该再有 content: scan）", problems)
+        if cscan:
+            print("   （本趟意外进了内容包页：%s）" % cscan)
 
     elif tag == "Y":
         print("-- 断言 Y：语音输入链路（配置读取 + 拼装自检 + 没麦降级）--")

@@ -26,6 +26,7 @@
 #include "app.h"
 #include "ota.h"
 #include "widgets.h"
+#include "content_panel.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -40,6 +41,15 @@ static OtaManifest g_man;      /* 卡上那份 */
  * 线上下载完还要回到本地那份去校验/安装，覆盖了就没法核对。 */
 static bool        g_online;
 static OtaManifest g_remote;
+
+/* ★ 2026-10-25：本屏现在有**两页**。
+ *   0 = 程序（联网升级，原来的内容）
+ *   1 = 内容包（原「内容更新」屏，整屏转发给 content_panel）
+ *
+ *   为什么不并列画在同一屏：两块都有自己的状态机（程序页有下载/校验进度，
+ *   内容包页有 5 行 × 装/退两种模式 × 确认），320×240 的下屏放不下两套按钮，
+ *   硬塞必然变成"按钮叠着、点到错的"。分页之后每页都有完整的一屏可用。 */
+static int      g_tab;
 
 static OtaState g_state;
 static char     g_detail[128];
@@ -101,6 +111,7 @@ static void update_enter(void)
     g_result[0] = '\0';
     g_busy      = BUSY_NONE;
     g_pct       = 0;
+    g_tab       = 0;          /* 每次进来都从「程序」页开始 */
 
     ota_scan_local_fast(&g_man, &g_state, g_detail, sizeof g_detail);
     app_status_set("%s", ota_state_text(g_state));
@@ -113,6 +124,12 @@ static void update_enter(void)
 static void render_top(void)
 {
     const float x = (float)W_TOP_MARGIN;
+
+    /* 内容包页：整屏交给面板（它自带页眉/页脚与全部坐标）。 */
+    if (g_tab == 1) {
+        cu_panel_render_top();
+        return;
+    }
     const float w = (float)W_TOP_USABLE;
     float y = (float)W_TOP_CONTENT_Y;
     char  buf[96];
@@ -196,7 +213,7 @@ static void render_top(void)
     w_top_footer(app_status(),
                  has_remote_update() ? S(S0879)
                : can_install()       ? S(S0193)
-               : "");
+               : S(S0975));      /* 「L/R 内容包」——页签提示，短句不挤按钮 */
 }
 
 /* --------------------------------------------------------------------------
@@ -211,6 +228,11 @@ static const Rect BTN_R = { 164, 148, 148, 38, 0 };
 static void render_bottom(void)
 {
     const float x = (float)W_BOT_MARGIN;
+
+    if (g_tab == 1) {
+        cu_panel_render_bottom();
+        return;
+    }
     const float w = (float)W_BOT_USABLE;
     float y = (float)W_BOT_CONTENT_Y;
     char  buf[96];
@@ -495,6 +517,31 @@ static void do_primary(void)
 
 static void update_handle(u32 down, u32 held)
 {
+    /* ---- 页签切换：L / R ---- */
+    if (g_tab == 1) {
+        if (down & (KEY_L | KEY_R)) {
+            g_tab = 0;
+            app_note("ota: tab -> program");
+            return;
+        }
+        /* 其余键全部转发给内容包面板。**L/R 已在这里截走**，
+         * 所以面板那边不会把肩键当成它自己的操作（它只认十字键）。 */
+        cu_panel_handle(down, held);
+        return;
+    }
+    if (down & (KEY_L | KEY_R)) {
+        /* 正在下载/校验时不许切页：切走了进度就没人看了，
+         * 而下载还在后台阻塞主循环 —— 用户会以为"卡住"。 */
+        if (g_busy) {
+            app_note("ota: tab switch ignored (busy)");
+            return;
+        }
+        g_tab = 1;
+        cu_panel_enter();
+        app_note("ota: tab -> content");
+        return;
+    }
+
     (void)held;
 
     /* 忙的时候只认"别乱按"：任何键都不启动第二个动作。
@@ -550,7 +597,8 @@ static void update_handle(u32 down, u32 held)
         }
     }
 
-    if (down & (KEY_LEFT | KEY_RIGHT | KEY_L | KEY_R)) {
+    /* 只剩十字键切焦点 —— L/R 已经改成页签了，别再抢。 */
+    if (down & (KEY_LEFT | KEY_RIGHT)) {
         g_focus = g_focus ? 0 : 1;
         return;
     }

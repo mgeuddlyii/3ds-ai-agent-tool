@@ -32,6 +32,7 @@
  */
 
 #include "screen.h"
+#include "content_panel.h"
 
 #include "app.h"
 #include "cupd.h"
@@ -234,7 +235,7 @@ static void rescan(void)
              cu_state_text(g_state));
 }
 
-static void content_enter(void)
+void cu_panel_enter(void)
 {
     g_sel  = 0;
     g_ask  = false;
@@ -249,7 +250,7 @@ static void content_enter(void)
  * 上屏：三类内容逐条列出，带版本与可执行状态
  * ----------------------------------------------------------------------- */
 
-static void render_top(void)
+void cu_panel_render_top(void)
 {
     const float x = (float)W_TOP_MARGIN;
     const float w = (float)W_TOP_USABLE;
@@ -257,7 +258,9 @@ static void render_top(void)
     char  line[96];
     RColor col;
 
-    w_top_header(S(S0277), g_state == CU_VERIFY_OK ? S(S0278) : S(S0279));
+    /* 标题用「内容包」而不是原来的「内容更新」：它现在是软件更新里的一个页，
+     * 「内容更新」这个名字会和「软件更新」在概念上打架（用户就为这个点错过）。 */
+    w_top_header(S(S0973), g_state == CU_VERIFY_OK ? S(S0278) : S(S0279));
 
     /* 整体状态**不单独占一行**：它与下面三行的状态列讲的是同一件事，
      * 单独写一遍就成了「卡上没有内容更新包」出现两次 ——
@@ -335,7 +338,7 @@ static const Rect CON_BTN_NO   = {  10, 150, 144, 36, 0 };
 static const Rect CON_BTN_YES  = { 166, 150, 144, 36, 0 };
 static const Rect CON_BTN_MAIN = {  10, 150, 200, 36, 0 };
 
-static void render_bottom(void)
+void cu_panel_render_bottom(void)
 {
     const float x = (float)W_BOT_MARGIN;
     const float w = (float)W_BOT_USABLE;
@@ -421,11 +424,15 @@ static void render_bottom(void)
              enabled ? W_BTN_PRIMARY : W_BTN_DISABLED);
     w_vbounds(186, W_BOT_CONTENT_B);
 
-    w_center((float)R_BOT_W / 2.0f, 192,
-             enabled ? S(S0292)
-                     : S(S0293),
-             w_c(C_SLOT_FAINT));
-    w_bot_footer(enabled ? S(S0294) : S(S0295));
+    /* ★ 2026-10-25：这里原来还有一行居中的键位提示（S0292/S0293），
+     *   和下面页脚现在带的那行**说的是同一批键**，屏上就是两行重复的提示。
+     *   页脚必须带「L/R 程序」（不然用户不知道怎么回程序页），
+     *   所以让这条居中的让位 —— 一个位置只说一遍。 */
+    /* 两个分支都要带「L/R 程序」：面板现在是软件更新的第二页，
+     * 没有这一句用户就只知道怎么操作内容包，不知道怎么回程序页。
+     * 原来禁用态用的是 S0295（只有 ↑↓/Y/B），进门就看到空状态的人
+     * 恰好最需要"怎么回去"这句提示。 */
+    w_bot_footer(enabled ? S(S0976) : S(S0977));
 }
 
 /* --------------------------------------------------------------------------
@@ -560,7 +567,7 @@ static void do_action(void)
     app_status_set("%s", cu_state_text(g_state));
 }
 
-static void content_handle(u32 down, u32 held)
+void cu_panel_handle(u32 down, u32 held)
 {
     (void)held;
 
@@ -659,12 +666,7 @@ static void content_handle(u32 down, u32 held)
     }
 }
 
-const Screen g_screen_content = {
-    .id            = SCREEN_CONTENT,
-    .name          = "SCREEN_CONTENT",
-    .enter         = content_enter,
-    .leave         = NULL,
-    .render_top    = render_top,
-    .render_bottom = render_bottom,
-    .handle        = content_handle,
-};
+/* ★ 2026-10-25：Screen 注册删掉了 —— 这屏不再是独立屏，
+ *   而是「软件更新」里的一个页（见 content_panel.h）。
+ *   删掉注册后 screen.h 的 SCREEN_CONTENT 枚举与 app.c 的表项也一起删，
+ *   否则表里会留一个指向不存在对象的空位。 */

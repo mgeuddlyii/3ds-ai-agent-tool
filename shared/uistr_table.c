@@ -985,6 +985,11 @@ static const char *const g_zh[] = {
     "已是最新版本",  /* S0970 */
     "[A] 检查更新   [B] 返回",  /* S0971 */
     "[←→] 选择   [A] 确认   [B] 返回",  /* S0972 */
+    "内容包",  /* S0973 */
+    "[A] 执行   [Y] 重扫   [L/R] 程序",  /* S0974 */
+    "[L/R] 内容包",  /* S0975 */
+    "[↑↓]选择 [Y]重扫 [L/R]程序",  /* S0976 */
+    "[A]执行 [Y]重扫 [L/R]程序",  /* S0977 */
 };
 
 static const char *const g_en[] = {
@@ -1015,7 +1020,7 @@ static const char *const g_en[] = {
     "%s is already in use; nothing changed",  /* S0025 */
     "Switched to %s",  /* S0026 */
     "Category %s has no implementation in this build (internal issue)",  /* S0027 */
-    "No offline content available (%s) - %s",  /* S0028 */
+    "No offline content available (%s) — %s",  /* S0028 */
     "Manifest has only %d entries; cannot fetch #%ld",  /* S0029 */
     "Name the provider to switch to",  /* S0030 */
     "No provider named %s",  /* S0031 */
@@ -1028,8 +1033,8 @@ static const char *const g_en[] = {
     "Setup skipped (launch #%d)",  /* S0038 */
     "Settings saved",  /* S0039 */
     "Type here",  /* S0040 */
-    "Cancelled - password not fully entered",  /* S0041 */
-    "Protected setting - waiting for password",  /* S0042 */
+    "Cancelled — password not fully entered",  /* S0041 */
+    "Protected setting — waiting for password",  /* S0042 */
     "No subfolder named %s",  /* S0043 */
     "(empty)",  /* S0044 */
     "%s does not exist yet (never created)",  /* S0045 */
@@ -1091,32 +1096,32 @@ static const char *const g_en[] = {
     "Thinking (%d chars) %s",  /* S0101 */
     "> press [Right] to expand",  /* S0102 */
     "No usable microphone on this machine (fine in the emulator)",  /* S0103 */
-    "Microphone unavailable - see status.txt",  /* S0104 */
+    "Microphone unavailable — see status.txt",  /* S0104 */
     "Listening… (release ZL or tap Voice again to stop)",  /* S0105 */
-    "Recording under 0.5 s - hold ZL, then speak",  /* S0106 */
+    "Recording under 0.5 s — hold ZL, then speak",  /* S0106 */
     "Recognising…",  /* S0107 */
-    "No audio captured - check the mic is not in use",  /* S0108 */
+    "No audio captured — check the mic is not in use",  /* S0108 */
     "%d chars heard, press A to send%s",  /* S0109 */
     "(input too long, truncated)",  /* S0110 */
-    "Nothing recognised - try again, slower",  /* S0111 */
-    "Connection failed - reason on the top screen",  /* S0112 */
-    "Key rejected (%ld) - reason on the top screen",  /* S0113 */
-    "Recognition failed - reason on the top screen",  /* S0114 */
-    "Usually too short, too quiet, or too noisy - move closer and repeat.",  /* S0115 */
+    "Nothing recognised — try again, slower",  /* S0111 */
+    "Connection failed — reason on the top screen",  /* S0112 */
+    "Key rejected (%ld) — reason on the top screen",  /* S0113 */
+    "Recognition failed — reason on the top screen",  /* S0114 */
+    "Usually too short, too quiet, or too noisy — move closer and repeat.",  /* S0115 */
     "Voice recognition failed: %s",  /* S0116 */
     "Unknown reason (details in status.txt on the card)",  /* S0117 */
-    "Empty input - press Y for the keyboard",  /* S0118 */
-    "No API key yet - press X to see how to get one",  /* S0119 */
+    "Empty input — press Y for the keyboard",  /* S0118 */
+    "No API key yet — press X to see how to get one",  /* S0119 */
     "Asking…",  /* S0120 */
-    "Offline demo - reply comes from a built-in script, no network",  /* S0121 */
+    "Offline demo — reply comes from a built-in script, no network",  /* S0121 */
     "Requesting (streaming)…",  /* S0122 */
     "Requesting…",  /* S0123 */
     "\n\n[Result OF LAST ACTION]\n%s\n",  /* S0124 */
-    "Offline demo done - %d chars%s",  /* S0125 */
-    " - streaming",  /* S0126 */
-    "HTTP %d - reply %d chars%s",  /* S0127 */
-    " - fell back to non-streaming",  /* S0128 */
-    "Send failed, HTTP %d - reason on the top screen",  /* S0129 */
+    "Offline demo done — %d chars%s",  /* S0125 */
+    " — streaming",  /* S0126 */
+    "HTTP %d — reply %d chars%s",  /* S0127 */
+    " — fell back to non-streaming",  /* S0128 */
+    "Send failed, HTTP %d — reason on the top screen",  /* S0129 */
     "%d chars entered",  /* S0130 */
     "Input cancelled",  /* S0131 */
     "No quick phrase to edit",  /* S0132 */
@@ -1124,20 +1129,20 @@ static const char *const g_en[] = {
     "Edit cancelled",  /* S0134 */
     "Saved phrase #%d",  /* S0135 */
     "Deleted phrase #%d",  /* S0136 */
-    "Save failed - SD card not writable",  /* S0137 */
+    "Save failed — SD card not writable",  /* S0137 */
     "No chat to export yet",  /* S0138 */
-    "Export failed - SD card not writable",  /* S0139 */
+    "Export failed — SD card not writable",  /* S0139 */
     "Exported %d messages to SD:/3ds/aiconsole/chat_*.txt",  /* S0140 */
     "No reasoning this round (turn on Thinking level to see it)",  /* S0141 */
     "Reasoning collapsed",  /* S0142 */
     "Expanded reasoning of this message (%d chars)",  /* S0143 */
     "Expanded reasoning of the latest message (%d chars)",  /* S0144 */
     "The record on the card was edited, or came from another version.)",  /* S0145 */
-    "Reply from the built-in script - press Y for the keyboard, or SELECT for a phrase.",  /* S0146 */
-    "Empty input - press Y for the keyboard, or SELECT for a phrase.",  /* S0147 */
+    "Reply from the built-in script — press Y for the keyboard, or SELECT for a phrase.",  /* S0146 */
+    "Empty input — press Y for the keyboard, or SELECT for a phrase.",  /* S0147 */
     "(Doubao needs no API key).",  /* S0148 */
     "Put the key in key.txt on the card, then press Y to import.",  /* S0149 */
-    "Offline demo - no key, no network",  /* S0150 */
+    "Offline demo — no key, no network",  /* S0150 */
     "Signed in",  /* S0151 */
     "Not signed in (press X to scan)",  /* S0152 */
     "Key read",  /* S0153 */
@@ -1178,7 +1183,7 @@ static const char *const g_en[] = {
     "(the model did not say; not verified before install)",  /* S0188 */
     "Checksum",  /* S0189 */
     "This app will not launch it for you; you have to tap it.",  /* S0190 */
-    "It would fail even if allowed - a .cia needs this app in CIA form.",  /* S0191 */
+    "It would fail even if allowed — a .cia needs this app in CIA form.",  /* S0191 */
     "After installing, you will find it in the Homebrew Launcher.",  /* S0192 */
     "Read the above before deciding",  /* S0193 */
     "Which game",  /* S0194 */
@@ -1234,7 +1239,7 @@ static const char *const g_en[] = {
     "If you approve, it really writes the file on the SD card.",  /* S0244 */
     "Decline",  /* S0245 */
     "Allow",  /* S0246 */
-    "Arrows to choose - decline by default - you decide",  /* S0247 */
+    "Arrows to choose — decline by default — you decide",  /* S0247 */
     "[A] Confirm choice   [B] Decline and go back",  /* S0248 */
     "Read; details come in the next chat turn",  /* S0249 */
     "Nothing was read (reason in the next turn)",  /* S0250 */
@@ -1290,13 +1295,13 @@ static const char *const g_en[] = {
     "Rolled back %d categories",  /* S0300 */
     "Rolled back %d, failed %d (last: %s)",  /* S0301 */
     "Nothing has ever been installed, so there is no backup to roll back to.",  /* S0302 */
-    "'%s' has no backup to roll back to - it was never updated.",  /* S0303 */
+    "'%s' has no backup to roll back to — it was never updated.",  /* S0303 */
     "'%s' is already the latest; nothing to install.",  /* S0304 */
     "Cannot install now: %s.",  /* S0305 */
     "Nothing to install.",  /* S0306 */
     "The signed-in state is the same.",  /* S0307 */
     "Scan with the **Douyin app** (the Doubao app cannot). This is QR #%d.",  /* S0308 */
-    "New QR in %u s - %s",  /* S0309 */
+    "New QR in %u s — %s",  /* S0309 */
     "Waiting for scan",  /* S0310 */
     "Sign in to Doubao by QR (use the Douyin app)",  /* S0311 */
     "Doubao",  /* S0312 */
@@ -1327,9 +1332,9 @@ static const char *const g_en[] = {
     "Fetching the QR code…",  /* S0337 */
     "Signed out (the cookie file was left on the card)",  /* S0338 */
     "The code is about to expire, getting a new one…",  /* S0339 */
-    "API key read - press X to see the setup guide again",  /* S0340 */
-    "No API key yet - press X to set one up",  /* S0341 */
-    "Ready - launch #%d",  /* S0342 */
+    "API key read — press X to see the setup guide again",  /* S0340 */
+    "No API key yet — press X to set one up",  /* S0341 */
+    "Ready — launch #%d",  /* S0342 */
     "Launch",  /* S0343 */
     "Confirmed; will not remind again",  /* S0344 */
     "Not confirmed; reminds every launch",  /* S0345 */
@@ -1340,18 +1345,18 @@ static const char *const g_en[] = {
     "Off",  /* S0350 */
     "AI",  /* S0351 */
     "%s (read back)",  /* S0352 */
-    "Not set - press X to set it up",  /* S0353 */
+    "Not set — press X to set it up",  /* S0353 */
     "%s (this session only)",  /* S0354 */
-    "%s - font %s - depth %d%%",  /* S0355 */
+    "%s — font %s — depth %d%%",  /* S0355 */
     "UI",  /* S0356 */
     "Launch #%d",  /* S0357 */
     "3DS AI Agent Tool",  /* S0358 */
     "NAND not backed up yet? Press Y to hide this reminder",  /* S0359 */
-    "Font: %d glyphs - %dx%d - baseline %d",  /* S0360 */
+    "Font: %d glyphs — %dx%d — baseline %d",  /* S0360 */
     "[L/R]Pick [A]Open [L]Settings [X]Key [R]Update [ZL]Guide",  /* S0361 */
     "Home",  /* S0362 */
     "Setup complete. Start chatting.",  /* S0363 */
-    "No AI set up yet - pick a provider in Providers.",  /* S0364 */
+    "No AI set up yet — pick a provider in Providers.",  /* S0364 */
     "Add an API key to chat online — or skip it and use the offline demo.",  /* S0365 */
     "Config path",  /* S0366 */
     "Chat",  /* S0367 */
@@ -1372,11 +1377,11 @@ static const char *const g_en[] = {
     "Thinking level",  /* S0382 */
     "Save and go back",  /* S0383 */
     "(use this provider's default)",  /* S0384 */
-    "Built-in URL - cannot change",  /* S0385 */
-    "(required - empty)",  /* S0386 */
-    "%d chars entered - not saved yet",  /* S0387 */
+    "Built-in URL — cannot change",  /* S0385 */
+    "(required — empty)",  /* S0386 */
+    "%d chars entered — not saved yet",  /* S0387 */
     "Empty = leave the key alone",  /* S0388 */
-    "%s - not adjustable for this provider",  /* S0389 */
+    "%s — not adjustable for this provider",  /* S0389 */
     "Write the config and store this key",  /* S0390 */
     "Write the config (leave the key alone)",  /* S0391 */
     "The built-in URLs of some providers are compiled in and cannot change.",  /* S0392 */
@@ -1405,7 +1410,7 @@ static const char *const g_en[] = {
     "A custom provider needs a URL, or the request has nowhere to go.",  /* S0415 */
     "Save failed: missing URL",  /* S0416 */
     "delete one in Key management first).",  /* S0417 */
-    "Config saved - key not stored",  /* S0418 */
+    "Config saved — key not stored",  /* S0418 */
     "Saved: config + key (%d keys)",  /* S0419 */
     "Config saved",  /* S0420 */
     "Enter credential",  /* S0421 */
@@ -1413,15 +1418,15 @@ static const char *const g_en[] = {
     "The key is written only after you press Save",  /* S0423 */
     "[A] Edit / Run     [B] Back (no save)",  /* S0424 */
     "The provider name in the config was unknown, so the default is back.",  /* S0425 */
-    "After entering, save on the last row - store holds %d keys",  /* S0426 */
+    "After entering, save on the last row — store holds %d keys",  /* S0426 */
     "Switched to %s",  /* S0427 */
     "Switch failed",  /* S0428 */
     "Deleted %s",  /* S0429 */
     "Delete failed",  /* S0430 */
     "Imported keys from key.txt (%d in total)",  /* S0431 */
-    "Import failed - key.txt is missing, empty, or the store is full",  /* S0432 */
-    "The store is empty - press L to type one, or Y to import",  /* S0433 */
-    "%d keys - in use: %s - %s",  /* S0434 */
+    "Import failed — key.txt is missing, empty, or the store is full",  /* S0432 */
+    "The store is empty — press L to type one, or Y to import",  /* S0433 */
+    "%d keys — in use: %s — %s",  /* S0434 */
     "Encrypted",  /* S0435 */
     "Not encrypted",  /* S0436 */
     "Key management",  /* S0437 */
@@ -1440,7 +1445,7 @@ static const char *const g_en[] = {
     "Import",  /* S0450 */
     "New",  /* S0451 */
     "[A]Switch [X]Delete [Y]Import [L]New",  /* S0452 */
-    "M1 Chinese rendering - samples",  /* S0453 */
+    "M1 Chinese rendering — samples",  /* S0453 */
     "M1 framebuffer diagnostics",  /* S0454 */
     "M1 font inspection",  /* S0455 */
     "Hello, I am an AI assistant running on a 3DS.",  /* S0456 */
@@ -1460,9 +1465,9 @@ static const char *const g_en[] = {
     "Full width",  /* S0470 */
     "Half width",  /* S0471 */
     "Page %d/%d   on this page %d chars   total %d chars   cursor %d",  /* S0472 */
-    "System self-test - press B to go back to Home",  /* S0473 */
+    "System self-test — press B to go back to Home",  /* S0473 */
     "[L/R] page  [arrows] cursor  [B] back to Home",  /* S0474 */
-    "M1 regression - how to use",  /* S0475 */
+    "M1 regression — how to use",  /* S0475 */
     "L / R       switch page (samples / diagnostics / font)",  /* S0476 */
     "Arrows      move the font cursor; it turns the page at the end",  /* S0477 */
     "X / Y       font previous / next page",  /* S0478 */
@@ -1488,17 +1493,17 @@ static const char *const g_en[] = {
     "Undo",  /* S0498 */
     "[A] Undo   [B] Cancel",  /* S0499 */
     "the system's default region language.",  /* S0500 */
-    "It affects only this one game and touches no system file - undoing is safe.",  /* S0501 */
+    "It affects only this one game and touches no system file — undoing is safe.",  /* S0501 */
     "[Up/Dn] Select  [A] Undo  [B] Back",  /* S0502 */
-    "Offline demo - no credential of any kind",  /* S0503 */
+    "Offline demo — no credential of any kind",  /* S0503 */
     "Signed in (by QR, %d cookies)",  /* S0504 */
-    "Not signed in - a scan is needed",  /* S0505 */
+    "Not signed in — a scan is needed",  /* S0505 */
     "Key set (%s)",  /* S0506 */
-    "No key - you need to set one up",  /* S0507 */
+    "No key — you need to set one up",  /* S0507 */
     "Providers (%d)",  /* S0508 */
     "Switched to %s. It has no credential yet; taking you to set it up…",  /* S0509 */
     "Switched to %s; back on the chat screen it is ready to use.",  /* S0510 */
-    "Providers - current = %s",  /* S0511 */
+    "Providers — current = %s",  /* S0511 */
     "Press A to switch to it first, then change the %s.",  /* S0512 */
     "Model changed to %s.",  /* S0513 */
     "Set the provider to custom.",  /* S0514 */
@@ -1508,7 +1513,7 @@ static const char *const g_en[] = {
     "URL changed (%d chars).",  /* S0518 */
     "Custom URL saved",  /* S0519 */
     "Pick one to use",  /* S0520 */
-    "The provider table is empty - that should never happen, the build is broken.",  /* S0521 */
+    "The provider table is empty — that should never happen, the build is broken.",  /* S0521 */
     "(%d in total, showing %d-%d)",  /* S0522 */
     "[Up/Dn] pick  [A] use  [Y] model  [X] URL",  /* S0523 */
     "No providers available.",  /* S0524 */
@@ -1537,7 +1542,7 @@ static const char *const g_en[] = {
     "Reminders",  /* S0547 */
     "Guardrails",  /* S0548 */
     "Diagnostics",  /* S0549 */
-    "Set - %d chars",  /* S0550 */
+    "Set — %d chars",  /* S0550 */
     "Not set",  /* S0551 */
     "Backed up; no reminder",  /* S0552 */
     "Reminds every launch",  /* S0553 */
@@ -1546,8 +1551,8 @@ static const char *const g_en[] = {
     "Locked (off by design)",  /* S0556 */
     "No limit",  /* S0557 */
     "%d",  /* S0558 */
-    "  - press A six times on this row",  /* S0559 */
-    "Settings - %s theme - each change saves at once",  /* S0560 */
+    "  — press A six times on this row",  /* S0559 */
+    "Settings — %s theme — each change saves at once",  /* S0560 */
     "Theme: %s (saved)",  /* S0561 */
     "Font size: %s (the current font has only one size)",  /* S0562 */
     "Depth: %d%% (stereo rendering is not on in this build)",  /* S0563 */
@@ -1555,7 +1560,7 @@ static const char *const g_en[] = {
     "NAND backup reminder: %s",  /* S0565 */
     "Check for updates on startup: %s",  /* S0566 */
     "Confirm before delete: on (recommended)",  /* S0567 */
-    "Confirm before delete: off - deletes run immediately",  /* S0568 */
+    "Confirm before delete: off — deletes run immediately",  /* S0568 */
     "Confirm before bulk: %s",  /* S0569 */
     "Write limit per action: none (not recommended)",  /* S0570 */
     "Write limit per action: %d KB",  /* S0571 */
@@ -1566,16 +1571,16 @@ static const char *const g_en[] = {
     "Detailed status file: %s",  /* S0576 */
     "What role do you want it to play? (empty = not set)",  /* S0577 */
     "Persona saved (%d bytes)",  /* S0578 */
-    "Persona cleared - the model uses its own default personality",  /* S0579 */
+    "Persona cleared — the model uses its own default personality",  /* S0579 */
     "The assistant persona is a piece of text; press A to edit it on the keyboard",  /* S0580 */
     "Thinking level = %s (saved)",  /* S0581 */
-    "Confirm-before-overwrite is a hard constraint - it guards the one operation you cannot undo",  /* S0582 */
+    "Confirm-before-overwrite is a hard constraint — it guards the one operation you cannot undo",  /* S0582 */
     "Already at %s",  /* S0583 */
-    "L4 and above need a password - press A six times on the 'Version' row, then enter it as prompted",  /* S0584 */
+    "L4 and above need a password — press A six times on the 'Version' row, then enter it as prompted",  /* S0584 */
     "Press Left once more to confirm dropping to %s (this loosens a gate)",  /* S0585 */
     "Safety level = %s (saved)",  /* S0586 */
     "Press A six times on this row to enter hidden settings",  /* S0587 */
-    "Locked - password holds the keys",  /* S0588 */
+    "Locked — password holds the keys",  /* S0588 */
     "[R] Cancel",  /* S0589 */
     "Unlocked until power off",  /* S0590 */
     "Password gate",  /* S0591 */
@@ -1600,7 +1605,7 @@ static const char *const g_en[] = {
     "Protected setting",  /* S0610 */
     "Enter password: Up Up Dn Dn Left Right Left Right B A",  /* S0611 */
     "%d / %d matched",  /* S0612 */
-    "This sequence is public, not a secret - it only proves",  /* S0613 */
+    "This sequence is public, not a secret — it only proves",  /* S0613 */
     "that you came here on purpose to unlock.",  /* S0614 */
     "The keys are taken over by the password",  /* S0615 */
     "A wrong entry starts over by itself; it never gets stuck.",  /* S0616 */
@@ -1609,11 +1614,11 @@ static const char *const g_en[] = {
     "Offline pack channel",  /* S0619 */
     "Current version",  /* S0620 */
     "New version",  /* S0621 */
-    "%d files - %d KB",  /* S0622 */
+    "%d files — %d KB",  /* S0622 */
     "Size",  /* S0623 */
     "Checksum",  /* S0624 */
     "No release notes for this version.",  /* S0625 */
-    "Download the whole pack on a PC and drop it in - the 3DS's old TLS may not reach today's sites.",  /* S0626 */
+    "Download the whole pack on a PC and drop it in — the 3DS's old TLS may not reach today's sites.",  /* S0626 */
     "Installed",  /* S0627 */
     "Confirm install",  /* S0628 */
     "Update",  /* S0629 */
@@ -1621,21 +1626,21 @@ static const char *const g_en[] = {
     "[A] Back   [Y] Check again",  /* S0631 */
     "Install this version?",  /* S0632 */
     "The package is checked again before installing. A mismatch cancels it.",  /* S0633 */
-    "[X] Notes - arrows to choose - decline by default",  /* S0634 */
+    "[X] Notes — arrows to choose — decline by default",  /* S0634 */
     "[A] Install   [X] Notes   [B] Back",  /* S0635 */
     "Install finished.",  /* S0636 */
     "Install failed.",  /* S0637 */
-    "%d lines - up/down to scroll",  /* S0638 */
+    "%d lines — up/down to scroll",  /* S0638 */
     "Nothing read",  /* S0639 */
     "Viewer",  /* S0640 */
     "HTML subset",  /* S0641 */
     "Nothing read. The file may not exist, or may hold no displayable text.",  /* S0642 */
     "Press B to go back",  /* S0643 */
     "…(down for more)",  /* S0644 */
-    "Up/down to scroll - plain text pages only",  /* S0645 */
+    "Up/down to scroll — plain text pages only",  /* S0645 */
     "It cannot run JavaScript, and it cannot read CSS.",  /* S0646 */
     "Line %d of %d",  /* S0647 */
-    "Empty document - maybe this page is drawn entirely by script.",  /* S0648 */
+    "Empty document — maybe this page is drawn entirely by script.",  /* S0648 */
     "[Up/Dn] scroll     [B] Back",  /* S0649 */
     "Boundaries first, features second.",  /* S0650 */
     "A backup is not forced, but it will nag until you deal with it.",  /* S0651 */
@@ -1647,7 +1652,7 @@ static const char *const g_en[] = {
     "It will not modify system firmware",  /* S0657 */
     "It will not upload your game saves",  /* S0658 */
     "It will not act without your knowing",  /* S0659 */
-    "First setup - 3 steps, about 1 minute",  /* S0660 */
+    "First setup — 3 steps, about 1 minute",  /* S0660 */
     "What this app can do",  /* S0661 */
     "Anything that changes the system asks you first.",  /* S0662 */
     "The boundaries, first",  /* S0663 */
@@ -1673,9 +1678,9 @@ static const char *const g_en[] = {
     "Streaming",  /* S0683 */
     "Two ways: type it in here, or edit key.txt on the card.",  /* S0684 */
     "Left works now; right can wait",  /* S0685 */
-    "Step 3 - AI service",  /* S0686 */
+    "Step 3 — AI service",  /* S0686 */
     "You can also fill in a custom URL and a model;",  /* S0687 */
-    "skip 'Finish setup' on the right - the next screen teaches you key.txt on the card.",  /* S0688 */
+    "skip 'Finish setup' on the right — the next screen teaches you key.txt on the card.",  /* S0688 */
     "Type it in here",  /* S0689 */
     "Finish setup",  /* S0690 */
     "Step %d of %d",  /* S0691 */
@@ -1694,9 +1699,9 @@ static const char *const g_en[] = {
     "Cannot reach the PC (is the IP right, is the script running?)",  /* S0704 */
     "The PC answered %ld (something went wrong on its side)",  /* S0705 */
     "The code from the PC is wrong (it must be four digits)",  /* S0706 */
-    "Code %s - type it into the PC's field",  /* S0707 */
-    "Cannot reach the PC - is the IP right? Is the script running?",  /* S0708 */
-    "Not paired yet - type the four digits above on the PC, then press Pair",  /* S0709 */
+    "Code %s — type it into the PC's field",  /* S0707 */
+    "Cannot reach the PC — is the IP right? Is the script running?",  /* S0708 */
+    "Not paired yet — type the four digits above on the PC, then press Pair",  /* S0709 */
     "The PC listed no files",  /* S0710 */
     "No address set",  /* S0711 */
     "This is an old 3DS; big transfers are clearly slower (not broken).",  /* S0712 */
@@ -1709,13 +1714,13 @@ static const char *const g_en[] = {
     "(some file names were too long to list)",  /* S0719 */
     "…more, use Down to scroll",  /* S0720 */
     "Paired; the page lists your PC files",  /* S0721 */
-    "Not paired - type these four digits on the PC first",  /* S0722 */
+    "Not paired — type these four digits on the PC first",  /* S0722 */
     "Transfer",  /* S0723 */
     "Done",  /* S0724 */
     "Interrupted",  /* S0725 */
     "Back to Home",  /* S0726 */
     "Fetch another",  /* S0727 */
-    "About %ld KB/s - %ld min %ld sec left",  /* S0728 */
+    "About %ld KB/s — %ld min %ld sec left",  /* S0728 */
     "Measuring the speed…",  /* S0729 */
     "Press B to give up (any leftover .tmp can be removed)",  /* S0730 */
     "Nothing is being fetched",  /* S0731 */
@@ -1730,7 +1735,7 @@ static const char *const g_en[] = {
     "New 3DS / New 2DS (new architecture)",  /* S0740 */
     "3DS / 3DS XL / 2DS (old architecture)",  /* S0741 */
     "Model: unknown (the apt query failed; not guessing)\n",  /* S0742 */
-    "This app: launched %d times - config version %d\n",  /* S0743 */
+    "This app: launched %d times — config version %d\n",  /* S0743 */
     "Chat provider: %s (%s)\n",  /* S0744 */
     "Chat provider: the config says %s, which this app does not know\n",  /* S0745 */
     "Doubao sign-in state: %s\n",  /* S0746 */
@@ -1747,12 +1752,12 @@ static const char *const g_en[] = {
     "Bottom edge %d > lower bound %d",  /* S0757 */
     "The file was just created for you and holds the instructions. Insert the card into a PC and it is there; no need to create it.",  /* S0758 */
     "Pick any one and sign up. All three need a real name or a phone number, but the free quota is enough for everyday chat.",  /* S0759 */
-    "Voice: nothing was recognised (%u bytes sent up). Usually too short, too quiet, or too noisy - move closer and repeat.",  /* S0760 */
+    "Voice: nothing was recognised (%u bytes sent up). Usually too short, too quiet, or too noisy — move closer and repeat.",  /* S0760 */
     "After installing it shows up in the main menu. This app will not launch it for you; you have to tap it.",  /* S0761 */
-    "- This build cannot install (you are probably on the 3dsx). It would fail even if allowed - a .cia needs this app in CIA form.",  /* S0762 */
+    "- This build cannot install (you are probably on the 3dsx). It would fail even if allowed — a .cia needs this app in CIA form.",  /* S0762 */
     "- Luma's 'Enable game patching' is **off**, so this has no effect. Turn it on in the Luma config first.",  /* S0763 */
     "This affects only this one game and touches no system file; undo it to go back. (Luma config not readable; if it does not work, check that game patching is on.)",  /* S0764 */
-    "This affects only this one game and touches no system file - undo it to go back. It applies as soon as you launch the game.",  /* S0765 */
+    "This affects only this one game and touches no system file — undo it to go back. It applies as soon as you launch the game.",  /* S0765 */
     "After deleting, the game goes back to the system default region language. This has no side effects; if you delete the wrong one, just set it again.",  /* S0766 */
     "Signed in. Pick 'Doubao' in the chat to use it -\n\nNo API key needed. What you say syncs into Doubao's history on your phone.",  /* S0767 */
     "and you get its web search too.\n\nScanning needs the **Douyin app** (the Doubao app cannot read this code).",  /* S0768 */
@@ -1770,22 +1775,22 @@ static const char *const g_en[] = {
     "Both ways work: 'Type it in here' on the left lets you type the key, and you can also fill in a custom URL and a model;",  /* S0780 */
     "This is the last key left; deleting it would end chat, so it was not deleted. Delete it in the Keys screen yourself.",  /* S0781 */
     "Press A to store it encrypted in creds.enc on the SD card. Inserting the card into a PC will no longer show the plain text.",  /* S0782 */
-    "(%d messages were too long, showing only the start - the record on the card was edited, or came from another version.)",  /* S0783 */
-    "This is the offline demo: no key, no network, and replies come from a built-in script - press Y for the keyboard, or SELECT for a phrase.",  /* S0784 */
+    "(%d messages were too long, showing only the start — the record on the card was edited, or came from another version.)",  /* S0783 */
+    "This is the offline demo: no key, no network, and replies come from a built-in script — press Y for the keyboard, or SELECT for a phrase.",  /* S0784 */
     "Doubao is not connected. Press X to scan and sign in (Doubao needs no API key).",  /* S0785 */
     "No usable API key yet. Press X for Key management, put the key in key.txt on the card, then press Y to import.",  /* S0786 */
-    "(Nothing entered. Press Y for the keyboard - it is the system's own, and Chinese is supported.)",  /* S0787 */
-    "The code was fetched but will not render (%s). You can scan it with Doubao on a PC for now - and you get its web search too.",  /* S0788 */
+    "(Nothing entered. Press Y for the keyboard — it is the system's own, and Chinese is supported.)",  /* S0787 */
+    "The code was fetched but will not render (%s). You can scan it with Doubao on a PC for now — and you get its web search too.",  /* S0788 */
     "Doubao needs **no API key**: it links this device to your account by QR scan.\n\nAfter signing in, what you ask here goes into Doubao history on your phone. Scanning needs the **Douyin app** (the Doubao app cannot read this code).",  /* S0789 */
-    "Left/right switches provider. Only 'custom' lets you fill in a URL - the built-in URLs are compiled in and cannot change.",  /* S0790 */
+    "Left/right switches provider. Only 'custom' lets you fill in a URL — the built-in URLs are compiled in and cannot change.",  /* S0790 */
     "Empty uses this provider's default model. To pick another (e.g. deepseek-reasoner), type it here.",  /* S0791 */
     "This provider's URL is built in. To use your own server, set 'Provider' to custom.",  /* S0792 */
     "It talks straight to your server. Fill it in all the way to a /v1 ending; the app will not complete it for you.",  /* S0793 */
     "Empty changes only the rows above and leaves the stored key alone. A key you type is stored encrypted on the SD card; the plain text is wiped on the way out.",  /* S0794 */
     "Left/right cycles off / low / medium / high. Some providers have no such parameter; for those the line above says 'not adjustable'.",  /* S0795 */
-    "This URL is built in and cannot change - to use your own, set the provider to custom.",  /* S0796 */
+    "This URL is built in and cannot change — to use your own, set the provider to custom.",  /* S0796 */
     "Config saved, but the key did not go into the store (the store is full, %d at most; delete one in Key management first).",  /* S0797 */
-    "No keys in the store yet. Either way works:/n  1. Press L / tap New - type one right here\n  2. Paste the key into key.txt on the SD card via a PC, then come back and press Y to import",  /* S0798 */
+    "No keys in the store yet. Either way works:/n  1. Press L / tap New — type one right here\n  2. Paste the key into key.txt on the SD card via a PC, then come back and press Y to import",  /* S0798 */
     "No game has had a region set yet.\n\nAfter you ask the AI to set a region for a game in chat, it shows up here so you can undo it any time.",  /* S0799 */
     "This provider's URL is compiled in and cannot change. To use your own server, set the provider to custom.",  /* S0800 */
     "L2 can change system settings; L3 low-level; L4 full system; L5 highest. Left loosens a gate; it takes two presses to take effect.",  /* S0801 */
@@ -1793,7 +1798,7 @@ static const char *const g_en[] = {
     "The built-in font is a single 16x16 bitmap size, so this only stores the preference; changing the size means regenerating the font and reinstalling.",  /* S0803 */
     "0% is a plain flat interface. This build has no stereo rendering yet, so changing it now only stores the preference.",  /* S0804 */
     "It reminds you to back up NAND. If you already have, pick 'Confirmed'; it will not prompt again.",  /* S0805 */
-    "Checks for a new version on startup. It **only tells you, never installs** - whether to install is always your press.",  /* S0806 */
+    "Checks for a new version on startup. It **only tells you, never installs** — whether to install is always your press.",  /* S0806 */
     "Overwriting a file is the one operation here you cannot undo, so this gate is locked by design; no setting turns it off.",  /* S0807 */
     "With it off, deletes run immediately with no confirmation. Only worth turning off if you want the AI to tidy files on its own.",  /* S0808 */
     "Asks once more when one action touches several files (>1). This is the last gate against a bulk delete by mistake.",  /* S0809 */
@@ -1897,7 +1902,7 @@ static const char *const g_en[] = {
     "Tap the ring for context usage",  /* S0907 */
     "Last request hit the body limit; content was truncated",  /* S0908 */
     "API key",  /* S0909 */
-    "Left/right cycles 4 / 8 / 12 turns. This is how many recent turns are carried into each request - more means it remembers longer, but every request costs more and is slower.",  /* S0910 */
+    "Left/right cycles 4 / 8 / 12 turns. This is how many recent turns are carried into each request — more means it remembers longer, but every request costs more and is slower.",  /* S0910 */
     "What role should it play? e.g. 'You are a seasoned walkthrough assistant'. Empty leaves its own default personality.",  /* S0911 */
     "Workbench",  /* S0912 */
     "Accent color",  /* S0913 */
@@ -1917,24 +1922,24 @@ static const char *const g_en[] = {
     "Testing connection…",  /* S0927 */
     "OK (HTTP %d)",  /* S0928 */
     "Key rejected (HTTP %d)",  /* S0929 */
-    "404 - this provider may not support probing; the key may still be fine",  /* S0930 */
+    "404 — this provider may not support probing; the key may still be fine",  /* S0930 */
     "HTTP %d",  /* S0931 */
     "Cannot connect: %s",  /* S0932 */
     "no reason given",  /* S0933 */
-    "No API added yet - go to \"Configure API\" on the home screen first",  /* S0934 */
-    "\"%s\" now uses %s / %s - press LEFT/RIGHT to change, A to confirm",  /* S0935 */
+    "No API added yet — go to \"Configure API\" on the home screen first",  /* S0934 */
+    "\"%s\" now uses %s / %s — press LEFT/RIGHT to change, A to confirm",  /* S0935 */
     "Model confirmed",  /* S0936 */
     "Created. Tap it later and press X to change too",  /* S0937 */
-    "SiliconFlow - popular China relay for many models",  /* S0938 */
+    "SiliconFlow — popular China relay for many models",  /* S0938 */
     "Tencent Hunyuan",  /* S0939 */
     "MiniMax",  /* S0940 */
-    "OpenAI - official GPT API",  /* S0941 */
-    "Google Gemini - via its OpenAI-compatible endpoint",  /* S0942 */
+    "OpenAI — official GPT API",  /* S0941 */
+    "Google Gemini — via its OpenAI-compatible endpoint",  /* S0942 */
     "xAI Grok",  /* S0943 */
     "Mistral AI",  /* S0944 */
-    "OpenRouter - one key, hundreds of models incl. Claude and GPT",  /* S0945 */
+    "OpenRouter — one key, hundreds of models incl. Claude and GPT",  /* S0945 */
     "Chinese",  /* S0946 */
-    "Tap a row to change it - applies immediately",  /* S0947 */
+    "Tap a row to change it — applies immediately",  /* S0947 */
     "Options",  /* S0948 */
     "Pick API for \"%s\": LEFT/RIGHT to change, A to confirm",  /* S0949 */
     "UP/DOWN to choose, A to confirm",  /* S0950 */
@@ -1942,7 +1947,7 @@ static const char *const g_en[] = {
     "No API added yet",  /* S0952 */
     "Add one under \"Configure API\" first",  /* S0953 */
     "\"%s\" -> %s / %s",  /* S0954 */
-    "Not applied - that entry may have just been deleted",  /* S0955 */
+    "Not applied — that entry may have just been deleted",  /* S0955 */
     "[D-pad L/R] Switch tab; [Up/Down] Move row",  /* S0956 */
     "[Stick] Push up/down to scroll the chat",  /* S0957 */
     "[Y] Send message; [A] Edit text",  /* S0958 */
@@ -1960,6 +1965,11 @@ static const char *const g_en[] = {
     "Already up to date.",  /* S0970 */
     "[A] Check   [B] Back",  /* S0971 */
     "[A] Choose   [B] Back",  /* S0972 */
+    "Content packs",  /* S0973 */
+    "[A] Go   [Y] Rescan   [L/R] App",  /* S0974 */
+    "[L/R] Content packs",  /* S0975 */
+    "[Up/Dn] Pick [Y] Rescan [L/R] App",  /* S0976 */
+    "[A] Go [Y] Rescan [L/R] App",  /* S0977 */
 };
 
 /* 供 uistr.c 用（数组本体是 static，只有这几个能出去） */

@@ -63,7 +63,6 @@ static const Screen *const g_screens[SCREEN_COUNT] = {
     [SCREEN_DOCK]    = &g_screen_dock,
     [SCREEN_GUIDE]   = &g_screen_guide,
     [SCREEN_LOCALES] = &g_screen_locales,
-    [SCREEN_CONTENT] = &g_screen_content,
  [SCREEN_DOUBAO]  = &g_screen_doubao,
  [SCREEN_PROVIDERS] = &g_screen_providers,
  [SCREEN_KEYEDIT]   = &g_screen_keyedit,
