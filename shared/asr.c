@@ -31,7 +31,10 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+#include "uistr.h"          /* uistr_lang()：按界面语言选服务商 */
 
 /* ★★ 内置的语音识别 Key（2026-10-17 用户要求"别人也能直接用"）。
  *
@@ -132,6 +135,31 @@ static const AsrDef kAsrTable[] = {
         "Qwen3-ASR-1.7B",
         NULL,               /* 同上：自动检测中/英，别锁死 */
     },
+    /* ★★ 百度短语音识别（2026-10-25 加）—— **中文主力**。
+     *
+     *   为什么选它（用户原话："我不能一直给他充钱"）：
+     *     · 免费额度是「个人 5 万次，**永久有效**」，不是按天清零，
+     *       也不是"90 天到期"（阿里那家 10 小时/90 天，到期又得掏钱）；
+     *     · 国内直连，实测 vop.baidu.com / aip.baidubce.com 均 TLS1.2 通、0.2s；
+     *     · 额度是**一次性发放**，不会像硅基那样"账户欠 6 分就全体 402"。
+     *
+     *   协议跟别家都不一样，所以 kind = ASR_KIND_BAIDU：
+     *     ① 用 API Key + Secret Key 换 access_token（30 天，过期自动重取）；
+     *     ② 音频**raw POST**（Content-Type: audio/wav，参数走 URL query），
+     *        不走 base64 —— 5 秒音频 base64 会涨到 213KB，raw 只有 160KB，
+     *        在 3DS 这种 30KB/s 的上行上差着 2 秒。
+     *     ③ 结果在 {"err_no":0,"result":["文本"]}，err_no≠0 才算失败。
+     *
+     *   ⚠️ **采样率坑**：3DS 麦克风是 16360Hz，百度只收 16000/8000，
+     *      所以发之前必须重采样（asr_baidu_wav 里做线性插值），
+     *      否则直接回"采样率不支持"，而那句话看不出是采样率的问题。 */
+    {
+        "baidu",
+        "https://vop.baidu.com/server_api",
+        NULL,               /* 百度用 dev_pid，不认 model 名 */
+        "zh",
+        ASR_KIND_BAIDU,
+    },
 };
 #define ASR_TABLE_N ((int)(sizeof kAsrTable / sizeof kAsrTable[0]))
 
@@ -175,6 +203,15 @@ void asr_last_timing(double *dns, double *conn, double *tls, double *total)
 }
 static char g_key_moark[ASR_KEY_MAX];   /* 模力方舟（国内默认那家） */
 
+/* 百度要**两把**：API Key 换 token，Secret Key 参与换 token。
+ * 它们不是可以互相顶替的"两把 Key"，缺一个都换不出 access_token。 */
+static char     g_key_baidu[ASR_KEY_MAX];
+static char     g_secret_baidu[ASR_KEY_MAX];
+/* access_token 缓存（30 天有效）。缓存起来是因为每按一次 ZL 都多一个
+ * 往返去换 token，在 3DS 上就是白等 0.3~1 秒。 */
+static char     g_btok[192];
+static unsigned g_btok_deadline;        /* 到期时刻（osGetTime 毫秒，0 = 没有） */
+
 /* ---- 请求体缓冲 ----
  * 容量必须按 **VOICE_CAP_BYTES（满 5 秒录音）** 算，不能拍脑袋给几 KB：
  * 以前写 4096+64+44+… 只有 5KB 出头，而 asr_transcribe 会把整段 PCM
@@ -209,6 +246,10 @@ void asr_reset(void)
     g_key_cfg[0]   = '\0';
     g_key_groq[0]  = '\0';
     g_key_moark[0] = '\0';
+    g_key_baidu[0] = '\0';
+    g_secret_baidu[0] = '\0';
+    g_btok[0] = '\0';
+    g_btok_deadline = 0;
     /* 先填内置 Key；asr.txt 若给了 key 会覆盖它（见 asr_load 的解析）。
      * 这样"没配文件"= 用内置（能用），"配了文件"= 用用户的（更安全）。 */
     snprintf(g_key, sizeof g_key, "%s", ASR_BUILTIN_KEY);
@@ -224,7 +265,10 @@ static void asr_apply_key(void)
     const AsrDef *d = asr_current();
     const char *k;
 
-    if (strcmp(d->name, "moark") == 0) {
+    if (strcmp(d->name, "baidu") == 0) {
+        /* 百度的"Key"其实是 API Key（换 token 用），真正的鉴权在 token。 */
+        k = g_key_baidu;
+    } else if (strcmp(d->name, "moark") == 0) {
         /* 模力方舟同样只认自己的令牌（它的令牌是 32 位十六进制，不是 sk-） */
         k = g_key_moark;
     } else if (strcmp(d->name, "groq") == 0) {
@@ -244,6 +288,7 @@ static const char *asr_key_name(const char *nm)
 {
     if (nm && strcmp(nm, "moark") == 0) return "key_moark=";
     if (nm && strcmp(nm, "groq") == 0)  return "key_groq=";
+    if (nm && strcmp(nm, "baidu") == 0) return "key_baidu=";
     return "key=";
 }
 
@@ -270,6 +315,26 @@ const AsrDef *asr_current(void)
     /* 1) asr.txt 显式写了 provider → 就是它（老行为，一个字节都不变） */
     if (g_provider[0]) {
         const AsrDef *d = asr_find(g_provider);
+        if (d)
+            return d;
+    }
+
+    /* 1.2) ★ 2026-10-25 用户定的分工：**中文走百度，英文/国外走 Groq**。
+     *
+     *   为什么按**界面语言**分：我们不知道你下一句要说什么话，界面语言是
+     *   唯一稳定且"用户有意为之"的信号（他是自己在设置里选的）。
+     *   两边都只在**配齐凭据**时才生效，缺一个就继续往下落，
+     *   绝不会出现"选了百度、一按就说没配 Key"。
+     *
+     *   百度：个人 5 万次**永久**、国内直连、账户欠费也不会像硅基那样全 402。
+     *   Groq：2000 次/日、每天 8 小时音频，不绑卡，超额只回 429 不扣费。 */
+    if (uistr_lang() == 0 && g_key_baidu[0] && g_secret_baidu[0]) {
+        const AsrDef *d = asr_find("baidu");
+        if (d)
+            return d;
+    }
+    if (uistr_lang() != 0 && g_key_groq[0]) {
+        const AsrDef *d = asr_find("groq");
         if (d)
             return d;
     }
@@ -397,6 +462,11 @@ bool asr_load_file(const char *path)
         /* 模力方舟（国内默认那家）。令牌是 32 位十六进制，不是 sk- 开头。 */
         else if (strcmp(p, "key_moark") == 0)
             snprintf(g_key_moark, sizeof g_key_moark, "%s", val);
+        /* 百度（2026-10-25）：两把，缺一不可。 */
+        else if (strcmp(p, "key_baidu") == 0)
+            snprintf(g_key_baidu, sizeof g_key_baidu, "%s", val);
+        else if (strcmp(p, "secret_baidu") == 0)
+            snprintf(g_secret_baidu, sizeof g_secret_baidu, "%s", val);
         /* 别的键一律忽略：这个文件是给人手敲的，
          * 写坏一行不该让整个语音功能跟着哑掉。 */
     }
@@ -623,6 +693,297 @@ static size_t pick_text(const char *s, char *out, size_t cap)
     return n;
 }
 
+/* ==========================================================================
+ * 百度短语音识别（另一套协议）
+ *
+ * 与 OpenAI 兼容那几家完全不同的三件事：
+ *   ① 鉴权不是 Bearer Key，而是 **先换 access_token**（30 天有效）；
+ *   ② 音频走 **raw POST**（参数在 URL query，body 就是 WAV 字节），
+ *      不是 multipart、也不是 base64 —— 省掉的那 33% 体积在 3DS 的
+ *      30KB/s 上行上是实打实的两秒；
+ *   ③ 成功/失败看响应体里的 `err_no`，而不是 HTTP 状态码
+ *      （参数错、音频坏，HTTP 也回 200）。
+ * ========================================================================== */
+
+static void put_u32le(u8 *p, unsigned v)
+{
+    p[0] = (u8)(v & 0xFF); p[1] = (u8)((v >> 8) & 0xFF);
+    p[2] = (u8)((v >> 16) & 0xFF); p[3] = (u8)((v >> 24) & 0xFF);
+}
+
+static void put_u16le(u8 *p, unsigned v)
+{
+    p[0] = (u8)(v & 0xFF); p[1] = (u8)((v >> 8) & 0xFF);
+}
+
+/* JSON 里抠一个值（只处理不带反斜杠转义的简单值，够用）。
+ * 数字与字符串都走这条：字符串去掉两边的引号，数字原样。 */
+static int jpick(const char *s, const char *key, char *out, size_t cap)
+{
+    char        pat[48];
+    const char *p;
+    size_t      n = 0;
+
+    if (!s || !out || cap < 2)
+        return 0;
+    out[0] = '\0';
+    snprintf(pat, sizeof pat, "\"%s\"", key);
+    p = strstr(s, pat);
+    if (!p)
+        return 0;
+    p = strchr(p + strlen(pat), ':');
+    if (!p)
+        return 0;
+    ++p;
+    while (*p == ' ' || *p == '\t')
+        ++p;
+    if (*p == '"') {
+        ++p;
+        while (*p && *p != '"' && n + 1 < cap)
+            out[n++] = *p++;
+    } else {
+        while (*p && *p != ',' && *p != '}' && *p != '\r' && *p != '\n'
+               && n + 1 < cap)
+            out[n++] = *p++;
+    }
+    out[n] = '\0';
+    while (n && (out[n - 1] == ' ' || out[n - 1] == '\r' || out[n - 1] == '\n'))
+        out[--n] = '\0';
+    return (int)n;
+}
+
+/* 取 result 数组里的第一条（`"result":["文本"]`）。
+ * 不直接用 pick_text 是因为字段名不同，而且 result 是数组。 */
+static size_t pick_result(const char *s, char *out, size_t cap)
+{
+    const char *p;
+    size_t      n = 0;
+
+    if (!s || !out || cap < 2)
+        return 0;
+    out[0] = '\0';
+    p = strstr(s, "\"result\"");
+    if (!p)
+        return 0;
+    p = strchr(p, '[');
+    if (!p)
+        return 0;
+    p = strchr(p, '"');
+    if (!p)
+        return 0;
+    ++p;
+    while (*p && *p != '"' && n + 1 < cap) {
+        /* 百度会把标点原样返回，不需要反转义；真遇到 \" 也能过 */
+        if (*p == '\\' && (p[1] == '"' || p[1] == '\\'))
+            ++p;
+        out[n++] = *p++;
+    }
+    out[n] = '\0';
+    return n;
+}
+
+/* 16360Hz → 16000Hz 重采样，并套上 44 字节 WAV 头。
+ *
+ * ★ 为什么会走到这一步：3DS 麦克风给的是 16360Hz（硬件离散档位之一），
+ *   而百度只收 16000 / 8000。差 2.25% 看着无害，但服务端是按**声明值**
+ *   校验的 —— 直接改成 16000 而不重采样，音频会被当成慢了 2.25%，
+ *   识别率下降且没有报错；老老实实重采样才是对的。
+ *   线性插值对语音足够（下一步就是 ASR 模型，不是重放给人听）。 */
+static size_t baidu_wav(const s16 *in, size_t n_in, u8 *dst, size_t cap)
+{
+    const unsigned SRC = 16360u, DST = 16000u;
+    size_t         n_out, i;
+    u8            *pcm = dst + 44;
+
+    if (!in || n_in == 0 || cap < 64)
+        return 0;
+    n_out = (size_t)((unsigned long long)n_in * DST / SRC);
+    if (44 + n_out * 2 > cap)
+        return 0;
+
+    for (i = 0; i < n_out; ++i) {
+        /* 源位置 = i * SRC / DST（用整数算，避免浮点在 ARM11 上慢） */
+        unsigned long long pos = (unsigned long long)i * SRC;
+        size_t  k   = (size_t)(pos / DST);
+        unsigned fr = (unsigned)(pos % DST);          /* 小数部分 / DST */
+        int     a   = (k < n_in) ? in[k] : 0;
+        int     b   = (k + 1 < n_in) ? in[k + 1] : a;
+        int     v   = a + (int)(((long)(b - a) * (long)fr) / (long)DST);
+
+        if (v > 32767)  v = 32767;
+        if (v < -32768) v = -32768;
+        put_u16le(pcm + i * 2, (unsigned)(u16)v);
+    }
+
+    /* RIFF/WAVE 头（44 字节，单声道 16bit） */
+    memcpy(dst + 0, "RIFF", 4);
+    put_u32le(dst + 4, (unsigned)(36 + n_out * 2));
+    memcpy(dst + 8, "WAVE", 4);
+    memcpy(dst + 12, "fmt ", 4);
+    put_u32le(dst + 16, 16);
+    put_u16le(dst + 20, 1);            /* PCM */
+    put_u16le(dst + 22, 1);            /* 单声道 */
+    put_u32le(dst + 24, DST);          /* 采样率 */
+    put_u32le(dst + 28, DST * 2);      /* 字节率 */
+    put_u16le(dst + 32, 2);            /* 块对齐 */
+    put_u16le(dst + 34, 16);           /* 位深 */
+    memcpy(dst + 36, "data", 4);
+    put_u32le(dst + 40, (unsigned)(n_out * 2));
+    return 44 + n_out * 2;
+}
+
+/* 换 access_token（缓存到快过期为止）。 */
+static bool baidu_token(char *err, size_t cap)
+{
+    char   url[512];
+    char   eb[96];
+    char   ex[24];
+    HxReq  req;
+    long   http;
+    long   secs = 2592000;
+
+    if (g_btok[0] && g_btok_deadline && (unsigned)osGetTime() < g_btok_deadline)
+        return true;
+
+    snprintf(url, sizeof url,
+             "https://aip.baidubce.com/oauth/2.0/token"
+             "?grant_type=client_credentials&client_id=%s&client_secret=%s",
+             g_key_baidu, g_secret_baidu);
+
+    memset(&req, 0, sizeof req);
+    req.url       = url;
+    req.timeout_s = 12;
+    req.follow    = false;
+    req.persist   = false;          /* 30 天才一次，没必要占池子 */
+    g_resp_len = 0;
+    g_resp[0]  = '\0';
+    eb[0]      = '\0';
+
+    http = hx_perform(&req, sink_body, NULL, eb, sizeof eb);
+    if (http < 0) {
+        snprintf(err, cap, "换 token 没连上：%s", eb[0] ? eb : "网络错误");
+        return false;
+    }
+    if (http != 200) {
+        snprintf(err, cap, "换 token 收 HTTP %ld", http);
+        return false;
+    }
+    if (!jpick(g_resp, "access_token", g_btok, sizeof g_btok)) {
+        char why[80];
+
+        why[0] = '\0';
+        if (!jpick(g_resp, "error_description", why, sizeof why))
+            jpick(g_resp, "error", why, sizeof why);
+        snprintf(err, cap, "百度不认这组 Key：%s", why[0] ? why : "核对 key/secret");
+        return false;
+    }
+    if (jpick(g_resp, "expires_in", ex, sizeof ex))
+        secs = atol(ex);
+    if (secs > 3600)
+        secs -= 3600;                       /* 提前一小时过期，别卡边界 */
+    g_btok_deadline = (unsigned)osGetTime() + (unsigned)(secs * 1000);
+    return true;
+}
+
+static void baidu_transcribe(const AsrDef *d, const void *pcm, size_t bytes,
+                             AsrResult *out)
+{
+    char   url[640];
+    char   eb[96];
+    char   num[24];
+    size_t wlen;
+    long   http;
+    HxReq  req;
+
+    if (!g_key_baidu[0] || !g_secret_baidu[0]) {
+        snprintf(out->err, sizeof out->err,
+                 "没配百度的 Key：asr.txt 里要 key_baidu= 和 secret_baidu= 两行");
+        return;
+    }
+
+    wlen = baidu_wav((const s16 *)pcm, bytes / 2, g_body, sizeof g_body);
+    if (!wlen) {
+        snprintf(out->err, sizeof out->err, "音频重采样失败（太长？）");
+        return;
+    }
+    g_last_body_len  = (int)wlen;
+    g_last_model_len = -1;
+
+    if (!baidu_token(eb, sizeof eb)) {
+        snprintf(out->err, sizeof out->err, "%s", eb);
+        return;
+    }
+
+    /* ★ 2026-10-25 实测纠正：**采样率不能放 URL**。
+     *   放在 query 里服务端回 `err_no=3311 param rate invalid`；
+     *   挪进 Content-Type（`audio/wav;rate=16000`）之后，
+     *   同一个假 token 立刻变成 `err_no=3302 token 无效` ——
+     *   也就是"参数全对，只差鉴权"。这条是拿真服务器试出来的，不是猜的。 */
+    snprintf(url, sizeof url,
+             "%s?cuid=aiconsole3ds&token=%s&dev_pid=1537&len=%u",
+             d->url, g_btok, (unsigned)wlen);
+
+    memset(&req, 0, sizeof req);
+    req.url          = url;
+    req.post_raw     = g_body;
+    req.post_raw_len = wlen;
+    req.content_type = "audio/wav;rate=16000";
+    req.timeout_s    = 15;
+    req.follow       = false;
+    req.add_cookies  = false;
+    req.persist      = true;
+    g_resp_len = 0;
+    g_resp[0]  = '\0';
+    eb[0]      = '\0';
+
+    http = hx_perform(&req, sink_body, NULL, eb, sizeof eb);
+
+    /* 与别家同一套兜底：网络层失败就用新连接再来一次（半死连接的坑）。 */
+    if (http < 0) {
+        g_retried = 1;
+        g_resp_len = 0;
+        g_resp[0]  = '\0';
+        eb[0]      = '\0';
+        req.persist = false;
+        http = hx_perform(&req, sink_body, NULL, eb, sizeof eb);
+    }
+    hx_last_timing(&g_t_dns, &g_t_conn, &g_t_tls, &g_t_total);
+    out->http = http;
+
+    if (http < 0) {
+        snprintf(out->err, sizeof out->err, "baidu：%s",
+                 eb[0] ? eb : "网络错误");
+        return;
+    }
+    if (http != 200) {
+        snprintf(out->err, sizeof out->err, "baidu 收 HTTP %ld", http);
+        return;
+    }
+
+    /* 百度**无论成败都回 200**，真正的结果在 err_no 里。
+     * 不判这一条的话，"参数错/音频坏"会被当成"识别出空文本"。 */
+    num[0] = '\0';
+    if (jpick(g_resp, "err_no", num, sizeof num) && atoi(num) != 0) {
+        char msg[80];
+
+        msg[0] = '\0';
+        jpick(g_resp, "err_msg", msg, sizeof msg);
+        snprintf(out->err, sizeof out->err, "百度 err_no=%d %s",
+                 atoi(num), msg[0] ? msg : "");
+        return;
+    }
+
+    {
+        size_t tlen = pick_result(g_resp, out->text, sizeof out->text);
+
+        out->text_len = (int)tlen;
+        out->truncated = (tlen > 0 && strlen(out->text) == ASR_TEXT_MAX - 1);
+        out->ok = (tlen > 0);
+        if (!out->ok)
+            snprintf(out->err, sizeof out->err, "百度没返回识别结果");
+    }
+}
+
 void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
 {
     const AsrDef  *d;
@@ -657,6 +1018,13 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
         g_clamped = 1;
         bytes = (size_t)VOICE_CAP_BYTES;
     }
+    /* 百度是另一套协议（token + raw POST + err_no），不共用 multipart 那条路。
+     * 放在这里而不是函数开头：上面的"没音频/太长"两道防御对它同样适用。 */
+    if (d && d->kind == ASR_KIND_BAIDU) {
+        baidu_transcribe(d, pcm, bytes, out);
+        return;
+    }
+
     /* ★★ 2026-10-23：**发请求前最后一道保底**。
      *
      *   真机日志（status.txt）里有这么一串，而且每次按住 ZL 都是它：

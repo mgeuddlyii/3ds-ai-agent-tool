@@ -34,7 +34,14 @@ typedef struct {
     const char *url;        /* 编译期常量：用户改不了 */
     const char *model;
     const char *lang;       /* NULL = 这个厂商不吃 language 字段 */
+    /* 协议类型。绝大多数厂商是 OpenAI 兼容（multipart + {"text":…}），
+     * 百度是另一套：先换 access_token，再把音频 raw POST 上去，
+     * 结果在 {"err_no":0,"result":[…]} 里。两者不能共用一套拼装。 */
+    int         kind;
 } AsrDef;
+
+#define ASR_KIND_OPENAI 0
+#define ASR_KIND_BAIDU  1
 
 typedef struct {
     bool   ok;
