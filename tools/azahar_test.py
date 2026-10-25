@@ -879,31 +879,13 @@ shot 1_hwtest_done
 #   把「内容更新」从 index 3 挤到 index 4，于是这一趟点进了「已设区域」，
 #   断言报「内容更新屏压根没进过」—— 而这条红是**脚本没跟上**，不是程序坏了。
 #   sc_more.c 的 kItems 顺序一变，这里的 DOWN 次数必须同步。
-wait 10
-key RIGHT
-wait 3
-key RIGHT
-wait 3
-key A
-wait 8
-key DOWN
-wait 3
-key DOWN
-wait 3
-key DOWN
-wait 3
-key DOWN
-wait 3
-key A
-wait 8
-shot 2_content_screen
-key DOWN
-wait 3
-shot 3_content_sel_kb
-# 左右切到「回滚」模式：没有备份时按钮应该是灰的
-key LEFT
-wait 3
-shot 4_content_rollback_mode
+# ★ 2026-10-25：**这一段删掉了**。
+#   用户要求把「更多」里的「内容更新」删掉（它和「软件更新」只差两个字，
+#   他自己就点错了一次）。菜单项一删，这屏就没有入口了 ——
+#   再照原样 DOWN×4 会点进「从电脑取文件」，截图看着像"内容更新"，其实是别的屏。
+#   所以这一趟现在只验硬件知识检索（hwtest），界面部分随之退休。
+#   将来若把 SCREEN_CONTENT 挂回菜单（或挪进设置），把下面这段恢复即可：
+#     wait 10 / key RIGHT ×2 / key A / key DOWN ×4 / key A / shot 2_content_screen …
 wait 2
 quit
 """
@@ -1839,8 +1821,8 @@ PASSES = {
               title="内容更新通道 · 解析拒绝 + 安装/回滚闭环 + 坏包不碰原文件"),
     "V": dict(script=SCRIPT_V, shots=1,
               title="区域切换 + 字库安全闸 · 写 luma/titles 与拒绝非法输入"),
-    "W": dict(script=SCRIPT_W, shots=4,
-              title="硬件知识检索 + 内容更新界面（三类内容逐条状态 + 装/退切换）"),
+    "W": dict(script=SCRIPT_W, shots=1,
+              title="硬件知识检索（内容更新屏已从菜单移除，界面部分退休）"),
     "Y": dict(script=SCRIPT_Y, shots=3,
               title="语音输入链路 · UI 编排（按住 ZL 走完）+ ASR 配置读取 + 拼装自检"),
     # X 不进常规回归：它输出的是**时间**，没有固定值可断言。
@@ -4690,60 +4672,17 @@ def assertions(res):
                "命中的答案都含可辨认的关键片段%s"
                % ("" if not badc else " -> " + badc[0]), problems)
 
-        # ---- 判据 6：内容更新屏真的被进过 ----
-        # 之前 cupd.c 能装但**没有任何一屏让用户触发它**（后端通、界面无）。
-        # 所以判据不是"文件变了"，而是这一屏能被摸到。
+        # ---- 判据 6（2026-10-25 改为**反向**断言）----
+        # 原判据是"内容更新屏必须被进过"，用来防"后端能装、界面却摸不到"。
+        # 但 2026-10-25 用户要求**把这个入口删掉**：它和「软件更新」只差两个字，
+        # 他自己就点错了一次，以为改版没生效。屏与 cupd 后端都保留，只是没有入口。
         #
-        # ⚠️ 记录要从**整份 status** 里找，不能只从上面那个 notes 里找 ——
-        # 那个 notes 是按 `hwtest:` 前缀筛过的，而内容更新屏写的是
-        # `content:` 前缀。第一次写这段时只筛了 hwtest，
-        # 于是判据报"压根没进过"，而屏上明明白白停在这一屏，
-        # status.txt 里也明明有那一行。**判据自己筛错了数据源，
-        # 报出来的话却像在说产品坏了。**
+        # 于是原判据从此**必然为假**（没人能进那屏），留着只会天天红。
+        # 换成反向断言：**不该再出现 content: scan**。哪天有人把它挂回菜单，
+        # 这条会立刻红 —— 提醒把 SCRIPT_W 里那段导航一起恢复，而不是默默一半。
         cscan = pick("content: scan", st.splitlines())
-        if cscan is None:
-            expect(False, "没有 content: scan 记录 —— 内容更新屏压根没进过",
-                   problems)
-        else:
-            print("   " + cscan)
-            expect("state=" in cscan,
-                   "内容更新屏扫过了（%s）" % cscan, problems)
-            # state= 后面不能是 "?" —— 那是 cu_state_text 认不出来的码。
-            m = re.search(r"state=(\S+)", cscan)
-            expect(m is not None and m.group(1) != "?",
-                   "扫出来的状态是可识别文案（不是问号）", problems)
-            # avail= 是"有几条可更新"，**不是状态码**（cupd.h 里写死了）。
-            # 这条断言的作用是提醒：别把它当 0=失败。
-            expect("avail=" in cscan,
-                   "avail 字段在（它是「有几条可更新」，不是错误码）", problems)
-
-
-        # ---- 判据 7：这一趟也顺带看一眼布局溢出 ----
-        # 内容更新屏新写了四行长文案，溢出计数进 status.txt。
-        # **横向与纵向要分开断言** —— 症状完全不同：
-        #   横向：最后几个字被裁掉（还能看出有字）
-        #   纵向：整个元素沉在页脚底下，**看不见也点不到**
-        # 而触摸验收按坐标点，只点能看见的位置，所以纵向那条
-        # 可以一路全绿。这一下午它咬了两次（5 行画到 236 / 叠字 194..212）。
-        ovw = kv(st, "layout_overflow")
-        if ovw is not None and ovw != "0":
-            expect(False, "这一趟有单行文字被右边缘裁掉：%s"
-                   % (kv(st, "layout_overflow_last") or ""), problems)
-        else:
-            expect(True, "没有单行文字被右边缘裁掉", problems)
-
-        ovv = kv(st, "layout_voverflow")
-        if ovv is None:
-            # 旧二进制没有这个字段。要**显式报出来**而不是跳过 ——
-            # 跳过的判据等于没有判据，而"字段不存在"与"值为 0"
-            # 完全是两回事。
-            expect(False, "status 里没有 layout_voverflow"
-                          "（护栏未生效，旧二进制？）", problems)
-        elif ovv != "0":
-            expect(False, "有元素画到了内容区下界以下（画了但看不见/点不到）：%s"
-                   % (kv(st, "layout_voverflow_last") or ""), problems)
-        else:
-            expect(True, "没有元素画到内容区下界以下", problems)
+        expect(cscan is None,
+               "内容更新屏已无入口（status 里不该再有 content: scan）", problems)
 
     elif tag == "Y":
         print("-- 断言 Y：语音输入链路（配置读取 + 拼装自检 + 没麦降级）--")
