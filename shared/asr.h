@@ -71,6 +71,10 @@ int asr_last_clamped(void);
  * 明显下降，才能证明**连接真的被复用了**；反之说明池子没生效。 */
 void asr_last_timing(double *dns, double *conn, double *tls, double *total);
 
+/* 最近一次语音请求是不是"失败后用新连接重试"过的。
+ * 1 = 走过重试（说明第一条连接是死的：多半是对端把空闲连接关了）。 */
+int asr_retried(void);
+
 /* 读配置文件。格式（一行一项，`#` 开头是注释）：
  *     provider=moark       ← 可选。不写就按下面哪把 Key 有值自动挑
  *     key_moark=xxxxxxxx   ← 模力方舟令牌（国内默认，每日免费 100 次）

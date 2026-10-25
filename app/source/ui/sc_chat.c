@@ -798,8 +798,8 @@ static void do_asr(void)
     {
         double td = 0.0, tc = 0.0, tl = 0.0, tt = 0.0;
         asr_last_timing(&td, &tc, &tl, &tt);
-        app_note("voice: net dns=%.2f conn=%.2f tls=%.2f total=%.2f",
-                 td, tc, tl, tt);
+        app_note("voice: net dns=%.2f conn=%.2f tls=%.2f total=%.2f retried=%d",
+                 td, tc, tl, tt, asr_retried());
     }
 
     if (r.ok && r.text[0]) {

@@ -161,6 +161,11 @@ static char g_key_groq[ASR_KEY_MAX];
 /* 最近一次 asr_transcribe 的网络阶段耗时（秒）。见 asr_last_timing()。 */
 static double g_t_dns, g_t_conn, g_t_tls, g_t_total;
 
+/* 这一次是不是"失败后重试"过的（1 = 走过重试路径）。诊断用。 */
+static int g_retried;
+
+int asr_retried(void) { return g_retried; }
+
 void asr_last_timing(double *dns, double *conn, double *tls, double *total)
 {
     if (dns)   *dns   = g_t_dns;
@@ -731,7 +736,10 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
      * 把后面所有脚本步骤一起拖掉（一帧只 tick 一次，wait N 帧
      * 实际要 N/帧率 + 阻塞时长）。12 秒足够一次 ASR 往返，
      * 超时了就明说"没连上"，别让读者猜。 */
-    req.timeout_s    = 12;
+    /* 9 秒：真机上"连接阶段卡住"和"上传到大半卡住"都会以 -28 收场，
+     *   而这段时间界面是**冻住**的。9 秒还能接受，12 秒已经明显像死机。
+     *   失败后还有一次重连重试（见下），所以单趟不需要给太长。 */
+    req.timeout_s    = 9;
     req.follow       = false;
     req.add_cookies  = false;
     req.on_new_response = NULL;
@@ -748,7 +756,28 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
     g_resp[0]  = '\0';
     errb[0]    = '\0';
 
+    g_retried  = 0;
     http = hx_perform(&req, sink_body, NULL, errb, sizeof errb);
+
+    /* ★★ 2026-10-25：**网络层失败就换一条新连接再试一次**。
+     *
+     *   长连接复用有个代价：对端把空闲连接关掉之后，我们手里那条是"半死"的。
+     *   curl 往它里面写请求**可能返回成功**（进了发送缓冲），然后一直等响应
+     *   直到超时 —— 真机上表现就是"按住 ZL，界面冻十几秒，最后说超时"。
+     *   更坑的是：这种失败与"网络真的不通"报的是同一个 -28，
+     *   但处置完全相反（前者重连就好，后者重连一万次也没用）。
+     *
+     *   所以这里只重试**一次**，并且**强制新连接**（persist=false）：
+     *   最坏情况从"每条都卡满超时"变成"卡一次超时 + 一次正常往返"。
+     *   若第二次还是失败，那就是真连不上，照实报。 */
+    if (http < 0) {
+        g_retried  = 1;
+        g_resp_len = 0;
+        g_resp[0]  = '\0';
+        errb[0]    = '\0';
+        req.persist   = false;      /* 不碰池子里的任何连接 */
+        http = hx_perform(&req, sink_body, NULL, errb, sizeof errb);
+    }
 
     /* 记下这一趟的三段耗时（DNS/TCP/TLS）。**判据要能被复核**：
      * 第二次按住 ZL 时，这三项应当明显变小 —— 变小才是真的复用了连接。
@@ -777,10 +806,23 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
         if (is_openai && timedout)
             snprintf(out->err, sizeof out->err,
                      "openai 连不上（超时）· 请改用 siliconflow");
-        else if (timedout)
-            snprintf(out->err, sizeof out->err,
-                     "%s 超时 · 检查 Wi-Fi",
-                     (d && d->name) ? d->name : "服务商");
+        else if (timedout) {
+            /* ★★ 2026-10-25：超时也分三种，用户要做的事完全不同 ——
+             *   ① DNS/TCP 没通（conn≈0）      → 查 Wi-Fi / 换 DNS
+             *   ② 连上了但 TLS 没握完（tls≈0）→ 多半是对端或中间设备掐 TLS
+             *   ③ 都通了，卡在传输/等响应     → 包太大或服务端慢，不是"没网"
+             *   以前一律写"检查 Wi-Fi"，第 ③ 种会让人白折腾网络。
+             *   判据用**实测的三段耗时**（hx_last_timing 拿到的），不猜。 */
+            const char *nm = (d && d->name) ? d->name : "服务商";
+
+            if (g_t_conn < 0.05f)
+                snprintf(out->err, sizeof out->err, "%s 连不上（DNS/TCP 不通）", nm);
+            else if (g_t_tls < 0.05f)
+                snprintf(out->err, sizeof out->err, "%s TLS 握手失败（网络能通）", nm);
+            else
+                snprintf(out->err, sizeof out->err, "%s 传输超时（已连上）%s", nm,
+                         g_retried ? " · 已重试" : "");
+        }
         else
             snprintf(out->err, sizeof out->err, "%s：%s",
                      (d && d->name) ? d->name : "服务商",
