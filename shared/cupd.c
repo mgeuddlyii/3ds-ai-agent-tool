@@ -18,8 +18,14 @@
 #include <sys/stat.h>
 
 #define DIR_PATH  "sdmc:/3ds/aiconsole"
-#define CU_PACK   DIR_PATH "/content"      /* 内容更新包目录 */
-#define CU_MANIFEST_NAME "manifest.json"
+/* ★ 2026-10-25：内容包也放进**统一下载目录**（与软件更新同一个地址）。
+ *   同目录下靠文件名区分：软件用 manifest.json，内容用 content.json。
+ *   老目录 /content 仍然读（用户在卡上已有的包不该因此"消失"）。 */
+#define CU_PACK      DIR_PATH "/download"   /* 统一下载目录 */
+#define CU_PACK_OLD  DIR_PATH "/content"    /* 旧的内容包目录（只读兼容） */
+/* 统一目录里不能和软件的 manifest.json 撞名，所以叫 content.json。 */
+#define CU_MANIFEST_NAME     "content.json"
+#define CU_MANIFEST_NAME_OLD "manifest.json"
 
 /*
  * 三类内容的**文件名**（不含目录）。落盘目录由 g_root 决定，
@@ -120,7 +126,8 @@ static const char *pack_path(char *buf, size_t cap, const char *file)
     if (!g_root) {
         snprintf(pack, sizeof pack, "%s", CU_PACK);
     } else {
-        snprintf(pack, sizeof pack, "%s/content", g_root);
+        /* g_root 是 SD 根或模拟器沙箱根，统一下载目录都叫 download */
+        snprintf(pack, sizeof pack, "%s/download", g_root);
     }
     snprintf(buf, cap, "%s/%s", pack, file);
     return buf;
@@ -432,13 +439,30 @@ int cu_scan_local(CuManifest *m, CuState *state, char *detail, size_t cap)
         detail[0] = '\0';
 
     char mpath[360];
+    char alt[360];
     pack_path(mpath, sizeof mpath, CU_MANIFEST_NAME);
 
+    /* 三次尝试，顺序就是"新→旧"：
+     *   ① 统一下载目录里的 content.json（当前约定）
+     *   ② 同一目录里的 manifest.json（有人手动从旧布局把文件搬过来，但没改名）
+     *   ③ 旧的 /content/manifest.json（老用户原封不动）
+     * 不做这三步的话，改路径那天所有人的卡上都会"没有内容包"。 */
     if (!read_whole(mpath, &text, &n)) {
-        if (state) *state = CU_NO_PACKAGE;
-        if (detail && cap)
-            snprintf(detail, cap, "没找到 %s", mpath);
-        return 0;
+        pack_path(alt, sizeof alt, CU_MANIFEST_NAME_OLD);
+        if (!read_whole(alt, &text, &n)) {
+            if (!g_root) {
+                snprintf(alt, sizeof alt, "%s/%s", CU_PACK_OLD, CU_MANIFEST_NAME_OLD);
+            } else {
+                snprintf(alt, sizeof alt, "%s/content/%s", g_root, CU_MANIFEST_NAME_OLD);
+            }
+            if (!read_whole(alt, &text, &n)) {
+                if (state) *state = CU_NO_PACKAGE;
+                if (detail && cap)
+                    snprintf(detail, cap, "没找到 %s", mpath);
+                return 0;
+            }
+        }
+        snprintf(mpath, sizeof mpath, "%s", alt);
     }
 
     if (!cu_parse(text, (size_t)n, m)) {

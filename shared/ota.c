@@ -18,8 +18,22 @@
 #include <3ds.h>
 
 #define DIR_PATH     "sdmc:/3ds/aiconsole"
-#define OTA_DIR      DIR_PATH "/update"
+/* ★★ 2026-10-25 用户要求："给一个固定地址，网络上下载的都放这里，
+ *   软件从网络下载也要放在这个位置。"
+ *
+ *   于是软件包和内容包**共用一个下载目录**：
+ *       sdmc:/3ds/aiconsole/download/
+ *           manifest.json   ← 软件更新（服务器上就叫这个名字，不能改）
+ *           content.json    ← 内容包（两者同目录，只能靠文件名区分）
+ *           AIConsole.3dsx / AIConsole.cia / guide_*.bin …
+ *
+ *   老版本用的是 /update（软件）和 /content（内容）。
+ *   **老目录仍然读**：用户卡上已经有文件的，不该因为我们改路径就"看不见更新包"。
+ *   写盘一律写新目录（见 ota_dir）—— 只在读的时候回落。 */
+#define OTA_DIR      DIR_PATH "/download"
+#define OTA_DIR_OLD  DIR_PATH "/update"
 #define OTA_MANIFEST OTA_DIR "/manifest.json"
+#define OTA_MANIFEST_OLD OTA_DIR_OLD "/manifest.json"
 
 /* 3dsx 的目标位置：3ds/ 是 homebrew 的惯例目录。
  * 注意我们并不知道用户原来把 .3dsx 放在哪，所以装完之后
@@ -62,7 +76,32 @@
 #endif
 const char kUpdateBase[] = OTA_BASE_URL;
 
-const char *ota_dir(void) { return OTA_DIR; }
+/* 当前生效的下载目录：新目录优先；只有当**新目录没有清单、旧目录有**时，
+ * 才回落到旧目录（那说明用户卡上是老布局，还没搬过来）。 */
+const char *ota_dir(void)
+{
+    static char     buf[64];
+    static bool     inited;
+    struct stat     st;
+
+    if (!inited) {
+        inited = true;
+        if (stat(OTA_MANIFEST, &st) == 0 || stat(OTA_MANIFEST_OLD, &st) != 0)
+            snprintf(buf, sizeof buf, "%s", OTA_DIR);
+        else
+            snprintf(buf, sizeof buf, "%s", OTA_DIR_OLD);
+    }
+    return buf;
+}
+
+/* 清单的实际路径（跟着 ota_dir 走，别在别处硬拼 "/manifest.json"）。 */
+const char *ota_manifest_path(void)
+{
+    static char buf[96];
+
+    snprintf(buf, sizeof buf, "%s/manifest.json", ota_dir());
+    return buf;
+}
 
 const char *ota_state_text(OtaState s)
 {
@@ -305,11 +344,20 @@ static bool scan_local_impl(OtaManifest *m, OtaState *state,
     if (state) *state = OTA_NONE;
     if (detail && cap) detail[0] = '\0';
 
-    f = fopen(OTA_MANIFEST, "rb");
+    /* 先按生效目录找；再兜一次"另一个目录"——用户可能刚把包放进新位置，
+     * 而进程早先已经判定过旧目录（inited 缓存）。两条都试，比让用户猜强。 */
+    f = fopen(ota_manifest_path(), "rb");
+    if (!f) {
+        const char *alt = (strcmp(ota_dir(), OTA_DIR) == 0) ? OTA_MANIFEST_OLD
+                                                            : OTA_MANIFEST;
+        /* 注意：这里是 shared 层，**不能**调 UI 的 app_status_set。
+         * 走了回退也算正常路径（老卡），不需要额外提示。 */
+        f = fopen(alt, "rb");
+    }
     if (!f) {
         if (state) *state = OTA_NO_PACKAGE;
         if (detail && cap)
-            snprintf(detail, cap, "没找到 %s", OTA_MANIFEST);
+            snprintf(detail, cap, "没找到 %s", ota_manifest_path());
         return false;
     }
 
@@ -347,7 +395,10 @@ static bool scan_local_impl(OtaManifest *m, OtaState *state,
         char hex[65];
         int  sz = 0;
 
-        snprintf(path, sizeof path, "%s/%s", OTA_DIR, m->art[i].file);
+        /* ⚠️ 必须用 ota_dir() 而不是 OTA_DIR 常量：清单可能是在旧目录里找到的，
+         *   产物就得去同一个目录找。用常量会出现"清单读到了、文件却缺"——
+         *   而屏上写的是"文件大小或摘要对不上"，把方向指到摘要上去了。 */
+        snprintf(path, sizeof path, "%s/%s", ota_dir(), m->art[i].file);
 
         if (!file_size(path, &sz)) {
             if (state) *state = OTA_ERR_MISMATCH;
@@ -410,7 +461,7 @@ bool ota_install(const OtaManifest *m, int idx, char *err, size_t errsz)
      * 两个不同的字面量恰好同地址是未定义行为，编译器会警告。 */
     bool is_cia = !strcmp(m->art[idx].install, "fbi");
 
-    snprintf(src, sizeof src, "%s/%s", OTA_DIR, m->art[idx].file);
+    snprintf(src, sizeof src, "%s/%s", ota_dir(), m->art[idx].file);
 
     if (!strcmp(m->art[idx].install, "replace")) {
         dst = TARGET_3DSX;
@@ -751,8 +802,8 @@ bool ota_download(const char *channel, const OtaManifest *m, int idx,
         return false;
     }
 
-    snprintf(tmp, sizeof tmp, "%s/%s.partial", OTA_DIR, m->art[idx].file);
-    snprintf(dst, sizeof dst, "%s/%s", OTA_DIR, m->art[idx].file);
+    snprintf(tmp, sizeof tmp, "%s/%s.partial", ota_dir(), m->art[idx].file);
+    snprintf(dst, sizeof dst, "%s/%s", ota_dir(), m->art[idx].file);
 
     for (int n = 0; n < N_UPDATE_BASES; ++n) {
         int      i = (s_base_hint + n) % N_UPDATE_BASES;

@@ -168,7 +168,8 @@ def main():
         sys.exit("一条内容都没打出来。")
 
     mf = {"schema": 1, "artifacts": arts}
-    mpath = os.path.join(args.out, "manifest.json")
+    # ★ 2026-10-25：统一下载目录后不能和软件的 manifest.json 撞名 → content.json
+    mpath = os.path.join(args.out, "content.json")
     with open(mpath, "w", encoding="utf-8") as f:
         json.dump(mf, f, indent=2, ensure_ascii=False)
 
@@ -181,7 +182,7 @@ def main():
             for a in arts:
                 shutil.copyfile(os.path.join(args.out, a["file"]),
                                 os.path.join(dst, a["file"]))
-            shutil.copyfile(mpath, os.path.join(dst, "manifest.json"))
+            shutil.copyfile(mpath, os.path.join(dst, "content.json"))
             print("已拷到 %s" % dst)
             return
         print("没找到 sdmc，跳过拷贝（手动拷 build/content 即可）")

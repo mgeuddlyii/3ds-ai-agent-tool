@@ -404,9 +404,11 @@ static void do_download(void)
             size_t rn = 0;
             const char *raw = ota_remote_raw(&rn);
             if (raw && rn) {
-                char mpath[192];
                 FILE *mf;
-                snprintf(mpath, sizeof mpath, "%s/manifest.json", ota_dir());
+                /* ★ 2026-10-25：用 ota_manifest_path()，别自己拼。
+                 *   统一下载目录之后，清单可能在 /download，也可能回落在 /update，
+                 *   硬拼就会把清单写到 A 目录、产物却在 B 目录 → 校验必失败。 */
+                const char *mpath = ota_manifest_path();
                 mf = fopen(mpath, "wb");
                 if (mf) {
                     fwrite(raw, 1, rn, mf);

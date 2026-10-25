@@ -163,6 +163,9 @@ bool ota_download(const char *channel, const OtaManifest *m, int idx,
 /* 更新包放在哪 */
 const char *ota_dir(void);
 
+/* 清单路径（跟着 ota_dir() 走）。下载/校验/安装都用它，别自己拼。 */
+const char *ota_manifest_path(void);
+
 /* 解析 manifest 文本。结构不对就返回 false。 */
 bool ota_parse(const char *json, size_t n, OtaManifest *m);
 
