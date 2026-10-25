@@ -990,6 +990,7 @@ static const char *const g_zh[] = {
     "[L/R] 内容包",  /* S0975 */
     "[↑↓]选择 [Y]重扫 [L/R]程序",  /* S0976 */
     "[A]执行 [Y]重扫 [L/R]程序",  /* S0977 */
+    "已存 %d 个文件到「文件」格：%s",  /* S0978 */
 };
 
 static const char *const g_en[] = {
@@ -1970,6 +1971,7 @@ static const char *const g_en[] = {
     "[L/R] Content packs",  /* S0975 */
     "[Up/Dn] Pick [Y] Rescan [L/R] App",  /* S0976 */
     "[A] Go [Y] Rescan [L/R] App",  /* S0977 */
+    "Saved %d file(s) to the Files tab: %s",  /* S0978 */
 };
 
 /* 供 uistr.c 用（数组本体是 static，只有这几个能出去） */

@@ -16,6 +16,7 @@
 #include "cupdtest.h"
 #include "featprobe.h"
 #include "hwtest.h"
+#include "codeprobe.h"
 #include "perfprobe.h"
 #include "exttest.h"
 #include "micprobe.h"
@@ -44,6 +45,7 @@ typedef enum {
     AR_CUPDTEST,     /* 内容更新通道自测：解析 + 安装/回滚闭环（离线可跑） */
     AR_FEATPROBE,    /* 区域切换 + 字库安全闸验收（会真写一个 locale.txt 再撤销） */
     AR_HWTEST,       /* 硬件知识检索验收（**只读**，不碰任何内容文件） */
+    AR_CODEPROBE,    /* 代码块落盘验收（会在沙箱 out/ 里写几个 codeNNN 文件） */
     AR_PERFPROBE,    /* 推理耗时测量（只读，但要卡上有模型文件） */
     AR_MICPROBE,     /* 语音输入链路：麦克风 + ASR 配置 + 拼装自检（离线可跑） */
     AR_ACTPROBE,     /* 设置类动作：解析 + 白名单 + 落盘读回（会改 config） */
@@ -267,6 +269,11 @@ static void parse_line(char *line, int lineno)
 
     if (!strcmp(op, "titles")) {
         push(AR_TITLES, 0, NULL);
+        return;
+    }
+
+    if (!strcmp(op, "codeprobe")) {
+        push(AR_CODEPROBE, 0, NULL);
         return;
     }
 
@@ -563,6 +570,10 @@ bool autorun_tick(u32 *keys, int *tx, int *ty, int *stick_y,
                 /* 纯本地（写 SD 卡 + 读返回值），不会卡。
                  * 结论一行一行落在 status.txt 里，断言直接读那些行。 */
                 featprobe_run();
+                continue;
+
+            case AR_CODEPROBE:
+                codeprobe_run();
                 continue;
 
             case AR_HWTEST:

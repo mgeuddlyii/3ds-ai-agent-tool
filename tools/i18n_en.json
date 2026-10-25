@@ -975,5 +975,6 @@
   "S0974": "[A] Go   [Y] Rescan   [L/R] App",
   "S0975": "[L/R] Content packs",
   "S0976": "[Up/Dn] Pick [Y] Rescan [L/R] App",
-  "S0977": "[A] Go [Y] Rescan [L/R] App"
+  "S0977": "[A] Go [Y] Rescan [L/R] App",
+  "S0978": "Saved %d file(s) to the Files tab: %s"
 }

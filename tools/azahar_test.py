@@ -1799,6 +1799,17 @@ wait 2
 quit
 """
 
+# 代码块落盘（2026-10-25）：模型回复里的 ``` 块要变成沙箱里的文件。
+# 不走网络 —— 探针直接喂一段写死的带围栏文本，验"解析 + 写文件"这两步。
+SCRIPT_CB = """\
+wait 4
+codeprobe
+wait 3
+shot 1_codeprobe
+wait 2
+quit
+"""
+
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
     "B": dict(script=SCRIPT_B, shots=1, title="二次启动 · 跳过引导"),
@@ -1893,6 +1904,9 @@ PASSES = {
     # ★ 2026-10-25：更新屏的按钮与进度（用户要求的"专门按钮 + 读条"）
     # ★ 2026-10-25：滑轨第 6 格「状态」——帧率/主循环占用/内存
     # ★ 2026-10-25：软件更新的「内容包」页（原「内容更新」屏已并入）
+    # ★ 2026-10-25：代码块 → 沙箱文件（AI 发的代码要能落成可打开的文件）
+    "CB": dict(script=SCRIPT_CB, shots=1,
+               title="代码块落盘 · 围栏解析 + 扩展名 + 没收尾的块"),
     "CP": dict(script=SCRIPT_CP, shots=3,
                title="软件更新 · 程序/内容包 两页切换"),
     "ST": dict(script=SCRIPT_ST, shots=2,
@@ -3033,6 +3047,33 @@ def assertions(res):
                problems)
         expect(kv(st, "end_screen") == "SCREEN_UPDATE",
                "end_screen = SCREEN_UPDATE（没有误退回主界面）", problems)
+
+    elif tag == "CB":
+        print("-- 断言 CB：回复里的代码块能落成文件（且认得扩展名） --")
+        st = res["status"]
+        expect(len(res["shots"]) == res["expect"] * 2, "截图数 = 2", problems)
+
+        line = pick("codeprobe: saved=", st.splitlines())
+        expect(line is not None, "有 codeprobe 记录（探针跑到了）", problems)
+        if line:
+            print("   " + line)
+            # 样例里 4 个块：c / python / 无语言 / 没收尾的 js。
+            # 后两个是真实情况：模型经常不写语言，也经常忘记收尾围栏。
+            expect("saved=4" in line,
+                   "四个块都写了（含没写语言、含没收尾的那个）", problems)
+            for ext in (".c", ".py", ".txt", ".js"):
+                expect(ext in line, "扩展名映射出了 %s" % ext, problems)
+
+        # 光看日志不够：文件要真的躺在卡上，而且就在「文件」格列的那个目录里。
+        hits = []
+        for r in res["roots"]:
+            d = os.path.join(r, "3ds", "aiconsole", "out")
+            if os.path.isdir(d):
+                hits += [f for f in os.listdir(d)
+                         if f.startswith("code") and f.endswith((".c", ".py", ".txt", ".js"))]
+        expect(len(hits) >= 4,
+               "沙箱 out/ 里真的出现了 >=4 个 code*.* 文件（实际 %d）" % len(hits),
+               problems)
 
     elif tag == "CP":
         print("-- 断言 CP：软件更新屏两页能来回切，内容包还能自己扫 --")

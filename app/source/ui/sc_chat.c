@@ -39,6 +39,7 @@
 #include "bootlog.h"
 #include "chatapi.h"
 #include "chatlog.h"
+#include "codebox.h"
 #include "dock_ui.h"
 #include "credfile.h"
 #include "keystore.h"
@@ -1589,6 +1590,26 @@ static void do_real_send(void)
         if (!chatlog_append(false, res.reply))
             app_note("chat: append(ai) FAILED len=%d", (int)strlen(res.reply));
         save_conv_id();
+
+        /* ★★ 2026-10-25 用户要求：「AI 发给我一段代码文件，现在的版本还不能
+         *   直接让我点开测试。要能接收到，也能打开。」
+         *
+         *   做法：回复里每个 ``` 围栏块都写成一个独立文件，落在
+         *   actions_dir()（sdmc:/3ds/aiconsole/out）—— 那是沙箱白名单里
+         *   唯一允许写的目录，也正是「文件」格列的那个目录。
+         *   所以写完不用额外刷新：切到「文件」格就看到，按 A 就能读内容。
+         *
+         *   ⚠️ 只写文件、**不执行**。模型给的代码是不是能跑、跑了会怎样，
+         *      那是用户自己判断的事；本程序不替人按下执行键。 */
+        {
+            char names[160];
+            int  nc = codebox_extract(res.reply, names, sizeof names);
+
+            if (nc > 0) {
+                app_status_set(S(S0978), nc, names);
+                app_note("chat: codebox saved=%d [%s]", nc, names);
+            }
+        }
     }
 }
 
