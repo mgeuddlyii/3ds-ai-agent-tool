@@ -81,8 +81,12 @@ static const Rect HOME_BTN_MORE  = { W_BOT_MARGIN + HOME_HALF_W + 12.0f,
  * 靠触摸，或按 X（页脚有提示）。原因是这一格在标题行里（y=6），
  * 网格导航按 row/col 算，把它塞进去会让"上下移动保持列"的直觉失效。
  * 56×22 是量过的：「设置」两个字 32px + 内边距 6 + 余量。 */
-static const Rect HOME_BTN_SETTING = { (float)R_BOT_W - 56.0f - 8.0f, 6.0f,
-                                       56.0f, 22.0f, 0 };
+/* ★ 2026-10-26：56 宽 → 66 宽。
+ *   按钮内可用宽 = r->w - 6 = 50px，而英文 "Settings" 实测 51px ——
+ *   差 1px 就被排版护栏记成溢出（中文「设置」32px，所以一直没暴露）。
+ *   宁可把按钮加宽 10px，也不要为了省这点地方去把英文改成别扭的缩写。 */
+static const Rect HOME_BTN_SETTING = { (float)R_BOT_W - 66.0f - 8.0f, 6.0f,
+                                       66.0f, 22.0f, 0 };
 
 /* 进屏时扫一次。不缓存到 config —— 用户随时可能改卡上的文件，
  * 存下来的布尔会过期，不如每次进来都老实读一遍。 */

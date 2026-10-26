@@ -168,23 +168,27 @@ static void render_top(void)
         const bool show_new = can_install() || has_remote_update();
 
         snprintf(num, sizeof num, "v%s (%d)", APP_VERSION_NAME, APP_VERSION_CODE);
-        y = w_kv(x, y, 76, S(S0620), num,
+        /* ★ 2026-10-26：标签列 76 → 104。
+         *   76 时键列可用宽只有 70px，而英文 "Current version" 要 94px ——
+         *   中文界面看不出来（「当前版本」正好塞得下），一换英文就被排版护栏
+         *   记成溢出。上屏有 400px 宽，多让 28px 给标签完全放得开。 */
+        y = w_kv(x, y, 104, S(S0620), num,
                  w_c(C_SLOT_MUTED), w_c(C_SLOT_FG), TEXT_LINE_H);
 
         if (show_new && m->count > 0) {
             snprintf(num, sizeof num, "v%s (%d)", m->version_name, m->version_code);
-            y = w_kv(x, y, 76, S(S0621), num,
+            y = w_kv(x, y, 104, S(S0621), num,
                      w_c(C_SLOT_MUTED), w_c(C_SLOT_OK), TEXT_LINE_H);
 
-            y = w_kv(x, y, 76, S(S0969), m->art[0].file,
+            y = w_kv(x, y, 104, S(S0969), m->art[0].file,
                      w_c(C_SLOT_MUTED), w_c(C_SLOT_FG), TEXT_LINE_H);
 
             fmt_size(num, sizeof num, m->art[0].size);
-            y = w_kv(x, y, 76, S(S0623), num,
+            y = w_kv(x, y, 104, S(S0623), num,
                      w_c(C_SLOT_MUTED), w_c(C_SLOT_FG), TEXT_LINE_H);
 
             snprintf(num, sizeof num, "%.8s…", m->art[0].sha256);
-            y = w_kv(x, y, 76, S(S0624), num,
+            y = w_kv(x, y, 104, S(S0624), num,
                      w_c(C_SLOT_MUTED), w_c(C_SLOT_FAINT), TEXT_LINE_H);
 
             y += 4;

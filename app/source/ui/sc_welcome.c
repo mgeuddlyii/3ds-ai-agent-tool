@@ -86,8 +86,13 @@ static void render_plang_bottom(void)
 
     /* 两个选项各一个按钮，**选中的那个用主色** ——
      * 只靠文字加不加括号区分，在 3DS 的小屏上不够明显。 */
+    /* ★ 2026-10-26 修：这里原来写的是 **S0001**，而 S0001 的真实内容是
+     *   「这个键还没有对应实现（内部问题）」—— 也就是说新手引导第一屏的
+     *   中文选项按钮，一直显示的是那句占位提示（英文界面下更长，直接把
+     *   136px 的按钮撑到 314px，被排版护栏记了一条溢出）。
+     *   这是"占位文案忘了换"留下的，改用「中文」(S0946)。 */
     w_button(&(Rect){ x, BOT_BTN_Y, bw, 36, 0 },
-             S(S0001), g_lang_sel == 0 ? W_BTN_PRIMARY : W_BTN_NORMAL);
+             S(S0946), g_lang_sel == 0 ? W_BTN_PRIMARY : W_BTN_NORMAL);
     w_button(&(Rect){ x + bw + 16.0f, BOT_BTN_Y, bw, 36, 0 },
              "English", g_lang_sel == 1 ? W_BTN_PRIMARY : W_BTN_NORMAL);
 
