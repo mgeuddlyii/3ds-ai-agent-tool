@@ -154,7 +154,9 @@ static const char *thinking_json(const ProviderDef *p, int level)
     static char buf[128];
     const char *eff;
 
-    if (!p || p->think == PROVIDER_THINK_NONE)
+    /* UNKNOWN（未查证）也**一个参数都不发**：猜错就是 400，而用户看不出
+     * 是自己多点了那个旋钮造成的。表里既然没查到，就别赌。 */
+    if (!p || p->think == PROVIDER_THINK_NONE || p->think == PROVIDER_THINK_UNKNOWN)
         return "";
 
     if (level <= 0) {

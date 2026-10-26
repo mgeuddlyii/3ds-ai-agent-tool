@@ -976,5 +976,10 @@
   "S0975": "[L/R] Content packs",
   "S0976": "[Up/Dn] Pick [Y] Rescan [L/R] App",
   "S0977": "[A] Go [Y] Rescan [L/R] App",
-  "S0978": "Saved %d file(s) to the Files tab: %s"
+  "S0978": "Saved %d file(s) to the Files tab: %s",
+  "S0979": "Not adjustable (model has no such param)",
+  "S0980": "Unverified (greyed out)",
+  "S0981": "Delete task \"%s\"?",
+  "S0982": "Its chat history is deleted too. This cannot be undone.",
+  "S0983": "Delete cancelled"
 }

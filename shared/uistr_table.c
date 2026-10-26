@@ -991,6 +991,11 @@ static const char *const g_zh[] = {
     "[↑↓]选择 [Y]重扫 [L/R]程序",  /* S0976 */
     "[A]执行 [Y]重扫 [L/R]程序",  /* S0977 */
     "已存 %d 个文件到「文件」格：%s",  /* S0978 */
+    "不可调（该模型没这参数）",  /* S0979 */
+    "未查证（先灰着）",  /* S0980 */
+    "删除任务「%s」？",  /* S0981 */
+    "它的聊天记录会一起删掉，不能恢复。",  /* S0982 */
+    "已取消删除",  /* S0983 */
 };
 
 static const char *const g_en[] = {
@@ -1972,6 +1977,11 @@ static const char *const g_en[] = {
     "[Up/Dn] Pick [Y] Rescan [L/R] App",  /* S0976 */
     "[A] Go [Y] Rescan [L/R] App",  /* S0977 */
     "Saved %d file(s) to the Files tab: %s",  /* S0978 */
+    "Not adjustable (model has no such param)",  /* S0979 */
+    "Unverified (greyed out)",  /* S0980 */
+    "Delete task \"%s\"?",  /* S0981 */
+    "Its chat history is deleted too. This cannot be undone.",  /* S0982 */
+    "Delete cancelled",  /* S0983 */
 };
 
 /* 供 uistr.c 用（数组本体是 static，只有这几个能出去） */

@@ -70,6 +70,21 @@ enum { PANEL_KEY = 0, PANEL_PROJ, PANEL_FILE, PANEL_BROWSE, PANEL_STAT, PANEL_N 
 static int  g_panel = PANEL_KEY;
 static int  g_sel   = 0;          /* 各面板共用一个"当前行"，切面板时重置 */
 
+/* ★★ 2026-10-26 用户要求：「删除项目的时候要有弹窗，加红色按钮确认」。
+ *
+ *   原来「×」和 SELECT 都是**当场就删**：一次误触就少一个任务，
+ *   连带它的聊天记录（proj_remove 里会调 chat_drop_project 把历史文件整体前移）。
+ *   删掉的任务名和对话都回不来，而手指在 320px 的屏上很容易点偏。
+ *
+ *   >= 0 = 正在确认删这一行；-1 = 没有弹窗。
+ *   ⚠️ 弹窗期间它是**模态的**：其它按键一律不理，否则"确认框开着，
+ *      用户按 A 以为在确认，其实去切了任务"。 */
+static int  g_proj_del = -1;
+
+/* 弹窗里两个按钮的矩形（渲染与命中共用，别各算一套）。 */
+static const Rect PROJ_DEL_BTN_NO  = {  16, 148, 136, 34, 0 };
+static const Rect PROJ_DEL_BTN_YES = { 168, 148, 136, 34, 0 };
+
 /* ★ 2026-10-23 真机反馈：「建任务二直接就豆包了，不行 —— 建新任务的时候
  *   会让你选择是哪一个模型」。
  *
@@ -960,6 +975,33 @@ void dockui_ime_keys(u32 down)
 }
 
 /* 画一格面板的内容（不含滑轨条）。宿主屏也调这个。 */
+/* 删除确认弹窗。画在项目行之上（模态），由 dockui_render 的 PROJ 分支最后调。 */
+static void proj_del_popup(void)
+{
+    const Project *p = projects_at(g_proj_del);
+    char           title[96];
+
+    /* 压一层浅底当遮罩：不全遮挡，让用户仍能看见"要删的是哪一行"。
+     * 用 ACC_LT 而不是纯白 —— 纯白和下面的按钮分不出层次。 */
+    r_rect(&(Rect){ 0, 0, (float)R_BOT_W, (float)R_BOT_H, 0 }, w_c(C_SLOT_ACC_LT));
+
+    {
+        Rect box = { 8, 52, 304, 140, 0 };
+        w_panel(&box, w_c(C_SLOT_BG), w_c(C_SLOT_WARN));
+    }
+
+    snprintf(title, sizeof title, S(S0981), (p && p->name[0]) ? p->name : "-");
+    w_wrap(20.0f, 60.0f, 280.0f, title, w_c(C_SLOT_FG), TEXT_LINE_H);
+    w_wrap(20.0f, 84.0f, 280.0f, S(S0982), w_c(C_SLOT_MUTED), TEXT_LINE_H);
+
+    /* 「取消」普通、「删除」红色，且按钮上写的是动作本身而不是"确定" ——
+     * "确定"读不出后果。 */
+    w_button(&PROJ_DEL_BTN_NO, S(S0288),
+             W_BTN_SELECTED | (app_touch_on(&PROJ_DEL_BTN_NO) ? W_BTN_PRESSED : 0));
+    w_button(&PROJ_DEL_BTN_YES, S(S0449),
+             W_BTN_DANGER | (app_touch_on(&PROJ_DEL_BTN_YES) ? W_BTN_PRESSED : 0));
+}
+
 void dockui_render(int panel)
 {
     float x = (float)W_BOT_MARGIN;
@@ -1044,6 +1086,10 @@ void dockui_render(int panel)
             w_button(&r, S(S0922),
                      W_BTN_NORMAL | (app_touch_on(&r) ? W_BTN_PRESSED : 0));
         }
+
+        /* 确认弹窗压在最后画（模态）。 */
+        if (g_proj_del >= 0)
+            proj_del_popup();
         break;
     }
 
@@ -1103,6 +1149,50 @@ void dockui_render(int panel)
 
 static int g_opt_sel;
 
+/* ★★ 2026-10-25 用户要求：
+ *   「保证每个知识点都能连到思考强度开关；确定不了的，选项页那行字变灰、
+ *    点不动；所有预设厂商都要明确能否控制。」
+ *
+ *   判据只有一个来源：provider 表里的 .think（provider_think_capable）。
+ *   本文件**不自己维护第二张能力表** —— 两张表迟早有一处漏改，
+ *   而漏改的表现是"界面说能调、请求里压根没发"，用户只会觉得开关是坏的。 */
+static bool opt_avail(int i)
+{
+    const AppConfig *c;
+
+    if (i != 0)
+        return true;
+
+    c = app_cfg();
+    return provider_think_capable(provider_find(c ? c->ai.provider : NULL));
+}
+
+/* 行首说明为什么这一行点不动（不可用时代替"档位名"）。 */
+static const char *opt_why(int i)
+{
+    const AppConfig *c = app_cfg();
+    ProviderThink     k = provider_think_kind(provider_find(c ? c->ai.provider : NULL));
+
+    (void)i;
+    if (k == PROVIDER_THINK_UNKNOWN)
+        return S(S0980);          /* 未查证（先灰着） */
+    return S(S0979);              /* 不可调（该模型没这参数） */
+}
+
+/* 下一个**可用**的行。不可用的行直接跳过 ——
+ * 能选中却按不动，用户会以为按键坏了。 */
+static int opt_step_row(int from, int dir)
+{
+    int i = from;
+
+    for (int n = 0; n < OPT_ROWS; ++n) {
+        i = (i + dir + OPT_ROWS) % OPT_ROWS;
+        if (opt_avail(i))
+            return i;
+    }
+    return from;
+}
+
 /* 值的中文/英文显示都走 S()，与设置屏同一套编号 —— 两处显示必须一致，
  * 否则用户会以为设置屏改了没生效。 */
 static void opt_value(int i, char *out, size_t n)
@@ -1113,7 +1203,12 @@ static void opt_value(int i, char *out, size_t n)
 
     switch (i) {
     case 0:
-        snprintf(out, n, "%s", thinking_name(c->ai.thinking));
+        /* 不能调的时候，值列写"为什么不能调"，而不是照念档位名 ——
+         * 念档位名会让人以为"现在就是这档，只是点不动"，那是另一种误导。 */
+        if (!opt_avail(0))
+            snprintf(out, n, "%s", opt_why(0));
+        else
+            snprintf(out, n, "%s", thinking_name(c->ai.thinking));
         break;
     case 1: {
         /* 0 的含义是"用默认"，而默认就是 8 轮 —— 直接显示实际生效的轮数，
@@ -1157,6 +1252,11 @@ static void opt_step(int i, int delta)
     if (!c)
         return;
 
+    /* 卖不了的旋钮不许转：键盘、触摸、自动轮播都可能走到这里，
+     * 守卫放在**动作入口**，比在每个调用点判一遍可靠。 */
+    if (!opt_avail(i))
+        return;
+
     switch (i) {
     case 0:
         c->ai.thinking = (c->ai.thinking + delta + 4) % 4;
@@ -1195,6 +1295,12 @@ void dockui_render_opt(void)
     const float x = (float)W_BOT_MARGIN;
     const float w = (float)W_BOT_USABLE;
 
+    /* ★ 光标可能停在一行"不可用"上（默认就是第 0 行，而它可能灰着）。
+     *   不纠正的话，整屏**没有任何行高亮** —— 用户不知道光标在哪、
+     *   也不知道左右键会改哪一项。这里每帧纠一次，代价可以忽略。 */
+    if (!opt_avail(g_opt_sel))
+        g_opt_sel = opt_step_row(g_opt_sel, +1);
+
     for (int i = 0; i < OPT_ROWS; ++i) {
         char lab[40], val[40], line[96];
         Rect r;
@@ -1207,16 +1313,21 @@ void dockui_render_opt(void)
         opt_value(i, val, sizeof val);
         /* 一行放不下"标签 ……… 值"：值和标签分别画，值右对齐 */
         snprintf(line, sizeof line, "%s", lab);
-        r_rect(&(Rect){ 0, r.y - 2, R_BOT_W, OPT_H - 2, 0 },
-               i == g_opt_sel ? w_c(C_SLOT_ACC_LT) : w_c(C_SLOT_BG));
-        r_text(&(Rect){ x + 8, r.y + 3, w - 100, 16, 0 }, line,
-               i == g_opt_sel ? w_c(C_SLOT_ACC_DK) : w_c(C_SLOT_FG));
+        {
+            const bool on = opt_avail(i);
+            /* 不可用的行：不画选中底色（那个底色等于告诉用户"这行能操作"）。 */
+            r_rect(&(Rect){ 0, r.y - 2, R_BOT_W, OPT_H - 2, 0 },
+                   (on && i == g_opt_sel) ? w_c(C_SLOT_ACC_LT) : w_c(C_SLOT_BG));
+            r_text(&(Rect){ x + 8, r.y + 3, w - 100, 16, 0 }, line,
+                   !on ? w_c(C_SLOT_FAINT)
+                       : (i == g_opt_sel ? w_c(C_SLOT_ACC_DK) : w_c(C_SLOT_FG)));
+        }
 
         {
             int vw = text_width(val);
             r_text(&(Rect){ (float)(W_BOT_MARGIN + W_BOT_USABLE - vw), r.y + 3,
                             (float)(vw + 2), 16, 0 }, val,
-                   w_c(C_SLOT_ACC_DK));
+                   !opt_avail(i) ? w_c(C_SLOT_FAINT) : w_c(C_SLOT_ACC_DK));
         }
     }
 
@@ -1241,6 +1352,8 @@ bool dockui_touch_opt(int tx, int ty)
         r.w = (float)W_BOT_USABLE;
         r.h = OPT_H;
         if (w_hit(&r, tx, ty)) {
+            if (!opt_avail(i))
+                return true;        /* 点得中、但不给切：灰着就是答案 */
             g_opt_sel = i;
             opt_step(i, +1);        /* 点一下 = 换下一档，和设置屏一致 */
             return true;
@@ -1251,8 +1364,8 @@ bool dockui_touch_opt(int tx, int ty)
 
 void dockui_keys_opt(u32 down)
 {
-    if (down & KEY_UP)   { g_opt_sel = (g_opt_sel + OPT_ROWS - 1) % OPT_ROWS; return; }
-    if (down & KEY_DOWN) { g_opt_sel = (g_opt_sel + 1) % OPT_ROWS; return; }
+    if (down & KEY_UP)   { g_opt_sel = opt_step_row(g_opt_sel, -1); return; }
+    if (down & KEY_DOWN) { g_opt_sel = opt_step_row(g_opt_sel, +1); return; }
     if (down & (KEY_RIGHT | KEY_A)) { opt_step(g_opt_sel, +1); return; }
     if (down & KEY_LEFT)            { opt_step(g_opt_sel, -1); return; }
 }
@@ -1367,6 +1480,21 @@ bool dockui_touch(int panel, int tx, int ty)
         break;
 
     case PANEL_PROJ:
+        /* 弹窗开着 → 整屏只认那两个按钮。点别处等于"取消"（不是"删除"）：
+         * 误触的默认结果必须是「什么都没发生」。 */
+        if (g_proj_del >= 0) {
+            if (w_hit(&PROJ_DEL_BTN_YES, tx, ty)) {
+                int i = g_proj_del;
+
+                g_proj_del = -1;
+                proj_remove(i);
+            } else if (w_hit(&PROJ_DEL_BTN_NO, tx, ty)) {
+                g_proj_del = -1;
+                app_status_set(S(S0983));
+            }
+            return true;
+        }
+
         for (int i = 0; i < projects_count() && i < proj_new_row(); ++i) {
             /* ★ 先判「×」，后判整行（2026-10-24）。
              *   叉的矩形整个落在行矩形里面 —— 顺序反了的话，
@@ -1374,7 +1502,13 @@ bool dockui_touch(int panel, int tx, int ty)
              *   而且用户会以为"我明明点了叉，怎么只是切过去了"。 */
             Rect rx = proj_del_rect(i);
             if (w_hit(&rx, tx, ty)) {
-                proj_remove(i);
+                /* 不再当场删：先弹确认（见 g_proj_del 的注释）。 */
+                if (projects_count() > 1) {
+                    g_proj_del = i;
+                    app_note("dock: ask delete #%d", i);
+                } else {
+                    proj_remove(i);      /* 只剩一个时由 proj_remove 自己拒绝并提示 */
+                }
                 return true;
             }
             Rect r = row_rect(i);
@@ -1509,6 +1643,22 @@ void dockui_keys(int panel, u32 down)
             return;
         }
 
+        /* 删除确认弹窗（模态，优先于一切）。
+         * A / B / ← = 取消（安全侧）；→ 或 Y = 删除 ——
+         * 删除需要一次**方向明确**的动作，不能靠"顺手按了 A"。 */
+        if (g_proj_del >= 0) {
+            if (down & (KEY_A | KEY_B | KEY_LEFT)) {
+                g_proj_del = -1;
+                app_status_set(S(S0983));
+            } else if (down & (KEY_RIGHT | KEY_Y)) {
+                int i = g_proj_del;
+
+                g_proj_del = -1;
+                proj_remove(i);
+            }
+            return;
+        }
+
         if (down & KEY_UP)   { g_sel = (g_sel > 0) ? g_sel - 1 : n - 1; return; }
         if (down & KEY_DOWN) { g_sel = (g_sel + 1 < n) ? g_sel + 1 : 0; return; }
 
@@ -1525,7 +1675,16 @@ void dockui_keys(int panel, u32 down)
         /* ★ START = 改当前任务的名字 */
         if (down & KEY_START) { rename_task(g_sel); return; }
 
-        if (down & KEY_SELECT) { proj_remove(g_sel); return; }
+        if (down & KEY_SELECT) {
+            /* 与「×」一致：先确认。只剩一个任务时直接交给 proj_remove 去拒绝。 */
+            if (projects_count() > 1) {
+                g_proj_del = g_sel;
+                app_note("dock: ask delete #%d (SELECT)", g_sel);
+            } else {
+                proj_remove(g_sel);
+            }
+            return;
+        }
         break;
     }
 

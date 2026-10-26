@@ -214,7 +214,11 @@ static const Rect CHAT_BTN_THINK = { 170.0f, 3.0f,
  *   i=4 / m=12 / 空格只有 3，不是早年估的 104），w_button 的溢出判据是
  *   b.w-6 = 110。102 ≤ 110 留 8px 余量 —— 译文再加长一两个字母也稳。
  *
- * ★ 服务商不支持时**整个按钮不画**（p->think == PROVIDER_THINK_NONE，
+ * ★ 服务商不支持时**整个按钮不画**（判据是 provider_think_capable() ——
+ *   它同时覆盖 NONE（明确不可调）与 **UNKNOWN（未查证）**。
+ *   2026-10-25 之前这里判的是 `p->think == PROVIDER_THINK_NONE`，
+ *   加了 UNKNOWN 那一档之后，这种写法会让"未查证"的家**莫名其妙多出一个按钮**，
+ *   点下去却什么都不发 —— 所以两处判据统一改成能力函数。
  *   离线演示与豆包都没设这个字段，天然落进这一支）。
  *   这与设置屏那条"不锁、只在状态行说明"是**两个不同的取舍**，理由是
  *   场景不同：设置行是常驻的，锁死档位会让用户切走服务商后改不回来；
@@ -2277,7 +2281,7 @@ static void ctx_popup_bottom(void)
  *     不落盘的话用户退出再进来又回到默认，会以为没生效。
  *   · 不做"这家不支持就拒绝改"：档位存在 config 里，切到支持思考的
  *     服务商自然就生效（按钮在不支持时不画，但值不被锁）。
- * 按钮可见性见 CHAT_BTN_TLVL 上方注释（p->think != PROVIDER_THINK_NONE）。 */
+ * 按钮可见性见 CHAT_BTN_TLVL 上方注释（provider_think_capable()）。 */
 static void cycle_think_level(int delta)
 {
     AppConfig *c = app_cfg();
@@ -2640,7 +2644,7 @@ static void render_bottom(void)
      * 不然用户得逐个点开才知道当前是哪一档。
      * 这家没有可调档位时整个不画（p->think == NONE），取舍见
      * CHAT_BTN_TLVL 上方的注释：值不锁，只是不画一个白点的键。 */
-    if (p->think != PROVIDER_THINK_NONE) {
+    if (provider_think_capable(p)) {
         char lbl[24];
         int  lvl = app_cfg()->ai.thinking;
 
@@ -3065,7 +3069,7 @@ static void chat_handle(u32 down, u32 held)
         /* 思考强度：这家有可调档位时才画这个钮（render_bottom 同一
          * 条件），命中判断必须和画它的条件一致，否则会出现"看得到
          * 点不着"或"点着了却没画"—— 后者更糟：改了个看不见的档位。 */
-        if (chat_provider()->think != PROVIDER_THINK_NONE &&
+        if (provider_think_capable(chat_provider()) &&
             w_hit(&CHAT_BTN_TLVL, tx, ty)) {
             cycle_think_level(+1);
             return;

@@ -61,10 +61,20 @@ typedef enum {
  *    界面上直说"这家没有可调的思考档位"。**不许凭印象编一个参数** ——
  *    编错的后果是请求 400，而用户完全不知道为什么。 */
 typedef enum {
-    PROVIDER_THINK_NONE = 0,          /* 不可调（或未查证）——界面要明说 */
+    PROVIDER_THINK_NONE = 0,          /* **明确不可调**：这个模型根本没有该参数 */
     PROVIDER_THINK_EFFORT,            /* 只发 reasoning_effort（OpenAI 标准） */
     PROVIDER_THINK_TYPE_EFFORT,       /* thinking.type + reasoning_effort（DeepSeek/方舟） */
     PROVIDER_THINK_ENABLE_EFFORT,     /* enable_thinking + reasoning_effort（Qwen） */
+    /* ★★ 2026-10-25 加的第三态：**未查证**。
+     *
+     *   用户要求：「每个厂商都要明确能否控制；确定不了的，选项页那行字变灰、
+     *   点不动」。原来 NONE 把"明确没有这个参数"和"我没查到"混成一种，
+     *   于是界面上没法告诉用户是哪一种 —— 而这两种对用户的意义完全不同：
+     *   · NONE    = 换模型也一样，别找了；
+     *   · UNKNOWN = 这一家我不确定，你可以告诉我或者自己查。
+     *   两者在 UI 上**都不可点**（宁可少给一个旋钮，也不要让它看起来能用），
+     *   区别只在提示文字。 */
+    PROVIDER_THINK_UNKNOWN,
 } ProviderThink;
 
 typedef struct ProviderDef {
@@ -87,6 +97,14 @@ typedef struct ProviderDef {
      * 也不要对着不支持的接口发一个没人认的参数。 */
     ProviderThink think;
 } ProviderDef;
+
+/* 这家的思考强度**能不能调**（能做 UI 判据的唯一入口）。
+ *   true  仅当表里明确写了一个具体翻译方式（EFFORT / TYPE_EFFORT / ENABLE_EFFORT）；
+ *   false 覆盖 NONE（明确不可调）与 UNKNOWN（未查证）—— 两种都**不许点**。 */
+bool provider_think_capable(const ProviderDef *p);
+
+/* 不用点、但要能说清原因时用它：返回 NONE / UNKNOWN / 具体方式。 */
+ProviderThink provider_think_kind(const ProviderDef *p);
 
 /* 取服务商的一句说明（按当前界面语言）。表里存编号，见 note_id。 */
 const char *provider_note(const ProviderDef *p);
