@@ -156,6 +156,10 @@ float w_kv(float x, float y, float kw, const char *key, const char *val,
 #define W_BTN_SELECTED  1   /* 主色底 + 白字（有焦点） */
 #define W_BTN_PRIMARY   2   /* 主色底 + 白字（无焦点，但仍是主动作） */
 #define W_BTN_DISABLED  3   /* 灰底灰字，"还没做"要用它，别用能点的样子 */
+#define W_BTN_DANGER    4   /* 红底白字 —— **只给"删了回不来"的动作**。
+                             * 项目里到处都是主色按钮，如果删除也用主色，
+                             * 用户靠手感分不出"确认"和"删掉"，
+                             * 而这两件事的后果差一个量级。 */
 
 /* 按下的视觉反馈。三者是**正交**的：状态决定"这是什么按钮"，
  * 按下位决定"手指正压在上面"。所以不能把 pressed 塞进 state 枚举 ——

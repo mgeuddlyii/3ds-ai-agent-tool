@@ -597,6 +597,8 @@ void w_button(const Rect *r, const char *label, int state)
         case W_BTN_SELECTED: fill = w_c(C_SLOT_ACCENT); border = w_c(C_SLOT_ACC_DK); fg = w_c(C_SLOT_BG); break;
         case W_BTN_PRIMARY:  fill = w_c(C_SLOT_ACCENT); border = w_c(C_SLOT_ACC_DK); fg = w_c(C_SLOT_BG); break;
         case W_BTN_DISABLED: fill = w_c(C_SLOT_DIS_BG); border = w_c(C_SLOT_DIS_LN); fg = w_c(C_SLOT_DIS_FG); break;
+        /* 危险动作：红底白字。按下时同样走 w_press_shade（压暗一档）。 */
+        case W_BTN_DANGER:   fill = w_c(C_SLOT_WARN);    border = w_c(C_SLOT_WARN_DK); fg = w_c(C_SLOT_BG);     break;
         default:             fill = w_c(C_SLOT_BG);     border = w_c(C_SLOT_ACCENT); fg = w_c(C_SLOT_ACC_DK); break;
     }
 

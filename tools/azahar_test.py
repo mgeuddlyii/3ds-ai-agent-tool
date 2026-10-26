@@ -1810,6 +1810,38 @@ wait 2
 quit
 """
 
+# 删除任务要确认（2026-10-26 用户要求）：请求删除 -> 弹窗 -> 取消 -> 再删。
+# 触摸坐标：滑轨 6 格 ×44 + 5 间隙 ×2，右对齐到 310，起点 36；
+# 「项目」是第 3 格（0 基 2）→ 36+2*46=128..172，取中心 (150, 33)。
+# 键盘路径：SELECT 提请求，A/← 取消，→/Y 才真删（安全侧默认是取消）。
+# 删除任务要确认（2026-10-26 用户要求）：点「×」→ 弹窗 → 取消 → 再点 → 红色删除。
+# 坐标（都是算出来的，不是试出来的）：
+#   滑轨「项目」格：6 格 ×44 + 5 间隙 ×2，右对齐到 310，起点 36 → 第 3 格 128..172
+#   第 1 行的「×」：row_rect(0) = (10,54,300,24)，叉在行右端 24 宽 → 中心 (298,66)
+#   弹窗红色按钮：{168,148,136,34} → 中心 (236,165)
+SCRIPT_PD = """\
+wait 20
+key A
+wait 8
+touch 150 33
+wait 6
+shot 1_proj_tab
+touch 298 66
+wait 6
+shot 2_confirm
+key A
+wait 4
+shot 3_cancelled
+touch 298 66
+wait 5
+shot 4_confirm_again
+touch 236 165
+wait 8
+shot 5_deleted
+quit
+"""
+
+
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
     "B": dict(script=SCRIPT_B, shots=1, title="二次启动 · 跳过引导"),
@@ -1905,6 +1937,9 @@ PASSES = {
     # ★ 2026-10-25：滑轨第 6 格「状态」——帧率/主循环占用/内存
     # ★ 2026-10-25：软件更新的「内容包」页（原「内容更新」屏已并入）
     # ★ 2026-10-25：代码块 → 沙箱文件（AI 发的代码要能落成可打开的文件）
+    # ★ 2026-10-26：删除任务必须先弹窗、红色按钮确认
+    "PD": dict(script=SCRIPT_PD, shots=5,
+               title="删除任务 · 确认弹窗（取消 / 红色删除按钮）"),
     "CB": dict(script=SCRIPT_CB, shots=1,
                title="代码块落盘 · 围栏解析 + 扩展名 + 没收尾的块"),
     "CP": dict(script=SCRIPT_CP, shots=3,
@@ -2327,6 +2362,11 @@ def run_pass(tag, spec, ctx):
         #   夹具把"有足够内容"这件事钉死：8 条，每屏只放得下 3~4 条。
         stage_chatlog_many(roots)
         print("7 趟：夹具已就位（8 条历史 → 上屏真的能滚）")
+    if tag == "PD":
+        # 删除确认要验"取消不删、确认才删"，所以必须先有两个任务。
+        # 复用趟 8 的夹具（两任务 + 各自历史），别另写一份。
+        stage_two_projects(roots)
+        print("PD 趟：夹具已就位（2 个任务，用来验删除确认）")
     if tag == "8":
         # 这一趟验"每个任务一份历史"，所以**必须**先有两个任务、两份内容
         # 不同的记录 —— 只有一个任务时代码走的是老路径（见 chatlog.c：
@@ -3047,6 +3087,30 @@ def assertions(res):
                problems)
         expect(kv(st, "end_screen") == "SCREEN_UPDATE",
                "end_screen = SCREEN_UPDATE（没有误退回主界面）", problems)
+
+    elif tag == "PD":
+        print("-- 断言 PD：删除要先弹窗，取消不删、确认才删 --")
+        st = res["status"]
+        expect(len(res["shots"]) == res["expect"] * 2, "截图数 = 10", problems)
+        expect("dock: ask delete" in st,
+               "按 SELECT 只是**请求**删除（status 有 ask delete）", problems)
+
+        # 判据落在**文件**上（不是截图），而且要用 newest() 取**这次**写的那份：
+        # roots 里可能同时有几份（沙箱副本/旧目录），随手取最后一份会读到旧的，
+        # 于是"屏上明明删掉了、断言说还剩两个"——这种红最费时间。
+        proj = None
+        q_proj = newest(res["roots"], os.path.join(SD_SUBDIR, "projects.txt"))
+        if q_proj:
+            proj = open(q_proj, encoding="utf-8").read()
+        expect(proj is not None, "projects.txt 还在", problems)
+        if proj is not None:
+            n = sum(1 for l in proj.splitlines() if "|" in l)
+            print("   删除后任务数 = %d" % n)
+            # 夹具铺 2 个 → 取消一次（不删）+ 确认一次（删 1 个）→ 剩 1 个。
+            expect(n == 1, "任务从 2 个删到 1 个（取消那一次没有误删）", problems)
+
+        expect(kv(st, "end_screen") == "SCREEN_CHAT",
+               "end_screen = SCREEN_CHAT（弹窗没有把屏弹走）", problems)
 
     elif tag == "CB":
         print("-- 断言 CB：回复里的代码块能落成文件（且认得扩展名） --")
