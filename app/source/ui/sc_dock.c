@@ -1046,8 +1046,11 @@ void dockui_render_ime(void)
         w_button(&a3, "上屏", W_BTN_PRIMARY);
     }
 
+    /* 提示行：右手边要留给页码，所以只写四个键、不带 "=" 与多余空格。
+     * 原来那句 "A=上屏 X=退格 Y=空格 SELECT=完成 B=取消" 实测 291px > 256px，
+     * 被护栏记成溢出（右边还压着页码）。B=取消 是常识，省掉。 */
     w_line((float)W_BOT_MARGIN, 218.0f, (float)W_BOT_USABLE - 44.0f,
-           "A=上屏 X=退格 Y=空格 SELECT=完成 B=取消", w_c(C_SLOT_FAINT));
+           "A上屏 X退格 Y空格 SELECT完成", w_c(C_SLOT_FAINT));
 }
 
 bool dockui_ime_touch(int tx, int ty)

@@ -1155,7 +1155,7 @@ key B
 wait 3
 key A
 wait 8
-shot 5_after_password
+shot 6_after_password
 wait 2
 quit
 """
@@ -1920,22 +1920,51 @@ wait 8
 touch 104 33
 wait 6
 shot 1_keyboard
+# ★ 键盘格的两个按钮：拼音 (10..156) / 英文键盘 (164..310)，y=126..162。
+#   点右边那个走 system swkbd —— 模拟器里是模态 Qt 窗口，主循环会被卡住，
+#   表现像"程序死了"（boot.log 停在那一帧、status 不写）。所以必须点左边。
+touch 83 144
+wait 6
+shot 2_ime_open
 touch 220 137
 wait 3
 touch 235 77
 wait 4
-shot 2_pinyin_ni
+shot 3_pinyin_ni
 key A
 wait 4
-shot 3_committed
+shot 4_committed
 touch 14 197
 wait 4
-shot 4_space
+shot 5_space
 touch 233 197
 wait 4
-shot 5_after
+shot 6_after
 quit
 """
+
+# Function Call 实弹（2026-10-27）：用输入法打一句"写文件"，发给真 DeepSeek，
+# 看它会不会按 AGENT.md 的协议吐出动作，然后确认屏按 A 允许、文件真的落盘。
+# 判据看 sandbox out/ 里有没有 note.txt —— 屏上好看不算数。
+SCRIPT_FC = """\
+wait 20
+key A
+wait 8
+key Y
+wait 8
+shot 1_ime_open
+type 请调用写文件的动作，把 hello from 3ds 写进 note.txt
+wait 5
+shot 2_typed
+key B
+wait 5
+shot 3_input_kept
+touch 237 186
+wait 150
+shot 4_reply
+quit
+"""
+
 
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
@@ -2035,7 +2064,10 @@ PASSES = {
     # ★ 2026-10-26：删除任务必须先弹窗、红色按钮确认
     # ★ 2026-10-27：实弹配置 DeepSeek V3（添加 API 全流程 + 自绘键盘注入）
     # ★ 2026-10-27：中文输入法（拼音候选 + 上屏 + 空格）
-    "IM": dict(script=SCRIPT_IM, shots=5,
+    # ★ 2026-10-27：Function Call 端到端（真模型 → 动作 → 落盘）
+    "FC": dict(script=SCRIPT_FC, shots=4,
+               title="Function Call · 让模型写文件并确认执行"),
+    "IM": dict(script=SCRIPT_IM, shots=6,
                title="输入法 · 拼音出候选 / A 上屏 / 空格"),
     "DA": dict(script=_da_script(), shots=8,
                title="添加 API · 自绘键盘填模型/Key 并保存（DeepSeek V3）"),
