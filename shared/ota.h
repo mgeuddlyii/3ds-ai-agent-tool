@@ -64,8 +64,8 @@
  *   · 修：主页 SELECT 阻塞式网络自检（搬进设置屏诊断分类）
  *   · 修：每帧写 SD 卡导致 6.8fps（帧率提升到 15.7fps @模拟器）
  *   · 修：主页/「更多」/对话屏页脚与实际行为不符，补 [ZL] 说话提示 */
-#define APP_VERSION_CODE 105
-#define APP_VERSION_NAME "0.99.6"
+#define APP_VERSION_CODE 106
+#define APP_VERSION_NAME "0.99.7"
 
 #define OTA_MAX_ARTIFACTS 4
 
