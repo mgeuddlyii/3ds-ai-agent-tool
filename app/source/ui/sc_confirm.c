@@ -181,7 +181,7 @@ static void render_top(void)
 
         is_cia = (nl > 4) && (strcasecmp(g_req.name + nl - 4, ".cia") == 0);
 
-        y = w_kv(x, y, 76, S(S0182), g_req.name,
+        y = w_kv(x, y, 104, S(S0182), g_req.name,
                  w_c(C_SLOT_MUTED), w_c(C_SLOT_ACC_DK), TEXT_LINE_H);
 
         if (is_cia) {
@@ -195,7 +195,7 @@ static void render_top(void)
             else
                 snprintf(line, sizeof line, "%s", S(S0184));
         }
-        y = w_kv(x, y, 76, S(S0185), line,
+        y = w_kv(x, y, 104, S(S0185), line,
                  w_c(C_SLOT_MUTED),
                  sz > 0 ? w_c(C_SLOT_FG) : w_c(C_SLOT_WARN),
                  TEXT_LINE_H);
@@ -204,7 +204,7 @@ static void render_top(void)
             snprintf(line, sizeof line, "%s", S(S0186));
         else
             snprintf(line, sizeof line, "%s/%s.3dsx", pkg_install_dir(), g_req.name);
-        y = w_kv(x, y, 76, S(S0187), line,
+        y = w_kv(x, y, 104, S(S0187), line,
                  w_c(C_SLOT_MUTED),
                  is_cia ? w_c(C_SLOT_WARN_DK) : w_c(C_SLOT_MUTED), TEXT_LINE_H);
 
@@ -212,7 +212,7 @@ static void render_top(void)
             snprintf(line, sizeof line, "%.32s…", g_req.sha256);
         else
             snprintf(line, sizeof line, "%s", S(S0188));
-        y = w_kv(x, y, 76, S(S0189), line,
+        y = w_kv(x, y, 104, S(S0189), line,
                  w_c(C_SLOT_MUTED),
                  g_req.sha256[0] ? w_c(C_SLOT_FG) : w_c(C_SLOT_WARN),
                  TEXT_LINE_H);
@@ -260,14 +260,14 @@ static void render_top(void)
     if (g_req.id == ACT_LOCALE_SET || g_req.id == ACT_LOCALE_CLEAR) {
         char path[192];
 
-        y = w_kv(x, y, 76, S(S0194), g_req.tid[0] ? g_req.tid : S(S0044),
+        y = w_kv(x, y, 104, S(S0194), g_req.tid[0] ? g_req.tid : S(S0044),
                  w_c(C_SLOT_MUTED), w_c(C_SLOT_ACC_DK), TEXT_LINE_H);
 
         if (g_req.id == ACT_LOCALE_SET) {
             snprintf(line, sizeof line, "%s %s",
                      g_req.region[0] ? g_req.region : S(S0044),
                      g_req.lang[0] ? g_req.lang : S(S0044));
-            y = w_kv(x, y, 76, S(S0195), line,
+            y = w_kv(x, y, 104, S(S0195), line,
                      w_c(C_SLOT_MUTED), w_c(C_SLOT_ACC_DK), TEXT_LINE_H);
         } else {
             char r[16], l[16];
@@ -275,7 +275,7 @@ static void render_top(void)
                 snprintf(line, sizeof line, S(S0196), r, l);
             else
                 snprintf(line, sizeof line, "%s", S(S0197));
-            y = w_kv(x, y, 76, S(S0198), line,
+            y = w_kv(x, y, 104, S(S0198), line,
                      w_c(C_SLOT_MUTED), w_c(C_SLOT_MUTED), TEXT_LINE_H);
         }
 
@@ -284,7 +284,7 @@ static void render_top(void)
                      g_req.tid);
         else
             snprintf(line, sizeof line, "%s", S(S0199));
-        y = w_kv(x, y, 76,
+        y = w_kv(x, y, 104,
                  g_req.id == ACT_LOCALE_SET ? S(S0200) : S(S0201), line,
                  w_c(C_SLOT_MUTED), w_c(C_SLOT_MUTED), TEXT_LINE_H);
 
@@ -327,7 +327,7 @@ static void render_top(void)
      * 清单要上屏（那儿有整屏的宽度与高度），下屏留给"批准之后会发生什么"。 */
     if (g_req.id == ACT_TRASH_PURGE) {
         static char tl[224];
-        y = w_kv(x, y, 76, S(S0206), ".trash/",
+        y = w_kv(x, y, 104, S(S0206), ".trash/",
                  w_c(C_SLOT_MUTED), w_c(C_SLOT_FG), TEXT_LINE_H);
         if (actfile_trash_list(tl, sizeof tl)) {
             y = w_wrap(x, y, w, tl, w_c(C_SLOT_FG), TEXT_LINE_H);
@@ -343,12 +343,12 @@ static void render_top(void)
 
     /* ---- 切服务商：把"切到哪家、会连带改什么"摊开 ---- */
     if (g_req.id == ACT_SVC_SET) {
-        y = w_kv(x, y, 76, S(S0209),
+        y = w_kv(x, y, 104, S(S0209),
                  g_req.name[0] ? g_req.name : (g_req.key[0] ? g_req.key : S(S0210)),
                  w_c(C_SLOT_MUTED), w_c(C_SLOT_ACC_DK), TEXT_LINE_H);
-        y = w_kv(x, y, 76, S(S0211), S(S0212),
+        y = w_kv(x, y, 104, S(S0211), S(S0212),
                  w_c(C_SLOT_MUTED), w_c(C_SLOT_FG), TEXT_LINE_H);
-        y = w_kv(x, y, 76, S(S0213), "SD:/3ds/aiconsole/config.json",
+        y = w_kv(x, y, 104, S(S0213), "SD:/3ds/aiconsole/config.json",
                  w_c(C_SLOT_MUTED), w_c(C_SLOT_FG), TEXT_LINE_H);
         w_top_footer(app_status(), S(S0193));
         return;
@@ -372,7 +372,7 @@ static void render_top(void)
         else if (g_req.id == ACT_UI_DEPTH)
             label = S(S0218);
 
-        y = w_kv(x, y, 76, label,
+        y = w_kv(x, y, 104, label,
                  g_req.value[0] ? g_req.value : S(S0219),
                  w_c(C_SLOT_MUTED), w_c(C_SLOT_ACC_DK), TEXT_LINE_H);
 
@@ -392,11 +392,11 @@ static void render_top(void)
             if (lv < 0) lv = 0;
             if (lv > 5) lv = 5;
             snprintf(line, sizeof line, "%s", S(LVL[lv]));
-            y = w_kv(x, y, 76, S(S0226), line,
+            y = w_kv(x, y, 104, S(S0226), line,
                      w_c(C_SLOT_MUTED), w_c(C_SLOT_FG), TEXT_LINE_H);
         }
 
-        y = w_kv(x, y, 76, S(S0213), "SD:/3ds/aiconsole/config.json",
+        y = w_kv(x, y, 104, S(S0213), "SD:/3ds/aiconsole/config.json",
                  w_c(C_SLOT_MUTED), w_c(C_SLOT_FG), TEXT_LINE_H);
 
         w_top_footer(app_status(), S(S0193));
@@ -404,15 +404,19 @@ static void render_top(void)
     }
 
     /* ---- 写文件（原有形态）---- */
-    y = w_kv(x, y, 76, S(S0227), g_req.name,
+    y = w_kv(x, y, 104, S(S0227), g_req.name,
              w_c(C_SLOT_MUTED), w_c(C_SLOT_ACC_DK), TEXT_LINE_H);
 
     snprintf(line, sizeof line, S(S0228), (int)strlen(g_req.text));
-    y = w_kv(x, y, 76, S(S0229), line,
+    /* ★ 2026-10-27：76 → 104。键列可用宽只有 70px，而英文 "Content size"
+     *   实测 75px —— 一换英文就被排版护栏记成溢出（中文「内容大小」放得下，
+     *   所以中文界面看不出来）。确认屏是**动作执行前**的最后一道门，
+     *   这一行还恰好是"要写多少字节"，被裁掉就等于让人盲签。 */
+    y = w_kv(x, y, 104, S(S0229), line,
              w_c(C_SLOT_MUTED), w_c(C_SLOT_FG), TEXT_LINE_H);
 
     snprintf(line, sizeof line, "SD:/3ds/aiconsole/out/%s", g_req.name);
-    y = w_kv(x, y, 76, S(S0200), line,
+    y = w_kv(x, y, 104, S(S0200), line,
              w_c(C_SLOT_MUTED), w_c(C_SLOT_MUTED), TEXT_LINE_H);
 
     y += 4;
