@@ -136,8 +136,12 @@ static void more_enter(void)
 static void render_top(void)
 {
     w_bot_header(S(S0889));
-    w_line((float)W_TOP_MARGIN, (float)W_TOP_CONTENT_Y, (float)W_TOP_USABLE,
-           S(S0890), w_c(C_SLOT_FG));
+    /* ★ 2026-10-27：w_line → w_wrap。
+     *   这句英文 "Less-used entries live here. The home screen keeps only
+     *   what you use daily." 有 463px，而上屏可用宽 384px ——
+     *   w_line 不换行，直接被右边缘裁掉（排版护栏会记一条溢出）。 */
+    w_wrap((float)W_TOP_MARGIN, (float)W_TOP_CONTENT_Y, (float)W_TOP_USABLE,
+           S(S0890), w_c(C_SLOT_FG), TEXT_LINE_H);
     w_top_footer(app_status(), "");
 }
 

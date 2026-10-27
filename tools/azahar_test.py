@@ -1842,6 +1842,101 @@ quit
 """
 
 
+# 配置 DeepSeek V3 的实弹脚本（2026-10-27）。
+# ⚠️ Key **不写进仓库**：脚本运行时从本机密码文件里取，取不到就空着跑
+#    （那样 keyedit 会提示"空 Key 不接受"，脚本照常能验前面的步骤）。
+def _da_key():
+    for ln in open(r"E:/Gudyi/密码/deepseek api.txt", encoding="utf-8", errors="replace"):
+        v = ln.strip()
+        if v.startswith("sk-") and len(v) == 35:
+            return v
+    return ""
+
+def _da_script():
+    # ★ 行序（sc_keyedit.c 的 row_visible）：只有 SVC / MODEL / KEY / SAVE 可见，
+    #   URL 仅在自定义时可见，人设/上下文/思考强度已挪到设置屏。
+    #   所以 **MODEL 下一格就是 KEY**（一次 DOWN），不是四次 ——
+    #   第一版按"8 行全可见"算，DOWN×4 绕回 MODEL，把 Key 追到了模型字段上。
+    return """\
+wait 20
+key RIGHT
+wait 3
+key RIGHT
+wait 3
+key A
+wait 8
+key DOWN
+wait 3
+key DOWN
+wait 3
+key A
+wait 10
+shot 1_keyedit
+key LEFT
+wait 4
+shot 2_svc_deepseek
+key DOWN
+wait 3
+key A
+wait 6
+shot 3_model_edit
+type deepseek-chat
+wait 3
+key SELECT
+wait 5
+shot 4_model_done
+key DOWN
+wait 3
+key A
+wait 6
+shot 5_key_edit
+type %s
+wait 3
+key SELECT
+wait 5
+shot 6_key_done
+key DOWN
+wait 3
+key A
+wait 8
+shot 7_saved
+touch 237 174
+wait 14
+shot 8_tested
+quit
+""" % _da_key()
+
+# 中文输入法（2026-10-27）：点字母 → 出候选 → A 上屏 → 数字/符号/空格。
+# 坐标按 IME_KEY_W=28 / GAP=2 / 行 y=64,94,124,154 算出来的：
+#   qwertyuiop 10 键总宽 280，起始 x=11 → 第 i 键中心 = 11+30i+14
+#   asdfghjkl   9 键总宽 268，起始 x=16
+#   zxcvbnm     7 键总宽 208，起始 x=56
+#   n 在第 3 行第 6 列 → 56+5*30+14 = 220, y=124+13=137
+#   i 在第 1 行第 8 列 → 11+7*30+14 = 235, y=64+13=77
+SCRIPT_IM = """\
+wait 20
+key A
+wait 8
+touch 104 33
+wait 6
+shot 1_keyboard
+touch 220 137
+wait 3
+touch 235 77
+wait 4
+shot 2_pinyin_ni
+key A
+wait 4
+shot 3_committed
+touch 14 197
+wait 4
+shot 4_space
+touch 233 197
+wait 4
+shot 5_after
+quit
+"""
+
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
     "B": dict(script=SCRIPT_B, shots=1, title="二次启动 · 跳过引导"),
@@ -1938,6 +2033,12 @@ PASSES = {
     # ★ 2026-10-25：软件更新的「内容包」页（原「内容更新」屏已并入）
     # ★ 2026-10-25：代码块 → 沙箱文件（AI 发的代码要能落成可打开的文件）
     # ★ 2026-10-26：删除任务必须先弹窗、红色按钮确认
+    # ★ 2026-10-27：实弹配置 DeepSeek V3（添加 API 全流程 + 自绘键盘注入）
+    # ★ 2026-10-27：中文输入法（拼音候选 + 上屏 + 空格）
+    "IM": dict(script=SCRIPT_IM, shots=5,
+               title="输入法 · 拼音出候选 / A 上屏 / 空格"),
+    "DA": dict(script=_da_script(), shots=8,
+               title="添加 API · 自绘键盘填模型/Key 并保存（DeepSeek V3）"),
     "PD": dict(script=SCRIPT_PD, shots=5,
                title="删除任务 · 确认弹窗（取消 / 红色删除按钮）"),
     "CB": dict(script=SCRIPT_CB, shots=1,

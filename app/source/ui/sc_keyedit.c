@@ -31,6 +31,7 @@
 
 #include "app.h"
 #include "credfile.h"
+#include "dock_ui.h"      /* 行内编辑器：不弹系统键盘 */
 #include "input.h"
 #include "keystore.h"
 #include "provider.h"
@@ -169,6 +170,20 @@ static int  g_think;
 static int  g_ctx;                              /* 上下文轮数 */
 static char g_sys[CONFIG_MAX_PROMPT + 1];       /* 助手人设 */
 static char g_msg[192];
+
+/* ★★ 2026-10-27：本屏四个可编辑字段**改用自绘编辑器**（dockui_edit_*），
+ *   不再走 ui_input_text → system swkbd。
+ *
+ *   原因有两条，都不是"更好看"：
+ *   ① 模拟器里 swkbd 弹的是 Qt 窗口，**验收脚本够不着** ——
+ *      "添加 API"是整机最需要可复现的一条流程，却偏偏没法自动化；
+ *   ② 系统键盘在 3DS 上没有拼音页，中文人设根本打不出来。
+ *   自绘键盘现在支持拼音 + 数字 + 符号 + 空格，两件事一起解决。 */
+static char g_ebuf[CREDFILE_KEY_MAX + 1];   /* 编辑中的临时缓冲 */
+static int  g_edit_row = -1;                /* 正在编辑哪一行，-1 = 没在编辑 */
+
+static void edit_begin(int row);            /* 前向声明（下面才实现） */
+static void edit_apply(void);
 
 /* 保存按钮的矩形。**render 与 handle 共用这一份** ——
  * 两处各写一遍坐标的话，改版面时必然漂移成"看到的位置点不到"，
@@ -408,78 +423,80 @@ static void cycle_ctx(int delta)
  *   "swkbd 的长度参数是**字符**、字段上限是**字节**"这条坑
  *   （见 input.c 里那段 3 字节/字符的收紧），并且会 trim 首尾空白。
  *   30 个字符 = 最多 90 字节，稳在 240 以内。 */
-static void edit_prompt(void)
+/* ---- 行内编辑（2026-10-27 取代原来的四个 edit_xxx / ui_input_text）------ */
+
+static void edit_begin(int row)
 {
-    char buf[CONFIG_MAX_PROMPT + 1];
+    const char *title = "";
 
-    if (ui_input_text(S(S0577), g_sys, 30, buf, sizeof buf)) {
-        snprintf(g_sys, sizeof g_sys, "%s", buf);
-        g_msg[0] = '\0';
-        if (g_sys[0])
-            app_status_set(S(S0578), (int)strlen(g_sys));
-        else
-            app_status_set(S(S0579));
-        app_note("keyedit: system_prompt=%d bytes (not saved yet)",
-                 (int)strlen(g_sys));
-    } else {
-        app_status_set(S(S0134));
-    }
-}
-
-static void edit_model(void)
-{
-    char buf[48];
-
-    if (ui_input_text(S(S0400), g_model, 40,
-                      buf, sizeof buf)) {
-        snprintf(g_model, sizeof g_model, "%s", buf);
-        app_status_set(S(S0401), g_model[0] ? g_model : S(S0402));
-    } else {
-        app_status_set(S(S0403));
-    }
-}
-
-static void edit_url(void)
-{
-    char buf[96];
-
-    if (!svc_is_custom()) {
-        /* ★ 这里**不弹键盘**，而是把"为什么不能改"说出来。
-         *   弹了再拒绝、或者按了没反应，用户都会以为是 bug。 */
+    if (row == R_URL && !svc_is_custom()) {
+        /* 非自定义服务商的网址是**编译期常量**，不给改。
+         * 这里必须把"为什么不能改"说出来 —— 弹了键盘再拒绝、
+         * 或者按了没反应，用户都会当成 bug。 */
         snprintf(g_msg, sizeof g_msg, "%s", S(S0796));
         app_status_set(S(S0405));
         return;
     }
 
-    if (ui_input_text(S(S0406),
-                      g_url, 90, buf, sizeof buf)) {
-        snprintf(g_url, sizeof g_url, "%s", buf);
-        g_msg[0] = '\0';
-        app_status_set(S(S0407), g_url[0] ? g_url : S(S0044));
-    } else {
-        app_status_set(S(S0408));
+    switch (row) {
+        case R_MODEL: title = S(S0400); snprintf(g_ebuf, sizeof g_ebuf, "%s", g_model); break;
+        case R_URL:   title = S(S0406); snprintf(g_ebuf, sizeof g_ebuf, "%s", g_url);   break;
+        case R_SYS:   title = S(S0577); snprintf(g_ebuf, sizeof g_ebuf, "%s", g_sys);   break;
+        case R_KEY:   title = S(S0409); g_ebuf[0] = '\0';  break;   /* Key 不预填：屏幕上不该出现旧值 */
+        default:      return;
     }
+
+    if (!dockui_edit_open(g_ebuf, sizeof g_ebuf, title)) {
+        app_status_set(S(S0403));
+        return;
+    }
+    g_edit_row = row;
+    app_note("keyedit: edit row=%d start", row);
 }
 
-static void edit_key(void)
+/* 把编辑结果写回字段。**只有这里会改内存字段** —— 与"改完一起保存"的契约一致。 */
+static void edit_apply(void)
 {
-    char buf[CREDFILE_KEY_MAX + 1];
+    int row = g_edit_row;
 
-    if (ui_input_text(S(S0409), "", CREDFILE_KEY_MAX - 1,
-                      buf, sizeof buf)) {
-        if (!buf[0]) {
-            app_status_set(S(S0410));
-            return;
-        }
-        snprintf(g_key, sizeof g_key, "%s", buf);
-        /* 日志里**只报长度**，一个字符都不落盘 —— status.txt 会被
-         * 验收脚本回读，Key 进了那里等于明文躺在卡上。 */
-        app_note("keyedit: key captured len=%d (not written to status)",
-                 (int)strlen(g_key));
-        app_status_set(S(S0411), (int)strlen(g_key));
-    } else {
-        app_status_set(S(S0412));
+    g_edit_row = -1;
+    dockui_edit_close();
+
+    switch (row) {
+        case R_MODEL:
+            snprintf(g_model, sizeof g_model, "%s", g_ebuf);
+            app_status_set(S(S0401), g_model[0] ? g_model : S(S0402));
+            break;
+        case R_URL:
+            snprintf(g_url, sizeof g_url, "%s", g_ebuf);
+            g_msg[0] = '\0';
+            app_status_set(S(S0407), g_url[0] ? g_url : S(S0044));
+            break;
+        case R_SYS:
+            snprintf(g_sys, sizeof g_sys, "%s", g_ebuf);
+            g_msg[0] = '\0';
+            if (g_sys[0])
+                app_status_set(S(S0578), (int)strlen(g_sys));
+            else
+                app_status_set(S(S0579));
+            app_note("keyedit: system_prompt=%d bytes (not saved yet)", (int)strlen(g_sys));
+            break;
+        case R_KEY:
+            if (!g_ebuf[0]) {                 /* 空 Key 不接受：那不是"清除"，是误触 */
+                app_status_set(S(S0410));
+                break;
+            }
+            snprintf(g_key, sizeof g_key, "%s", g_ebuf);
+            /* 日志**只报长度**，一个字符都不落盘 —— status.txt 会被脚本回读。 */
+            app_note("keyedit: key captured len=%d (not written to status)",
+                     (int)strlen(g_key));
+            app_status_set(S(S0411), (int)strlen(g_key));
+            break;
+        default:
+            break;
     }
+    /* 编辑缓冲用完就抹掉：里面可能是 Key。 */
+    memset(g_ebuf, 0, sizeof g_ebuf);
 }
 
 /* --------------------------------------------------------------------------
@@ -753,6 +770,12 @@ static void render_top(void)
 static void render_bottom(void)
 {
     const float x = (float)W_BOT_MARGIN;
+
+    /* 编辑中：整屏交给键盘（它自带回显与候选）。 */
+    if (dockui_edit_active()) {
+        dockui_render_ime();
+        return;
+    }
     const float w = (float)W_BOT_USABLE;
     float       y = (float)W_BOT_CONTENT_Y;
 
@@ -834,6 +857,28 @@ static void keyedit_handle(u32 down, u32 held)
 {
     (void)held;
 
+    /* ---- 编辑中：键盘优先，别的键一个都不往下走 ----
+     * **SELECT = 完成**（写回字段）、B = 取消（原值不动）、A = 上屏候选。
+     *
+     * ⚠️ 千万别用 START 当"完成"：`main.c` 里 START 是**全局退出热键**
+     *    （`if (down & KEY_START) break;`，在 app_handle 之前就拦了）。
+     *    2026-10-27 第一版就踩了这个：脚本按 START 想提交，结果整个程序退出，
+     *    后面 4 张截图一张没出 —— 而屏上看不出任何异常，特别难查。 */
+    if (dockui_edit_active()) {
+        if (down & KEY_SELECT) {
+            edit_apply();
+            return;
+        }
+        if (down & KEY_B) {
+            g_edit_row = -1;
+            dockui_edit_close();
+            app_status_set(S(S0134));
+            return;
+        }
+        dockui_ime_keys(down);
+        return;
+    }
+
     if (down & KEY_B) {
         app_pop();
         return;
@@ -863,6 +908,14 @@ static void keyedit_handle(u32 down, u32 held)
         return;
     }
 
+    /* 编辑中：触摸先给键盘（不然点键盘会被当成点"保存"按钮）。 */
+    if (dockui_edit_active()) {
+        int tx, ty;
+        if (app_touch_down(&tx, &ty))
+            dockui_ime_touch(tx, ty);
+        return;
+    }
+
     /* 触摸：只有下屏那两个按钮是可点的东西 */
     {
         int tx, ty;
@@ -878,11 +931,11 @@ static void keyedit_handle(u32 down, u32 held)
 
     switch (g_row) {
         case R_SVC:   cycle_svc(+1); break;
-        case R_MODEL: edit_model();  break;
-        case R_URL:   edit_url();    break;
-        case R_SYS:   edit_prompt(); break;
+        case R_MODEL: edit_begin(R_MODEL); break;
+        case R_URL:   edit_begin(R_URL);   break;
+        case R_SYS:   edit_begin(R_SYS);   break;
         case R_CTX:   cycle_ctx(+1); break;
-        case R_KEY:   edit_key();    break;
+        case R_KEY:   edit_begin(R_KEY);   break;
         case R_THINK: cycle_think(+1); break;
         default:      do_save();     break;
     }

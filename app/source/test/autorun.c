@@ -16,6 +16,7 @@
 #include "cupdtest.h"
 #include "featprobe.h"
 #include "hwtest.h"
+#include "dock_ui.h"      /* type 指令要往行内编辑器里注入文本 */
 #include "codeprobe.h"
 #include "perfprobe.h"
 #include "exttest.h"
@@ -30,12 +31,17 @@
 #define AR_MAX_STEPS 96
 #define AR_MAX_LINES 128
 #define AR_LINE_MAX  96
-#define AR_ARG_MAX   32
+/* ★ 2026-10-27：32 → 96。
+ *   `type` 指令要一次写进一整把 API Key（DeepSeek 那种 `sk-` + 48 位），
+ *   32 根本装不下，会被**静默截断**——而截断的 Key 拿去请求只会得到一个
+ *   401，看起来像"Key 填错了"，实际是我们自己截掉的。 */
+#define AR_ARG_MAX   96
 
 typedef enum {
     AR_WAIT = 0,
     AR_KEY,
     AR_TOUCH,
+    AR_TYPE,         /* 往当前行内编辑器注入一串文本（不模拟按键） */
     AR_SHOT,
     AR_QUIT,
     AR_AMPROBE,      /* 探 CIA 安装权限（只读 + 立即撤回，不装东西） */
@@ -242,6 +248,15 @@ static void parse_line(char *line, int lineno)
         push(AR_STICK, n, NULL);
         /* dy 折进 arg 里带下去（arg 是 char[32]，写个十进制足够） */
         snprintf(g_steps[g_count - 1].arg, AR_ARG_MAX, "%d", dy);
+        return;
+    }
+
+    if (!strcmp(op, "type")) {
+        if (!*arg) {
+            snprintf(g_err, sizeof g_err, "第 %d 行：type 缺内容", lineno);
+            return;
+        }
+        push(AR_TYPE, 0, arg);
         return;
     }
 
@@ -540,6 +555,15 @@ bool autorun_tick(u32 *keys, int *tx, int *ty, int *stick_y,
              * 这两个 op 存在的意义是"回答一个有争议的事实问题"，
              * 而不是驱动 UI，所以它们执行完立刻 continue（同帧内），
              * 不消耗帧、也不改变按键状态。 */
+            case AR_TYPE:
+                /* 没有打开编辑器就当没发生（写进 status，便于事后看）。
+                 * 不在这里报错中断脚本：一条 type 落空，后面的步骤仍然有意义。 */
+                if (!dockui_ime_type(s->arg))
+                    app_note("autorun: type ignored (no editor open)");
+                else
+                    app_note("autorun: typed %d bytes", (int)strlen(s->arg));
+                continue;
+
             case AR_AMPROBE:
                 amprobe_run();
                 continue;

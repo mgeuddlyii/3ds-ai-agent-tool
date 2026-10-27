@@ -104,5 +104,21 @@ void dockui_ime_close(void);
  *   宿主必须在离开该屏时解绑，否则会写到已经失效的栈内存上。 */
 void dockui_ime_bind(char *buf, size_t cap);
 
+/* ---- 行内编辑器（2026-10-27）------------------------------------------
+ * 与上面的 ime_open(void) 是**两种用途**：
+ *   · ime_open/close：宿主屏自己的输入框（对话页），目标缓冲由 ime_bind 指定；
+ *   · edit_open/close：**临时编辑某一个字段**（添加 API 的网址/模型/Key、
+ *     任务改名…），直接编辑调用方的缓冲，关掉即结束。
+ *
+ * 为什么不用 ui_input_text：那条路是 system swkbd，**模拟器里弹 Qt 窗口、
+ * 验收脚本够不着**，于是"添加 API"没法自动化，也没法在模拟器里跑通。
+ * 自绘键盘（支持拼音 + 数字 + 符号 + 空格）没有这个问题。 */
+bool dockui_edit_open(char *dst, size_t cap, const char *title);
+void dockui_edit_close(void);
+bool dockui_edit_active(void);
+
+/* 直接把一整串文本写进当前编辑目标（脚本用；不经过按键与拼音引擎）。 */
+bool dockui_ime_type(const char *utf8);
+
 /* 供宿主复用：滑轨第 i 格的矩形（与组件内部同一份计算）。 */
 void dockui_rail_rect(int i, float *x, float *y, float *w, float *h);

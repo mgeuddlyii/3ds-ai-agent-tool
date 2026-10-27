@@ -765,25 +765,55 @@ static void render_top(void)
  *   面板整体下移 22 之后就没跟着改，动作行压到 204 之外，
  *   提示行 210 直接出屏 —— 用户看到的"输入法有问题"就是这个：底部按钮点不到。
  */
-static const char *const IME_ROWS[3] = {
+/* ★★ 2026-10-27：键盘从 3 行 a-z 扩成 **4 行 + 符号页**。
+ *
+ *   原来只有小写字母 —— 于是 **API Key / 网址根本打不出来**：
+ *   `sk-bjeb...`（要 `-`）、`https://api.x.com/v1`（要 `:` `/` `.`）、
+ *   数字一个都没有。这就是"添加 API 只能用系统键盘（模拟器里弹窗、脚本够不着）"
+ *   的根因，也是用户说"中文输入法没搞定"里最实际的那一半。
+ *
+ *   页面分工：
+ *     ABC 页：qwerty / asdf / zxc + **数字行**
+ *     符号页：常用符号三行 + 数字行（`123` 键切换）
+ *   空格、退格、上屏都进动作行，四个按钮 —— 一行放得下（4×72 + 3×4 = 300）。 */
+static const char *const IME_ROWS[4] = {
     "qwertyuiop",
     "asdfghjkl",
     "zxcvbnm",
+    "1234567890",
 };
+
+/* 符号页（三行符号 + 数字行）。GB2312 之外的 ASCII 都能打到，
+ * 够填 URL / Key / 模型名 / 正则之外的绝大多数场景。 */
+static const char *const IME_SYM[4] = {
+    ".,-_/:@?&",
+    "=+*#%()[]",
+    "\"'<>|~$;",
+    "1234567890",
+};
+
+static bool g_sym_page;      /* false = ABC，true = 符号 */
 
 #define IME_KEY_W   28.0f
 #define IME_KEY_GAP  2.0f
-#define IME_KEY_H   28.0f
-#define IME_ROW_Y0  80.0f
-#define IME_ROW_DY  32.0f
-#define IME_CAND_Y  10.0f
+#define IME_KEY_H   26.0f
+#define IME_ROW_Y0  64.0f       /* 4 行 × (26+4) = 64..180 */
+#define IME_ROW_DY  30.0f
+#define IME_CAND_Y   8.0f
 #define IME_CAND_H  26.0f
 #define IME_CAND_W  48.0f
 #define IME_CAND_N   6          /* 一屏显示几个候选 */
+#define IME_ROW_N    4
+#define IME_ACT_Y  184.0f
+
+static const char *ime_row(int row)
+{
+    return g_sym_page ? IME_SYM[row] : IME_ROWS[row];
+}
 
 static Rect ime_key_rect(int row, int col)
 {
-    int n = (int)strlen(IME_ROWS[row]);
+    int n = (int)strlen(ime_row(row));
     float total = (float)n * IME_KEY_W + (float)(n - 1) * IME_KEY_GAP;
     float x0 = (float)W_BOT_MARGIN + ((float)W_BOT_USABLE - total) / 2.0f;
     Rect r;
@@ -804,15 +834,15 @@ static Rect ime_cand_rect(int i)
     return r;
 }
 
+/* 动作行 4 个：页面切换 / 空格 / 退格 / 上屏（4×72 + 3×4 = 300）。 */
 static Rect ime_act_rect(int i)
 {
-    static const float xs[3] = { 10.0f, 105.0f, 210.0f };
-    static const float ws[3] = {  90.0f, 100.0f, 100.0f };
+    static const float ws[4] = { 72.0f, 72.0f, 72.0f, 72.0f };
     Rect r;
-    r.x = xs[i];
-    r.y = 178.0f;
+    r.x = (float)W_BOT_MARGIN + (float)i * (72.0f + 4.0f);
+    r.y = IME_ACT_Y;
     r.w = ws[i];
-    r.h = 34.0f;
+    r.h = 30.0f;
     return r;
 }
 
@@ -828,7 +858,96 @@ void dockui_ime_bind(char *buf, size_t cap)
     g_ime_cap = buf ? cap : 0;
 }
 
+/* ---- 通用行内编辑器（2026-10-27）----------------------------------------
+ *
+ * 为什么要有这一层：`ui_input_text` 走 system swkbd，而**模拟器里它会弹一个
+ * Qt 窗口，验收脚本够不着**（见 input.h 的记录）—— 结果"添加 API"这条最
+ * 需要自动化的流程，恰恰是唯一没法自动化的。
+ *
+ * 现在只要是"在这台机器上填一行字"，都可以用这里：
+ *   dockui_ime_open(buf, cap, 标题) → 用户（或脚本）往 buf 里写 → close
+ * 界面上就是现在这套自绘键盘（已支持数字/符号/空格），**不再弹系统键盘**。
+ */
+static bool   g_ime_edit;      /* true = 处于"编辑某个具体字段"的状态 */
+static char   g_ime_title[40];
+
+/* 这两个定义在后面（ime_append → ime_commit_idx），编辑器 API 先用到它们。 */
+static bool ime_append(const char *utf8);
+static void ime_commit_idx(int i);
+
+bool dockui_edit_open(char *dst, size_t cap, const char *title)
+{
+    if (!dst || cap < 2)
+        return false;
+    dockui_ime_bind(dst, cap);
+    g_ime = true;
+    g_ime_edit = true;
+    g_sym_page = false;
+    g_cpage = 0;
+    ime_reset();
+    snprintf(g_ime_title, sizeof g_ime_title, "%s", title ? title : "");
+    return true;
+}
+
+void dockui_edit_close(void)
+{
+    g_ime = false;
+    g_ime_edit = false;
+    g_ime_title[0] = '\0';
+    ime_reset();
+}
+
+bool dockui_edit_active(void) { return g_ime && g_ime_edit; }
+
+/* 脚本用：把整串文本**直接注入**目标缓冲（不经过按键，也不进拼音引擎）。
+ * 为什么要有它：让"配置一个 API"可以写成一条可复现的脚本，
+ * 而不是靠人手一个字一个字点。 */
+bool dockui_ime_type(const char *utf8)
+{
+    char  *dst;
+    size_t cap;
+
+    if (!g_ime || !utf8)
+        return false;
+
+    /* ★ **替换而不是追加**（2026-10-27 实测踩到）：
+     *   第一版是追加，脚本把 "deepseek-chat" 写进原本已是 glm-4-flash 的
+     *   模型字段，结果存成了 `glm-4-flashdeepseek-chatsk-...` ——
+     *   而屏幕上看只是"一行长文本"，很像"模型名写错了"。
+     *   脚本语义就是"把这个字段设成这串"，所以要先清空。 */
+    if (g_ime_dst) { dst = g_ime_dst; cap = g_ime_cap; }
+    else           { dst = txt();      cap = txt_cap(); }
+    (void)cap;
+    dst[0] = '\0';
+
+    ime_reset();                 /* 顺手清掉可能残留的拼音串 */
+    return ime_append(utf8);
+}
+
 /* 把第 i 个候选追加到文本末尾。写不下就整字拒绝（不截半个汉字）。 */
+/* 追加一段 UTF-8 字面量（数字、符号、空格、脚本注入的整串）。
+ * **不经过拼音引擎** —— 这些字符没有候选，也不该被当成拼音。 */
+static bool ime_append(const char *utf8)
+{
+    char  *dst;
+    size_t cap, used, need;
+
+    if (!utf8 || !utf8[0])
+        return true;
+    if (g_ime_dst) { dst = g_ime_dst; cap = g_ime_cap; }
+    else           { dst = txt();      cap = txt_cap(); }
+
+    used = strlen(dst);
+    need = strlen(utf8);
+    if (used + need + 1 > cap) {
+        app_status_set("文本已满（%d 字节）", (int)used);
+        return false;
+    }
+    memcpy(dst + used, utf8, need);
+    dst[used + need] = '\0';
+    return true;
+}
+
 static void ime_commit_idx(int i)
 {
     const char *c = ime_cand(i);
@@ -874,48 +993,61 @@ void dockui_render_ime(void)
         for (int i = 0; i < IME_CAND_N; ++i) {
             Rect r = ime_cand_rect(i);
             int k = base + i;
-            if (k < n)
-                w_button(&r, ime_cand(k),
+            /* ⚠️ ime_cand() 可能返回 NULL（引擎内部缓冲失效/该位无候选）。
+             * 直接把 NULL 交给 w_button 会**在绘制阶段崩**，而且崩的时候
+             * 屏上已经画了一半 —— 看起来像"按了个字母程序就没了"。
+             * 2026-10-27 加这层防护：宁可不画，也不崩。 */
+            const char *c = (k < n) ? ime_cand(k) : NULL;
+
+            if (c && c[0])
+                w_button(&r, c,
                          (k == 0 ? W_BTN_PRIMARY : W_BTN_NORMAL)
                          | (app_touch_on(&r) ? W_BTN_PRESSED : 0));
             else
                 w_button(&r, " ", W_BTN_DISABLED);
         }
 
+        /* 页码原来画在 y=38 左侧，和回显（y=40）撞在一起。
+         * 挪到页脚行右侧：那里本来只有一行键位提示，右边是空的。 */
         if (pages > 1) {
             char pg[16];
             snprintf(pg, sizeof pg, "%d/%d", g_cpage + 1, pages);
-            w_line((float)W_BOT_MARGIN, 38.0f, 60.0f, pg, w_c(C_SLOT_MUTED));
+            w_line((float)(W_BOT_MARGIN + W_BOT_USABLE - 40.0f), 218.0f, 40.0f,
+                   pg, w_c(C_SLOT_MUTED));
         }
     }
 
-    /* 输入回显 + 状态 */
+    /* 输入回显 + 状态。
+     * ★ 2026-10-27：y 58 → 40。键盘从 3 行扩成 4 行之后第一行落在 64，
+     *   回显还留在 58 就被字母键压掉一半（实拍里那行字只剩上半截）。 */
     snprintf(buf, sizeof buf, "%s%s", ime_input(),
              ime_input()[0] ? "" : "（打字母，如 ni / nihao）");
-    w_line((float)W_BOT_MARGIN, 58.0f, (float)W_BOT_USABLE, buf,
+    w_line((float)W_BOT_MARGIN, 40.0f, (float)W_BOT_USABLE, buf,
            ime_input()[0] ? w_c(C_SLOT_ACCENT) : w_c(C_SLOT_MUTED));
 
-    /* 字母键 */
-    for (int row = 0; row < 3; ++row) {
-        int len = (int)strlen(IME_ROWS[row]);
+    /* 字母/数字/符号键 */
+    for (int row = 0; row < IME_ROW_N; ++row) {
+        const char *keys = ime_row(row);
+        int len = (int)strlen(keys);
         for (int col = 0; col < len; ++col) {
             Rect r = ime_key_rect(row, col);
-            char k[2] = { IME_ROWS[row][col], 0 };
-            w_button(&r, k,
-                     (app_touch_on(&r) ? W_BTN_PRESSED : 0));
+            char k[2] = { keys[col], 0 };
+            w_button(&r, k, (app_touch_on(&r) ? W_BTN_PRESSED : 0));
         }
     }
 
-    /* 动作行（先算矩形再取地址：ime_act_rect 是函数，返回值不能 &） */
+    /* 动作行：切页 / 空格 / 退格 / 上屏 */
     {
-        Rect a0 = ime_act_rect(0), a1 = ime_act_rect(1), a2 = ime_act_rect(2);
-        w_button(&a0, "退格", W_BTN_NORMAL);
-        w_button(&a1, "上屏", W_BTN_PRIMARY);
-        w_button(&a2, "完成", W_BTN_NORMAL);
+        Rect a0 = ime_act_rect(0), a1 = ime_act_rect(1);
+        Rect a2 = ime_act_rect(2), a3 = ime_act_rect(3);
+        w_button(&a0, g_sym_page ? "abc" : "123", W_BTN_NORMAL);
+        w_button(&a1, "空格", W_BTN_NORMAL);
+        w_button(&a2, "退格", W_BTN_NORMAL);
+        w_button(&a3, "上屏", W_BTN_PRIMARY);
     }
 
-    w_line((float)W_BOT_MARGIN, 216.0f, (float)W_BOT_USABLE,
-           "A=上屏  X=退格  B=收起键盘", w_c(C_SLOT_FAINT));
+    w_line((float)W_BOT_MARGIN, 218.0f, (float)W_BOT_USABLE - 44.0f,
+           "A=上屏 X=退格 Y=空格 SELECT=完成 B=取消", w_c(C_SLOT_FAINT));
 }
 
 bool dockui_ime_touch(int tx, int ty)
@@ -928,22 +1060,34 @@ bool dockui_ime_touch(int tx, int ty)
         for (int i = 0; i < IME_CAND_N; ++i) {
             Rect r = ime_cand_rect(i);
             int k = base + i;
-            if (k < n && w_hit(&r, tx, ty)) {
+            if (k < n && ime_cand(k) && w_hit(&r, tx, ty)) {
                 ime_commit_idx(k);
                 return true;
             }
         }
     }
 
-    /* 字母 */
-    for (int row = 0; row < 3; ++row) {
-        int len = (int)strlen(IME_ROWS[row]);
+    /* 字母 / 数字 / 符号 */
+    for (int row = 0; row < IME_ROW_N; ++row) {
+        const char *keys = ime_row(row);
+        int len = (int)strlen(keys);
         for (int col = 0; col < len; ++col) {
             Rect r = ime_key_rect(row, col);
             if (w_hit(&r, tx, ty)) {
+                char ch = keys[col];
                 g_cpage = 0;
-                if (!ime_push(IME_ROWS[row][col]))
-                    app_status_set("输入串满了（%d 字母）", IME_INPUT_MAX);
+                if (ch >= 'a' && ch <= 'z') {
+                    /* 字母进拼音引擎（可能要组候选） */
+                    if (!ime_push(ch))
+                        app_status_set("输入串满了（%d 字母）", IME_INPUT_MAX);
+                } else {
+                    /* 数字/符号**先上屏当前候选**再追加，否则 "ni1" 会把
+                     * 已经打出来的拼音串卡在输入行里，用户以为按键丢了。 */
+                    int nc = ime_cand_count();
+                    if (nc > 0)
+                        ime_commit_idx(0);
+                    ime_append((char[2]){ ch, 0 });
+                }
                 return true;
             }
         }
@@ -951,10 +1095,17 @@ bool dockui_ime_touch(int tx, int ty)
 
     /* 动作 */
     {
-        Rect a0 = ime_act_rect(0), a1 = ime_act_rect(1), a2 = ime_act_rect(2);
-        if (w_hit(&a0, tx, ty)) { g_cpage = 0; ime_backspace(); return true; }
-        if (w_hit(&a1, tx, ty)) { ime_commit_idx(0); return true; }
-        if (w_hit(&a2, tx, ty)) { g_ime = false; return true; }
+        Rect a0 = ime_act_rect(0), a1 = ime_act_rect(1);
+        Rect a2 = ime_act_rect(2), a3 = ime_act_rect(3);
+        if (w_hit(&a0, tx, ty)) { g_sym_page = !g_sym_page; g_cpage = 0; return true; }
+        if (w_hit(&a1, tx, ty)) {
+            int nc = ime_cand_count();
+            if (nc > 0) ime_commit_idx(0);
+            ime_append(" ");
+            return true;
+        }
+        if (w_hit(&a2, tx, ty)) { g_cpage = 0; ime_backspace(); return true; }
+        if (w_hit(&a3, tx, ty)) { ime_commit_idx(0); return true; }
     }
 
     return true;      /* 键盘展开时，点空白也不该穿透到别的面板 */
@@ -972,6 +1123,14 @@ void dockui_ime_keys(u32 down)
      *   留在这里会造成"两处各吃一次"，正是真机上"按 B 没反应"的来源。 */
     if (down & KEY_A) { ime_commit_idx(0); return; }
     if (down & KEY_X) { g_cpage = 0; ime_backspace(); return; }
+    if (down & KEY_Y) {
+        int nc = ime_cand_count();
+
+        if (nc > 0)
+            ime_commit_idx(0);
+        ime_append(" ");
+        return;
+    }
 }
 
 /* 画一格面板的内容（不含滑轨条）。宿主屏也调这个。 */
