@@ -34,6 +34,10 @@ int      app_depth(void);
 
 /* ---- 配置 ---- */
 AppConfig *app_cfg(void);
+
+/* 字号档位（small/mid/large）-> 渲染缩放百分比（100/125/150）。
+ * 阅读区（对话正文、文档浏览）用它，按钮与表格不受影响。 */
+int app_text_scale(void);
 void       app_cfg_dirty(void);           /* 标记"有改动"，shutdown 时写 */
 bool       app_cfg_save_now(void);        /* 立刻落盘（引导跑完就用它） */
 bool       app_cfg_was_saved(void);

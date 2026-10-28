@@ -123,7 +123,7 @@ typedef struct {
 typedef struct {
     char  theme[12];
     float depth;          /* 0.0 - 1.0，立体深度 */
-    char  font_size[12];
+    char  font_size[12];       /* small / mid / large，见 config_text_scale() */
 
     /* ★ 界面语言（uistr.c 读它选表）。默认 "zh"，所以**老用户升级后
      * 看到的还是中文** —— 语言偏好不该因为升级被重置。
@@ -226,3 +226,7 @@ bool config_ai_configured(void);
 
 /* 把 security.current_level 夹到合法范围（读盘后调用）。 */
 void config_clamp(AppConfig *cfg);
+
+/* 字号档位（small / mid / large）→ 渲染缩放百分比（100 / 125 / 150）。
+ * 只影响阅读区（对话正文、文档浏览），不动按钮与表格。 */
+int  config_text_scale(void);

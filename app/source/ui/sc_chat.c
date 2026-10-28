@@ -460,7 +460,7 @@ static bool chat_ready(void);
  * 改成从最新往回数行，数到放不下为止 —— 最新一条永远整条可见。 */
 
 #define CHAT_LINES_BUDGET \
-    (((W_TOP_CONTENT_B - TEXT_LINE_H) - W_TOP_CONTENT_Y) / TEXT_LINE_H)
+    (((W_TOP_CONTENT_B - text_line_h()) - W_TOP_CONTENT_Y) / text_line_h())
 
 /* ---- 思考块的展开状态 ----
  * -1 = 全都收着。默认**收着**：展开的话一段思考会把整屏吃掉，
@@ -546,7 +546,7 @@ static int wrap_count(float *y, float x, float w, const char *s,
     if (n < 1)
         n = 1;
     if (draw)
-        *y = w_wrap(x, *y, w, s, c, TEXT_LINE_H);
+        *y = w_wrap(x, *y, w, s, c, text_line_h());
     return n;
 }
 
@@ -599,11 +599,11 @@ static int msg_layout(int i, float x, float y_in, float w, bool draw,
     }
 
     /* ---- 绘制 ---- */
-    r_rect(&(Rect){ x - 6, y - 2, 3, n * TEXT_LINE_H, 0 }, kind_bar(g_msgs[i].kind));
+    r_rect(&(Rect){ x - 6, y - 2, 3, n * text_line_h(), 0 }, kind_bar(g_msgs[i].kind));
 
     snprintf(line, sizeof line, "%s %s",
              kind_badge(g_msgs[i].kind), g_msgs[i].text);
-    y = w_wrap(x, y, w, line, kind_color(g_msgs[i].kind), TEXT_LINE_H);
+    y = w_wrap(x, y, w, line, kind_color(g_msgs[i].kind), text_line_h());
 
     if (g_msgs[i].think[0]) {
         char hdr[72];
@@ -611,12 +611,12 @@ static int msg_layout(int i, float x, float y_in, float w, bool draw,
         snprintf(hdr, sizeof hdr, S(S0101),
                  (int)strlen(g_msgs[i].think),
                  open ? "▾" : S(S0102));
-        y = w_wrap(x, y, w, hdr, w_c(C_SLOT_MUTED), TEXT_LINE_H);
+        y = w_wrap(x, y, w, hdr, w_c(C_SLOT_MUTED), text_line_h());
         if (open) {
             char shown[THINK_SHOW_BYTES + 48];
             think_display(g_msgs[i].think, shown, sizeof shown);
             y = w_wrap(x + 10.0f, y, w - 10.0f, shown,
-                       w_c(C_SLOT_MUTED), TEXT_LINE_H);
+                       w_c(C_SLOT_MUTED), text_line_h());
         }
     }
 
@@ -2267,7 +2267,7 @@ static void ctx_popup_bottom(void)
         w_center((float)R_BOT_W / 2.0f, 70.0f, S(S0905), w_c(C_SLOT_MUTED));
     }
 
-    w_wrap(42.0f, 96.0f, 236.0f, S(S0906), w_c(C_SLOT_MUTED), TEXT_LINE_H);
+    w_wrap(42.0f, 96.0f, 236.0f, S(S0906), w_c(C_SLOT_MUTED), text_line_h());
 
     w_button(&CTX_POP_BTN, S(S0233),
              W_BTN_PRIMARY | (app_touch_on(&CTX_POP_BTN) ? W_BTN_PRESSED : 0));
@@ -2296,6 +2296,10 @@ static void cycle_think_level(int delta)
 
 static void render_top(void)
 {
+    /* ★ 2026-10-28 字号可调：阅读区按设置放大（只影响正文，不动按钮/表格）。
+     * 缩放是全局状态 —— 这里开，画完必须关回 100，否则别的屏跟着变大。 */
+    r_text_scale_set(app_text_scale());
+
     const float x = (float)W_TOP_MARGIN;
     const float w = (float)W_TOP_USABLE;
     float y = (float)W_TOP_CONTENT_Y;
@@ -2307,7 +2311,7 @@ static void render_top(void)
     snprintf(right, sizeof right, "%s", chat_offline() ? S(S0155) : p->name);
     w_top_header(g_translate ? S(S0893) : S(S0156), right);
 
-    float bottom = (float)W_TOP_CONTENT_B - (float)TEXT_LINE_H;
+    float bottom = (float)W_TOP_CONTENT_B - (float)text_line_h();
 
     /* ★ 拼前缀用的缓冲必须跟 AI 槽位一样大 —— 曾经留成旧的 150 字节，
      * 长回复在这被截断、还腰斩 UTF-8 字符，屏上就是个断尾巴的半字。
@@ -2625,9 +2629,9 @@ static void render_bottom(void)
     chat_rail_draw();
 
     if (g_input[0]) {
-        y = w_wrap(x, y, in_w, g_input, w_c(C_SLOT_FG), TEXT_LINE_H);
+        y = w_wrap(x, y, in_w, g_input, w_c(C_SLOT_FG), text_line_h());
     } else {
-        y = w_wrap(x, y, in_w, S(S0159), w_c(C_SLOT_MUTED), TEXT_LINE_H);
+        y = w_wrap(x, y, in_w, S(S0159), w_c(C_SLOT_MUTED), text_line_h());
     }
 
     y += 10;

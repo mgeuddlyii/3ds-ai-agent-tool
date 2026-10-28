@@ -97,10 +97,25 @@ static inline bool is_wide_cp(uint32_t cp)
     return (cp >= 0x2E80u && cp <= 0xFF60u) || cp >= 0x1F300u;
 }
 
+int text_line_h(void)
+{
+    int s = r_text_scale_get();
+    if (s <= 100)
+        return TEXT_LINE_H;
+    return (TEXT_LINE_H * s + 99) / 100;
+}
+
 static inline int glyph_advance(uint32_t cp)
 {
     const RGlyph *g = font_lookup(cp);
-    return g ? (int)g->advance : font_cell_w();
+    int           base = g ? (int)g->advance : font_cell_w();
+    int           s    = r_text_scale_get();
+
+    /* 缩放时 advance 必须同步，否则"字放大了但折行按原宽算" ——
+     * 结果是每行右侧被裁掉一块，而排版护栏会以为一切正常。 */
+    if (s == 100)
+        return base;
+    return (base * s + 99) / 100;
 }
 
 /*: 不允许出现在行首的收尾标点 */

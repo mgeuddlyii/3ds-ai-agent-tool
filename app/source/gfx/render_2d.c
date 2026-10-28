@@ -411,8 +411,66 @@ void r_frame_rect(const Rect *r, RColor c, float t)
  * 超过 64 就退回逐像素路径（慢但正确），不会越界写栈。 */
 #define R_GLYPH_ROW_MAX 64
 
+/* ★★ 2026-10-28：字号缩放（用户要求「字号大小可调」）。
+ *
+ * 为什么放在渲染层而不是每个屏各做一套：字形像素只在这里落地，
+ * 缩放一次就全都有了；再让 text.c 的 advance 同步乘同一个系数，
+ * 折行与实测宽度就自然对得上（不然"放大后右边被裁"会到处冒）。
+ *
+ * 取整数百分比而不是"字号档位"：点阵字库没有真正的矢量缩放，
+ * 150% 只能最近邻采样 —— 锐利但会有点硬边。这是诚实的做法：
+ * 与其糊成一片（双线性），不如保持笔画边界清楚。
+ *
+ * ⚠️ **只在阅读区开**（对话正文、文档浏览）。按钮/表格的行高是硬编码的，
+ *    全屏放大必然挤压 —— 那属于另一轮重排，不该混进这一次改动。 */
+static int g_text_scale = 100;
+
+void r_text_scale_set(int pct)
+{
+    if (pct < 100) pct = 100;
+    if (pct > 200) pct = 200;
+    g_text_scale = pct;
+}
+
+int r_text_scale_get(void) { return g_text_scale; }
+
 void r_glyph(float x, float y, uint32_t codepoint, RColor c)
 {
+    if (g_text_scale != 100) {
+        const RGlyph *gs = font_lookup(codepoint);
+        const RCanvas *cvs = &g_cv[g_cur];
+        const ClipBox   *bx = &g_clip[g_clip_n - 1];
+        /* ⚠️ 宽度必须按**步进**（advance）算，不能按字格宽：
+         *   字格恒为 16 宽，而 ASCII 的 advance 只有 8 ——
+         *   按字格采样时，每个字会向右多画 8 像素（正好盖住下一个字的左半），
+         *   整行字看起来"重影/糊成一团"。2026-10-28 第一版就是这么翻的车。 */
+        int s   = g_text_scale;
+        int ch0 = font_cell_h();
+        int adv0 = gs ? (int)gs->advance : font_cell_w();
+        int dw = (adv0 * s + 99) / 100;
+        int dh = (ch0 * s + 99) / 100;
+        int ox2 = ifloorf(x + g_off_x), oy2 = ifloorf(y + g_off_y);
+
+        if (!gs || !gs->bits)
+            return;
+        /* 逐目标行采样：源行 = 目标行 * 100 / s（最近邻） */
+        for (int dy = 0; dy < dh; ++dy) {
+            int sy = oy2 + dy;
+            int gy = dy * 100 / s;
+            if (sy < bx->y0 || sy >= bx->y1 || gy >= ch0)
+                continue;
+            for (int dx = 0; dx < dw; ++dx) {
+                int gx = dx * 100 / s;
+                int sx = ox2 + dx;
+                if (gx >= adv0 || sx < bx->x0 || sx >= bx->x1)
+                    continue;
+                uint8_t a = font_glyph_alpha(gs, gx, gy);
+                if (a)
+                    canvas_blend(cvs, sx, sy, c, a);
+            }
+        }
+        return;
+    }
     const RGlyph *g = font_lookup(codepoint);
     if (!g || !g->bits)
         return;

@@ -288,6 +288,9 @@ static RColor header_fg(void)
 
 void w_top_header(const char *title, const char *right)
 {
+    /* 装饰文字不跟阅读区放大（矩形高度写死，2 倍会被裁） */
+    int _s0 = r_text_scale_get();
+    r_text_scale_set(100);
     r_rect(&(Rect){ 0, 0, R_TOP_W, W_TOP_HEADER_H, 0 }, header_bg());
     r_rect(&(Rect){ 0, W_TOP_HEADER_H - 2, R_TOP_W, 2, 0 }, w_c(C_SLOT_ACC_DK));
 
@@ -301,10 +304,14 @@ void w_top_header(const char *title, const char *right)
         r_text(&(Rect){ (float)(R_TOP_W - w - W_TOP_MARGIN), 3, (float)w, 16, 0 },
                right, header_fg());
     }
+    r_text_scale_set(_s0);
 }
 
 void w_top_footer(const char *status, const char *hint)
 {
+    /* 装饰文字不跟阅读区放大（矩形高度写死，2 倍会被裁） */
+    int _s0 = r_text_scale_get();
+    r_text_scale_set(100);
     r_rect(&(Rect){ 0, W_TOP_CONTENT_B, R_TOP_W, W_FOOTER_H, 0 },
            w_c(C_SLOT_PANEL));
     r_hline(0, W_TOP_CONTENT_B, R_TOP_W, w_c(C_SLOT_LINE));
@@ -315,22 +322,31 @@ void w_top_footer(const char *status, const char *hint)
            status ? status : "", w_c(C_SLOT_MUTED));
     r_text(&(Rect){ W_TOP_MARGIN, W_TOP_CONTENT_B + 20, W_TOP_USABLE, 16, 0 },
            hint ? hint : "", w_c(C_SLOT_ACC_DK));
+    r_text_scale_set(_s0);
 }
 void w_bot_header(const char *title)
 {
+    /* 装饰文字不跟阅读区放大（矩形高度写死，2 倍会被裁） */
+    int _s0 = r_text_scale_get();
+    r_text_scale_set(100);
     note_overflow(title, W_BOT_USABLE);
     r_rect(&(Rect){ 0, 0, R_BOT_W, W_BOT_HEADER_H, 0 }, header_bg());
     r_text(&(Rect){ W_BOT_MARGIN, 4, W_BOT_USABLE, 16, 0 }, title, header_fg());
+    r_text_scale_set(_s0);
 }
 
 void w_bot_footer(const char *hint)
 {
+    /* 装饰文字不跟阅读区放大（矩形高度写死，2 倍会被裁） */
+    int _s0 = r_text_scale_get();
+    r_text_scale_set(100);
     r_rect(&(Rect){ 0, W_BOT_CONTENT_B, R_BOT_W, W_BOT_FOOTER_H, 0 },
            w_c(C_SLOT_PANEL));
     r_hline(0, W_BOT_CONTENT_B, R_BOT_W, w_c(C_SLOT_LINE));
     note_overflow(hint, W_BOT_USABLE);
     r_text(&(Rect){ W_BOT_MARGIN, W_BOT_CONTENT_B + 5, W_BOT_USABLE, 16, 0 },
            hint ? hint : "", w_c(C_SLOT_MUTED));
+    r_text_scale_set(_s0);
 }
 
 /* ★ 轮播式操作指引（2026-10-23）。

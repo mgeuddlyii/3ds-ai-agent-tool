@@ -1273,18 +1273,25 @@ void dockui_render(int panel)
 
     default: {
         /* 浏览：画文档行。这里与 sc_viewer.c 是同一种做法，
-         * 但不复用它的静态状态 —— 两个屏各有各的滚动位置。 */
+         * 但不复用它的静态状态 —— 两个屏各有各的滚动位置。
+         * ★ 2026-10-28 字号可调：这一格是**阅读区**，按设置放大。
+         *   行高与"一屏几行"都必须跟着 text_line_h() 走 ——
+         *   只放大字不放大行距，字会叠在一起，而排版护栏看不出来。 */
+        const int lh      = text_line_h();
+        const int row_cap = (int)((PANEL_BOT - PANEL_Y0) / (float)lh);
         int y = 0;
-        for (int i = g_top; i < g_doc.count && y < ROW_CAP; ++i, ++y) {
+
+        r_text_scale_set(app_text_scale());
+        for (int i = g_top; i < g_doc.count && y < row_cap; ++i, ++y) {
             const HtmlLine *l = &g_doc.line[i];
-            float yy = PANEL_Y0 + (float)y * (float)TEXT_LINE_H;
+            float yy = PANEL_Y0 + (float)y * (float)lh;
             w_line(x, yy, w, l->text,
                    l->kind == HL_H1 || l->kind == HL_H2 || l->kind == HL_H3
                        ? w_c(C_SLOT_ACC_DK) : w_c(C_SLOT_FG));
         }
         if (!g_loaded)
             w_wrap(x, PANEL_Y0, w, "在「文件」里选一个 .html 或 .txt 打开",
-                   w_c(C_SLOT_MUTED), TEXT_LINE_H);
+                   w_c(C_SLOT_MUTED), lh);
         break;
     }
     }

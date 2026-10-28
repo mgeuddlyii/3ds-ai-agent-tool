@@ -235,7 +235,9 @@ static void row_value(int row, char *out, size_t n)
             snprintf(out, n, "%s", uistr_lang_name(uistr_lang()));
             break;
         case R_ROW_FONTSIZE:
-            snprintf(out, n, "%s", c->ui.font_size);
+            /* 显示**实际生效的百分比**：原来显示 "mid" 这种内部值，
+             * 用户没法判断它到底多大 —— 而这一项问的就是"多大"。 */
+            snprintf(out, n, "%d%%", app_text_scale());
             break;
         case R_ROW_DEPTH:
             snprintf(out, n, "%d%%", (int)(c->ui.depth * 100.0f + 0.5f));
@@ -561,14 +563,16 @@ static void cycle_accent(int delta)
 static void cycle_fontsize(void)
 {
     AppConfig *c = app_cfg();
-    /* 字库目前只有一档字号（16x16 点阵是烘焙死的），所以这一项
-     * 改了只是**记下偏好**，不重建字库。界面上要如实说明，
-     * 否则用户会以为改了没生效。 */
-    const char *order[] = { "small", "mid", "large" };
-    int idx = 1;
-    for (int i = 0; i < 3; ++i)
+    /* ★ 2026-10-28：这一项**真的生效了**（以前只记偏好）。
+     *   点阵字库没法做"更小"，所以只留两档：
+     *     标准 = 100%（原始 16px）
+     *     大   = 200%（一个源像素复制成 2×2，边缘干净）
+     *   ⚠️ 刻意不做 150%：非整数最近邻会让笔画忽粗忽细，整行像糊了（实拍确认）。 */
+    const char *order[] = { "mid", "large" };
+    int idx = 0;
+    for (int i = 0; i < 2; ++i)
         if (!strcmp(c->ui.font_size, order[i])) { idx = i; break; }
-    idx = (idx + 1) % 3;
+    idx = (idx + 1) % 2;
 
     snprintf(c->ui.font_size, sizeof c->ui.font_size, "%s", order[idx]);
     app_cfg_dirty();

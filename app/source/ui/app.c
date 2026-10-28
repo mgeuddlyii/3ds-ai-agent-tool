@@ -568,6 +568,11 @@ void app_render(void)
         draw_diag_badge();
     }
 
+    /* ★ 2026-10-28：字号缩放是**全局**状态，只有阅读区会临时打开。
+     * 在这里统一复位 —— 让"忘了关"不可能发生。
+     * 放在两块屏都画完之后：底屏也可能要放大（文档浏览就在底屏）。 */
+    r_text_scale_set(100);
+
     if (s->render_bottom) {
         r_target(R_SCREEN_BOTTOM);
         r_begin(w_c(C_SLOT_BG));
@@ -960,3 +965,20 @@ void app_act_event_clear(void)
     g_act_event[0] = '\0';
 }
 
+
+/* 字号档位 -> 渲染缩放百分比（2026-10-28）。
+ * 放在 app 层而不是 config：config.c 里没有"当前配置"这个全局，
+ * 它所有函数都是把 AppConfig* 当参数传的。 */
+int app_text_scale(void)
+{
+    const AppConfig *c = app_cfg();
+    const char      *v = c ? c->ui.font_size : "mid";
+
+    /* ★ 只做**整数倍**（100 / 200）。
+     *   150% 是最近邻的"非整数"放大：一个源像素要摊到 1~2 个目标像素上，
+     *   笔画粗细忽粗忽细，整行字看起来像糊了 —— 实拍确认过，不能用。
+     *   2 倍是 1 个源像素恰好 4 个目标像素，边缘干净。 */
+    if (!strcmp(v, "large"))  return 200;
+    if (!strcmp(v, "mid"))    return 100;   /* 中 = 原始大小（默认） */
+    return 100;                              /* small 也是 100：点阵没法再小 */
+}
