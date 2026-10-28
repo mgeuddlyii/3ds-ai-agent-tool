@@ -204,22 +204,65 @@ bool credfile_write_template(void)
     if (!f)
         return false;
 
-    fputs("# 把你的 API Key 粘贴在下面，删掉这一行的 # 开头，直接贴即可\n", f);
-    fputs("# 例：sk-xxxxxxxxxxxxxxxxxxxxxxxx\n", f);
+    /* ★★ 2026-10-28 用户要求：「卡上这个 API Key 文件要非常明确的格式，
+     *   每个字段（网址、Key、名称）都要用易懂的形式写清楚，像一份指令。」
+     *
+     *   旧模板的问题是**只给例子、不给规则**：用户在电脑上打开它，
+     *   看到一堆 # 注释和几个示例，仍然不知道"我该删哪行、填哪行"。
+     *   现在整份文件按这个顺序写：
+     *     ① 这是什么、放哪儿   ② 三个字段各是什么、怎么填
+     *     ③ 三条规矩           ④ 一行不动就能用的填写区
+     *   三件事都做到：**读得懂、照着填就行、填错了也不会静默失败**。
+     *
+     *   ⚠️ 下面 key= 故意留空：留空时 credfile_scan 会判 "文件是空的 / 没填 Key"，
+     *      而不是把 `provider=deepseek` 那一行当成 Key 收下 ——
+     *      不能让"模板还没填"看起来像"已经配好了"。 */
+    fputs("# ============================================================\n", f);
+    fputs("#  AIConsole 的 API 设置                                              \n", f);
+    fputs("#                                                                    \n", f);
+    fputs("#  这个文件要放在 SD 卡的**这个位置**（一个字母都不要差）：           \n", f);
+    fputs("#      SD:/3ds/aiconsole/key.txt                                     \n", f);
+    fputs("#                                                                    \n", f);
+    fputs("#  怎么用：用电脑的记事本打开本文件 → 填最下面那三行 → 存盘            \n", f);
+    fputs("#          → 回到 3DS，进「更多 → 添加 API」→ 按「从卡上导入」         \n", f);
+    fputs("# ============================================================\n", f);
     fputs("#\n", f);
-    fputs("# 推荐（都有免费额度）：\n", f);
-    fputs("#   DeepSeek   platform.deepseek.com\n", f);
-    fputs("#   火山方舟    console.volcengine.com/ark\n", f);
-    fputs("#   智谱       open.bigmodel.cn\n", f);
+    fputs("# ---- 三个字段，分别是什么 ----------------------------------\n", f);
     fputs("#\n", f);
-    fputs("# 想指定服务商和模型就取消下面两行的注释：\n", f);
-    fputs("# provider=deepseek\n", f);
-    fputs("# model=deepseek-chat\n", f);
+    fputs("#  名称  provider   服务商的名字。填这几个之一（小写）：\n", f);
+    fputs("#                   deepseek / zhipu / ark / moonshot / dashscope /\n", f);
+    fputs("#                   siliconflow / hunyuan / minimax / openai /\n", f);
+    fputs("#                   gemini / grok / mistral / openrouter / custom\n", f);
+    fputs("#                   连自己的服务器就写 custom（这时网址必须填）。\n", f);
+    fputs("#                   不确定就**留空**，导入时在机器上再选也行。\n", f);
     fputs("#\n", f);
-    fputs("# 连自己的服务器（或不在内置表里的服务商）：\n", f);
-    fputs("# provider=custom\n", f);
-    fputs("# base_url=https://your-server.example.com/v1\n", f);
-    fputs("# model=your-model-name\n", f);
+    fputs("#  网址  base_url   接口地址，形如 https://api.deepseek.com/v1\n", f);
+    fputs("#                   用内置服务商时**留空**即可（程序自带默认地址）；\n", f);
+    fputs("#                   只有 custom 或自建中转才需要填。\n", f);
+    fputs("#\n", f);
+    fputs("#  Key   key        你申请到的那串密钥，通常以 sk- 开头。\n", f);
+    fputs("#                   **这一项必须有**，没有它就什么也连不上。\n", f);
+    fputs("#\n", f);
+    fputs("#  模型  model（可选）想指定具体模型时填，例如 deepseek-chat。\n", f);
+    fputs("#                   留空就用该服务商的默认模型。\n", f);
+    fputs("#\n", f);
+    fputs("# ---- 三条规矩 ----------------------------------------------\n", f);
+    fputs("#  1) 以 # 开头的整行都是说明，程序不读 —— 不放心可以全删掉。\n", f);
+    fputs("#  2) 格式是「名字=值」，等号两边可以有空格，行尾空格无所谓。\n", f);
+    fputs("#  3) 懒得写名字也行：直接把 Key 单独粘一行，程序认第一个像 Key 的行。\n", f);
+    fputs("#     （所以最省事的用法是：删光本文件，只粘一行 Key。）\n", f);
+    fputs("#\n", f);
+    fputs("# ---- 往下填这三行 ------------------------------------------\n", f);
+    fputs("provider=deepseek\n", f);
+    fputs("base_url=\n", f);
+    fputs("key=\n", f);
+    fputs("#\n", f);
+    fputs("# 想换个服务商？只改 provider 那一行为 deepseek 或 zhipu 等即可，\n", f);
+    fputs("# 例如智谱：provider=zhipu （网址仍留空）\n", f);
+    fputs("# 自建 / 中转：provider=custom 并且 base_url 必须写成完整地址。\n", f);
+    fputs("#\n", f);
+    fputs("# 填完存盘后，这个文件里的 Key 会被**加密搬进**程序自己的库；\n", f);
+    fputs("# 想把明文从卡上抹掉，导入成功后可以把这个 key.txt 删掉。\n", f);
 
     fclose(f);
     return true;

@@ -818,6 +818,13 @@ static void keyedit_enter(void)
 {
     const AppConfig *c = app_cfg();
 
+    /* ★ 2026-10-28：进这一屏也顺手把卡上的 key.txt 模板建好（已存在则不动）。
+     *   原来只有「怎么申请 Key」那个教程屏会建 —— 而用户真正会点进来的
+     *   是「添加 API」这一屏，于是"卡上根本没有模板文件"。
+     *   模板里把**名称 / 网址 / Key** 三个字段逐条讲清楚了。 */
+    if (credfile_write_template())
+        app_note("keyedit: key.txt 模板已生成（%s）", credfile_path_display());
+
     g_row   = 0;
     g_msg[0] = '\0';
     g_key[0] = '\0';
