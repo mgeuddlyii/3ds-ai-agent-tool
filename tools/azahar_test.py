@@ -1972,23 +1972,27 @@ SCRIPT_AS = """\
 wait 20
 key A
 wait 8
-key Y
-wait 8
-type 你问我一个问题吧
+key SELECT
 wait 4
-key B
+key RIGHT
 wait 4
 key Y
-wait 40
+# ★ 等回复要按**帧**给足：60 帧 ≈ 1 秒，连演示都来不及回，
+#   截到的是"还没回复"的键盘面板 —— 判据红在"没切屏"，实际是"还没到"。
+#   H 趟用 400，这里照抄。
+wait 400
 shot 1_ask_page
 key DOWN
-wait 4
+wait 5
 shot 2_second_sel
 key A
-wait 6
+wait 8
 shot 3_filled
 quit
 """
+
+
+
 
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
@@ -2524,7 +2528,8 @@ def run_pass(tag, spec, ctx):
         print("7 趟：夹具已就位（8 条历史 → 上屏真的能滚）")
     if tag == "AS":
         stage_demo(roots)          # 离线演示：不花 API 额度
-        print("AS 趟：夹具已就位（provider=demo，输入里带\"问我\"）")
+        stage_phrases_as(roots)    # 短语只留一条"问我"
+        print("AS 趟：夹具已就位（provider=demo + 短语\"你问我一个问题吧\"）")
     if tag == "PD":
         # 删除确认要验"取消不删、确认才删"，所以必须先有两个任务。
         # 复用趟 8 的夹具（两任务 + 各自历史），别另写一份。
@@ -4040,6 +4045,21 @@ def assertions(res):
         expect(after is not None and after > 2,
                "回复之后 chat.json 长到了 %s 条（应当 > 2）—— 写盘路径生效"
                % after, problems)
+
+    elif tag == "AS":
+        print("-- 断言 AS：AI 提问 → 下屏选项页（离线演示）--")
+        expect(len(res["shots"]) >= 6, "截图数 = %d（3 张 × 顶底）" % len(res["shots"]),
+               problems)
+        expect(kv(res["status"], "end_screen") == "SCREEN_CHAT",
+               "end_screen = SCREEN_CHAT（选项页属于对话屏，不该跳走）", problems)
+        # 判据一：ask 动作真的被解析并切了屏（只有走到那条分支才写这行）
+        expect("ask: q=" in res["status"],
+               "status 里有 ask: 记录（说明 ask 动作被解析、下屏换了页）", problems)
+        # 判据二：选项内容进得来（演示给的是 标准|大）
+        expect("标准|大" in res["status"],
+               "status 里的选项串是 标准|大（证明 question/options 都解析到了）", problems)
+        expect(res.get("layout_overflow", 0) == 0,
+               "layout_overflow = 0（选项页也没有被右边缘裁）", problems)
 
     elif tag == "O":
         print("-- 断言 O：AI 创建文件（动作解析 + 确认屏 + 沙箱落盘 + 审计）--")
@@ -6406,6 +6426,20 @@ def stage_phrases_o(roots):
         with open(p, "w", encoding="utf-8", newline="\n") as fh:
             fh.write("# O 趟夹具：只留一条动作演示短语\n")
             fh.write(O_PHRASE + "\n")
+
+
+def stage_phrases_as(roots):
+    """AS 趟夹具：快捷短语只留一条"问我"。
+
+    走 SELECT 填短语这条路，是因为**模拟器里打字走不通**（swkbd 是 Qt 弹窗，
+    脚本够不着）；而 SELECT→短语→A 发送是 G/H 趟已经验证过的可靠路径。
+    """
+    for r in roots:
+        p = os.path.join(r, *PHRASES_REL.split("/"))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("# AS 趟夹具：只留一条提问演示短语\n")
+            fh.write("你问我一个问题吧\n")
 
 
 # ---------------------------------------------------------------------------
