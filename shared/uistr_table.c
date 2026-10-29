@@ -996,6 +996,8 @@ static const char *const g_zh[] = {
     "删除任务「%s」？",  /* S0981 */
     "它的聊天记录会一起删掉，不能恢复。",  /* S0982 */
     "已取消删除",  /* S0983 */
+    "提问",  /* S0984 */
+    "它想确认一件事，请选一项",  /* S0985 */
 };
 
 static const char *const g_en[] = {
@@ -1982,6 +1984,8 @@ static const char *const g_en[] = {
     "Delete task \"%s\"?",  /* S0981 */
     "Its chat history is deleted too. This cannot be undone.",  /* S0982 */
     "Delete cancelled",  /* S0983 */
+    "Ask",  /* S0984 */
+    "It wants to confirm one thing — pick one",  /* S0985 */
 };
 
 /* 供 uistr.c 用（数组本体是 static，只有这几个能出去） */

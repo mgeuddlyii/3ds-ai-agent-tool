@@ -981,5 +981,7 @@
   "S0980": "Unverified (greyed out)",
   "S0981": "Delete task \"%s\"?",
   "S0982": "Its chat history is deleted too. This cannot be undone.",
-  "S0983": "Delete cancelled"
+  "S0983": "Delete cancelled",
+  "S0984": "Ask",
+  "S0985": "It wants to confirm one thing — pick one"
 }

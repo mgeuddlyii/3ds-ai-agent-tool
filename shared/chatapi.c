@@ -582,6 +582,29 @@ static const char DEMO_ACTION_BODY[] =
     "  3. 你亲手点了\"允许\"\n"
     "  4. 这次决定记进了 action.log\n";
 
+/* 演示的"提问"触发词。与动作词表**不重叠**：提问是问用户，
+ * 动作是动系统，混在一起会让演示看起来像"问一句就把文件写了"。 */
+static bool demo_ask_trigger(const char *user_text)
+{
+    return user_text && (strstr(user_text, "问我") || strstr(user_text, "选项")
+                         || strstr(user_text, "确认一下"));
+}
+
+/* 把 ask 动作拼到 dst 末尾（问题 + 用 | 分隔的选项）。 */
+static bool demo_ask_append(char *dst, size_t cap)
+{
+    size_t used = strlen(dst);
+    int    n    = snprintf(dst + used, cap - used,
+                           "\n[[ACT:ask question=%s options=%s]][[/ACT]]",
+                           "要我用大字还是标准字号？", "标准|大");
+
+    if (n < 0 || (size_t)n >= cap - used) {
+        dst[used] = '\0';
+        return false;
+    }
+    return true;
+}
+
 /* 把动作标记拼到 dst 末尾。返回 false 表示放不下（此时 dst 保持原样）。 */
 static bool demo_action_append(char *dst, size_t cap, const char *name)
 {
@@ -769,7 +792,13 @@ static bool demo_answer(const char *user_text, const ChatCtx *ctx,
     /* 动作分支：用户提到"创建文件"就附一段动作标记。
      * 放在正片的**后面** —— 剥掉标记之后，用户看到的是"说明 + 一段确认请求"，
      * 先解释再动手，读起来才顺。 */
-    if (demo_action_trigger(user_text)) {
+    /* ★ 2026-10-29：提问分支。放在动作分支**之前**并与之互斥 ——
+     * 同一段回复只带一个动作，这是上层约定，演示也遵守。 */
+    if (demo_ask_trigger(user_text)) {
+        if (!demo_ask_append(dst, cap)) {
+            /* 放不下就不放，绝不送半截标记。 */
+        }
+    } else if (demo_action_trigger(user_text)) {
         char fname[64];
 
         /* 文件名固定、不含时间戳：同一台机器上跑一百遍也该产出同一个文件，

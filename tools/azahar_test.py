@@ -1966,6 +1966,30 @@ quit
 """
 
 
+# AI 主动提问（2026-10-29 用户要求）：模型给出选项时，下屏要**自动切到选项页**。
+# 全离线：夹具把 provider 设成 demo，输入里带"问我"，演示就回一段 ask 动作。
+SCRIPT_AS = """\
+wait 20
+key A
+wait 8
+key Y
+wait 8
+type 你问我一个问题吧
+wait 4
+key B
+wait 4
+key Y
+wait 40
+shot 1_ask_page
+key DOWN
+wait 4
+shot 2_second_sel
+key A
+wait 6
+shot 3_filled
+quit
+"""
+
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
     "B": dict(script=SCRIPT_B, shots=1, title="二次启动 · 跳过引导"),
@@ -2067,6 +2091,9 @@ PASSES = {
     # ★ 2026-10-27：Function Call 端到端（真模型 → 动作 → 落盘）
     "FC": dict(script=SCRIPT_FC, shots=4,
                title="Function Call · 让模型写文件并确认执行"),
+    # ★ 2026-10-29：AI 提问 → 下屏选项页（离线）
+    "AS": dict(script=SCRIPT_AS, shots=3,
+               title="AI 提问 · 下屏自动切选项页并填回输入框"),
     "IM": dict(script=SCRIPT_IM, shots=6,
                title="输入法 · 拼音出候选 / A 上屏 / 空格"),
     "DA": dict(script=_da_script(), shots=8,
@@ -2495,6 +2522,9 @@ def run_pass(tag, spec, ctx):
         #   夹具把"有足够内容"这件事钉死：8 条，每屏只放得下 3~4 条。
         stage_chatlog_many(roots)
         print("7 趟：夹具已就位（8 条历史 → 上屏真的能滚）")
+    if tag == "AS":
+        stage_demo(roots)          # 离线演示：不花 API 额度
+        print("AS 趟：夹具已就位（provider=demo，输入里带\"问我\"）")
     if tag == "PD":
         # 删除确认要验"取消不删、确认才删"，所以必须先有两个任务。
         # 复用趟 8 的夹具（两任务 + 各自历史），别另写一份。

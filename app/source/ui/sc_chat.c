@@ -370,6 +370,18 @@ static bool g_pending;              /* 下一帧要真的发请求 */
 static int  g_pending_slot;         /* 占位消息的下标，回来后原地替换 */
 static char g_pending_text[CHAT_TEXT];
 
+/* ★ 2026-10-29：AI 主动提问（动作 ask）。
+ * 收到就**把下屏切成选项页**，用户点一项 → 该项文本填进输入框（不自动发送）。
+ * 为什么不自动发送：模型提问也可能问歪，自动发等于模型自己跟自己对话，
+ * 用户连"我到底回了什么"都看不见。 */
+static char g_ask_q[160];
+static char g_ask_opts[128];       /* 用 | 分隔 */
+static int  g_ask_sel;
+
+static const char *ask_opt(int i);       /* 前向声明（实现在 render_ask 附近） */
+static int         ask_opt_count(void);
+static void        ask_choose(int i);
+
 /* ★ 翻译模式：**不新开屏**，只给对话屏加一个模式位。
  * 翻译要的输入法、语音、多轮、滚动、错误提示对话屏全有，
  * 复制一份等于把同样的问题写两遍。这里只在**发出去之前**包一层指令，
@@ -1534,7 +1546,15 @@ static void do_real_send(void)
 
             push_reply_chunks(clean, g_pending_slot);
 
-            if (act != ACT_NONE) {
+            if (act == ACT_ASK) {
+                /* 提问不是"要动系统"，不该走确认屏（那屏是给不可逆操作用的）。
+                 * 直接切下屏选项页。 */
+                snprintf(g_ask_q, sizeof g_ask_q, "%s", req.question);
+                snprintf(g_ask_opts, sizeof g_ask_opts, "%s", req.options);
+                g_ask_sel = 0;
+                app_note("ask: q=%d bytes opts=%s",
+                         (int)strlen(g_ask_q), g_ask_opts);
+            } else if (act != ACT_NONE) {
                 actions_set_pending(&req);
                 g_action_ready = true;
                 app_note("action: parsed %s name=%s",
@@ -2557,8 +2577,93 @@ static void chat_footer_hint(void)
     }
 }
 
+/* 把 "是|否|随便" 拆开取第 i 项（越界返回 NULL）。 */
+static const char *ask_opt(int i)
+{
+    const char *p = g_ask_opts;
+    int         k = 0;
+
+    while (p && *p) {
+        const char *bar = strchr(p, '|');
+        size_t      n   = bar ? (size_t)(bar - p) : strlen(p);
+
+        if (k == i) {
+            static char out[64];
+            size_t      m = n < sizeof out - 1 ? n : sizeof out - 1;
+
+            memcpy(out, p, m);
+            out[m] = '\0';
+            return out;
+        }
+        if (!bar)
+            break;
+        p = bar + 1;
+        ++k;
+    }
+    return NULL;
+}
+
+static int ask_opt_count(void)
+{
+    int n = 1;
+
+    if (!g_ask_opts[0])
+        return 0;
+    for (const char *p = g_ask_opts; *p; ++p)
+        if (*p == '|')
+            ++n;
+    return n > 4 ? 4 : n;
+}
+
+/* 把第 i 项填进输入框，然后关掉选项页。
+ * **不自动发送**：用户还有机会改字，也能看清自己回了什么。 */
+static void ask_choose(int i)
+{
+    const char *o = ask_opt(i);
+    size_t      n;
+
+    if (!o)
+        return;
+    n = strlen(o);
+    if (n >= CHAT_TEXT)
+        n = CHAT_TEXT - 1;
+    memcpy(g_input, o, n);
+    g_input[n] = '\0';
+    g_ask_opts[0] = '\0';
+    g_ask_q[0]    = '\0';
+    app_status_set("已填进输入框：按 Y 发送");
+}
+
+static void render_ask(void)
+{
+    const int n = ask_opt_count();
+
+    w_bot_header(S(S0984));                       /* 「提问」 */
+    w_wrap((float)W_BOT_MARGIN, 30.0f, (float)W_BOT_USABLE,
+           S(S0985), w_c(C_SLOT_MUTED), TEXT_LINE_H);   /* 它想确认一件事，请选一项 */
+
+    for (int i = 0; i < n; ++i) {
+        Rect        r = { (float)W_BOT_MARGIN, 56.0f + (float)i * 38.0f,
+                          (float)W_BOT_USABLE, 34.0f, 0 };
+        const char *o = ask_opt(i);
+
+        if (!o)
+            break;
+        w_button(&r, o, (i == g_ask_sel ? W_BTN_SELECTED : W_BTN_NORMAL)
+                        | (app_touch_on(&r) ? W_BTN_PRESSED : 0));
+    }
+
+    w_bot_footer("A 选它   B 先不选");
+}
+
 static void render_bottom(void)
 {
+    /* AI 在等回答：整屏给选项页（用户要求"下屏自动切到它给的选项页"） */
+    if (g_ask_opts[0]) {
+        render_ask();
+        return;
+    }
+
     /* 拼音键盘展开 → 整屏让给它 */
     if (dockui_ime_active()) {
         dockui_render_ime();
@@ -2758,6 +2863,34 @@ static void chat_stick_scroll(void)
 static void chat_handle(u32 down, u32 held)
 {
     (void)held;
+
+    /* ★ AI 在等回答：这一屏只认选项页，别的键一律不理。
+     * 不接管的话，用户按 A 会"切到某一格"、按 B 会直接退屏 ——
+     * 而屏幕上明明摆着几个选项，看起来像"点了没反应"。 */
+    if (g_ask_opts[0]) {
+        const int n = ask_opt_count();
+
+        if (down & KEY_UP)   { g_ask_sel = (g_ask_sel + n - 1) % n; return; }
+        if (down & KEY_DOWN) { g_ask_sel = (g_ask_sel + 1) % n; return; }
+        if (down & KEY_A)    { ask_choose(g_ask_sel); return; }
+        if (down & KEY_B) {
+            g_ask_opts[0] = '\0';
+            g_ask_q[0]    = '\0';
+            app_status_set("先不选");
+            return;
+        }
+        {
+            int tx, ty;
+            if (app_touch_down(&tx, &ty)) {
+                for (int i = 0; i < n; ++i) {
+                    Rect r = { (float)W_BOT_MARGIN, 56.0f + (float)i * 38.0f,
+                               (float)W_BOT_USABLE, 34.0f, 0 };
+                    if (w_hit(&r, tx, ty)) { ask_choose(i); return; }
+                }
+            }
+        }
+        return;
+    }
 
     /* ★★ 2026-10-23 真机反馈：「只要选进去，就按 B 退不回主页面」。
      *

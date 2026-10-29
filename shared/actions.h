@@ -115,6 +115,12 @@ typedef enum {
     ACT_TRASH_PURGE,     /* 清空回收站 —— **真删，不可恢复** */
     ACT_SVC_SET,         /* 切服务商：name= 服务商名 */
 
+    /* ★ 2026-10-29：AI 主动提问。
+     * 它**不是**要动系统的动作，所以不走确认屏 —— 收到就直接把下屏切成
+     * 选项页，用户点一项，那一项会填进输入框（还要用户自己按发送）。
+     * 为什么不自动发：AI 会问、也可能问歪，自动发等于模型自己跟自己说话。 */
+    ACT_ASK,
+
     ACT_COUNT,
 } ActionId;
 
@@ -144,6 +150,8 @@ typedef struct {
     char     key[40];
     char     value[32];
     char     to[ACT_NAME_MAX + 1];   /* 仅 file.rename 的新名 */
+    char     question[160];          /* 仅 ask：它想问什么（给人看） */
+    char     options[128];           /* 仅 ask：用 | 分隔的选项，最多 4 项 */
 } ActionReq;
 
 const char *actions_dir(void);     /* sdmc:/3ds/aiconsole/out —— 文件只能落这儿 */

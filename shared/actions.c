@@ -37,6 +37,7 @@ const char *actions_log(void) { return ACT_LOG; }
 const char *actions_verb(ActionId id)
 {
     switch (id) {
+        case ACT_ASK:          return S(S0984);   /* 提问 */
         case ACT_FILE_WRITE:   return S(S0828);
         case ACT_PKG_INSTALL:  return S(S0829);
         case ACT_LOCALE_SET:   return S(S0830);
@@ -393,6 +394,8 @@ ActionId actions_parse(const char *reply, char *clean, size_t clean_cap,
             out->id = ACT_TRASH_PURGE;
         else if (hdr_match(hdr, "svc.set"))
             out->id = ACT_SVC_SET;
+        else if (hdr_match(hdr, "ask"))
+            out->id = ACT_ASK;          /* AI 主动提问：不走确认屏，切下屏选项页 */
         else
             /* **不认识的动作也要走到确认那一屏** —— 静默忽略等于把一次
              * 越权尝试咽进肚子里，而那正是最该被看见的东西。
@@ -435,6 +438,15 @@ ActionId actions_parse(const char *reply, char *clean, size_t clean_cap,
         /* file.rename 用 to= 新名 */
         if (out->id == ACT_FILE_RENAME)
             arg_get(hdr, "to=", out->to, sizeof out->to);
+
+        /* ask 用：question= 问句，options= 用 | 分隔的选项。
+         * 为什么选项用 | 分隔而不是数组：这套协议是**一行文本**里的键值对，
+         * 数组要引入引号与转义 —— 模型写错一个引号，整个动作就解析失败，
+         * 而"少一个选项"用户再问一句就行。宁可少功能，不要脆协议。 */
+        if (out->id == ACT_ASK) {
+            arg_get(hdr, "question=", out->question, sizeof out->question);
+            arg_get(hdr, "options=",  out->options,  sizeof out->options);
+        }
 
         /* model.install 用：kind= 类别，idx= 第几条（都进 key/value）*/
         if (out->id == ACT_MODEL_INSTALL) {
