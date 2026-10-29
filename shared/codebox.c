@@ -148,3 +148,39 @@ int codebox_extract(const char *text, char *summary, size_t cap)
         summary[0] = '\0';
     return n;
 }
+
+/* 见 codebox.h。走一条最朴素的扫描：找第一个 ```，跳过该行的语言标记，
+ * 抄到下一个 ``` 为止。**不做语法判断** —— 围栏里面是什么语言与"复制"
+ * 这件事无关，多解析一层只会多一种出错方式。 */
+size_t codebox_first_block(const char *text, char *out, size_t cap)
+{
+    const char *p, *body, *end;
+    size_t      n;
+
+    if (!text || !out || cap < 2)
+        return 0;
+    out[0] = '\0';
+
+    p = strstr(text, "```");
+    if (!p)
+        return 0;
+
+    p += 3;
+    /* 跳过语言标记（同一行剩余部分） */
+    while (*p && *p != '\n')
+        ++p;
+    if (*p == '\n')
+        ++p;
+    body = p;
+
+    end = strstr(body, "```");
+    if (!end)
+        return 0;
+
+    n = (size_t)(end - body);
+    if (n > cap - 1)
+        n = cap - 1;
+    memcpy(out, body, n);
+    out[n] = '\0';
+    return n;
+}
