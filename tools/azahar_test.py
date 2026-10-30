@@ -2151,6 +2151,9 @@ PASSES = {
     # ★ 2026-10-29：AI 提问 → 下屏选项页（离线）
     # ★ 2026-10-30：代码块复制（离线）
     # ★ 2026-10-30：从网上下载（离线演示 + 真实 OSS 小文件）
+    # ★ 2026-10-30：下载并安装（串联，install=1；目标 5.4MB 真产物）
+    "FI": dict(script=SCRIPT_FT, shots=3,
+               title="下载并安装 · install=1 串联（真产物 5.4MB）"),
     "FT": dict(script=SCRIPT_FT, shots=2,
                title="下载文件 · file.fetch 解析 + 确认 + 落到 pkgs/"),
     "CC": dict(script=SCRIPT_CC, shots=2,
@@ -2585,6 +2588,17 @@ def run_pass(tag, spec, ctx):
         #   夹具把"有足够内容"这件事钉死：8 条，每屏只放得下 3~4 条。
         stage_chatlog_many(roots)
         print("7 趟：夹具已就位（8 条历史 → 上屏真的能滚）")
+    if tag == "FI":
+        stage_demo(roots)
+        for r in roots:
+            p = os.path.join(r, *PHRASES_REL.split("/"))
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write("帮我下载并安装那个软件\n")
+            f = os.path.join(r, "3ds", "AIConsole.3dsx")
+            if os.path.isfile(f):
+                os.remove(f)
+        print("FI 趟：夹具就位")
     if tag == "FT":
         stage_demo(roots)
         for r in roots:                       # 短语只留一条含"下载"

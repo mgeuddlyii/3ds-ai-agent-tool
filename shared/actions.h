@@ -159,6 +159,7 @@ typedef struct {
     char     question[160];          /* 仅 ask：它想问什么（给人看） */
     char     options[128];           /* 仅 ask：用 | 分隔的选项，最多 4 项 */
     char     url[256];               /* 仅 file.fetch：要下载的地址 */
+    bool     install_after;          /* 仅 file.fetch：下完直接装（install=1） */
 } ActionReq;
 
 const char *actions_dir(void);     /* sdmc:/3ds/aiconsole/out —— 文件只能落这儿 */

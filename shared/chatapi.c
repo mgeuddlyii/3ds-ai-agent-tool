@@ -801,10 +801,20 @@ static bool demo_answer(const char *user_text, const ChatCtx *ctx,
         size_t used = strlen(dst);
 
         if (used + 160 < cap) {
-            snprintf(dst + used, cap - used,
-                     "\n[[ACT:file.fetch url=%s]][[/ACT]]",
-                     "https://acrachongkong.oss-cn-hongkong.aliyuncs.com"
-                     "/aiconsole/stable/manifest.json");
+            /* 说"下载并安装"就走**串联**（install=1），目标是真产物
+             * AIConsole.3dsx（5.4MB，摘要固定）—— 这样验收能证明
+             * "下完真的装上了"，而不只是"下下来了"。 */
+            if (strstr(user_text, "安装"))
+                snprintf(dst + used, cap - used,
+                         "\n[[ACT:file.fetch url=%s sha256=%s install=1]][[/ACT]]",
+                         "https://acrachongkong.oss-cn-hongkong.aliyuncs.com"
+                         "/aiconsole/stable/AIConsole.3dsx",
+                         "8813fde3aaabf5849208047c4331a8af744b65237db822f2f0847601f2655f51");
+            else
+                snprintf(dst + used, cap - used,
+                         "\n[[ACT:file.fetch url=%s]][[/ACT]]",
+                         "https://acrachongkong.oss-cn-hongkong.aliyuncs.com"
+                         "/aiconsole/stable/manifest.json");
         }
     }
 

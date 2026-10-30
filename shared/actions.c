@@ -450,8 +450,15 @@ ActionId actions_parse(const char *reply, char *clean, size_t clean_cap,
             arg_get(hdr, "to=", out->to, sizeof out->to);
 
         /* file.fetch 用：url= 要下载的地址（摘要复用上面的 sha256=）。 */
-        if (out->id == ACT_FILE_FETCH)
+        if (out->id == ACT_FILE_FETCH) {
+            char f[8];
+
             arg_get(hdr, "url=", out->url, sizeof out->url);
+            /* install=1 → 下完直接装。两步共用**一次**确认：
+             * 用户点的那个按钮说的就是"下载并安装"，拆成两次点击只是多一步。 */
+            if (arg_get(hdr, "install=", f, sizeof f) && f[0] == '1')
+                out->install_after = true;
+        }
 
         /* ask 用：question= 问句，options= 用 | 分隔的选项。
          * 为什么选项用 | 分隔而不是数组：这套协议是**一行文本**里的键值对，
@@ -1184,6 +1191,25 @@ bool actions_run(const ActionReq *req, char *msg, size_t cap)
             snprintf(msg, cap, "%s", r.msg);
             return false;
         }
+        if (req->install_after) {
+            bool     is_cia = (bl > 4) && (strcasecmp(name + bl - 4, ".cia") == 0);
+            PkgState ps;
+            char     sub[160];
+
+            sub[0] = ' ';
+            /* 摘要用**刚下下来的那份**，不是模型给的 —— 这样"下的就是装的"。 */
+            ps = is_cia ? pkg_install_cia(name, r.sha256, sub, sizeof sub)
+                        : pkg_install(name, r.sha256, sub, sizeof sub);
+            if (ps != PKG_OK) {
+                snprintf(msg, cap, "已下载 %u 字节，但安装失败：%s（文件仍在 pkgs/）",
+                         (unsigned)r.bytes, sub[0] ? sub : "未知原因");
+                return false;
+            }
+            snprintf(msg, cap, "已下载 %u 字节并装好：%s",
+                     (unsigned)r.bytes, sub[0] ? sub : name);
+            return true;
+        }
+
         snprintf(msg, cap, "%s → pkgs/%s（%.8s…）", r.msg, name, r.sha256);
         return true;
     }

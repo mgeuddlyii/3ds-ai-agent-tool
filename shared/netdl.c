@@ -107,7 +107,17 @@ bool netdl_fetch(const char *url, const char *dir, const char *name,
         return false;
     }
 
-    sha256_final(&sh, out->sha256);
+    /* ⚠️ `sha256_final` 吐的是**32 字节二进制**，而 out->sha256 是 65 字节的
+     * 十六进制字符串。原来直接把二进制塞进字符串，结果：
+     *   · 摘要比对**永远不成立**（拿二进制比十六进制）
+     *   · 报错里显示一串乱码，看起来像"服务器文件坏了"
+     * 必须过 sha256_hex()。 */
+    {
+        uint8_t dig[32];
+
+        sha256_final(&sh, dig);
+        sha256_hex(dig, out->sha256);
+    }
 
     if (sha_expect && *sha_expect && strcmp(sha_expect, out->sha256) != 0) {
         remove(tmp);            /* 内容不对的文件不能留在卡上 */
