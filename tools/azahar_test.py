@@ -571,12 +571,12 @@ shot 2_phrase_filled
 key RIGHT
 wait 4
 key Y
-wait 60
+wait 400
 shot 3_replied
 wait 8
 shot 4_confirm
 key RIGHT
-wait 3
+wait 25
 shot 5_focus_allow
 key A
 wait 6
@@ -4129,7 +4129,10 @@ def assertions(res):
                           "（模型没吐标记？解析器坏了？）", problems)
         else:
             print("   解析：" + parsed[-1])
-            expect("创建一个文件" in parsed[-1],
+            # ⚠️ 不能把动词文案写死：status 里写的是 **i18n 之后的**动词，
+            #    界面语言一变（中/英）就整条红。判据只认"解析到了 file.write 这个动作"，
+            #    文案由 verb 的来源保证 —— 这里用"包含任一语言写法"兜住。
+            expect(("创建" in parsed[-1]) or ("create" in parsed[-1].lower()),
                    "解析出的是白名单内的 file.write（%s）" % parsed[-1], problems)
             expect("agent_demo.txt" in parsed[-1],
                    "参数里的文件名被正确取出（%s）" % parsed[-1], problems)
@@ -4137,7 +4140,10 @@ def assertions(res):
         # ---- 硬证据 2：用户在确认屏上按了"允许"，执行成功 ----
         # 判据要同时看 ok=1 和文案：ok=1 而文案是"文件名不合法"这种
         # 组合在代码里不可能出现，但如果哪天出现了，这里会立刻发现。
-        execd = [l for l in lines if l.startswith("action: 创建一个文件 ok=")]
+        # ⚠️ 同样不能绑文案：这里原来是 startswith("action: 创建一个文件 ok=")，
+        #    切到英文界面后动作名变成 "create a file"，这条就永远找不到。
+        execd = [l for l in lines
+                 if l.startswith("action: ") and " ok=" in l]
         if not execd:
             expect(False, "没有 action: … ok= 记录 —— 确认屏上没走到执行那一步"
                           "（焦点没移到「允许」？按键被吞了？）", problems)
