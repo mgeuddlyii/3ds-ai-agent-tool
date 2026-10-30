@@ -177,10 +177,73 @@ size_t codebox_first_block(const char *text, char *out, size_t cap)
     if (!end)
         return 0;
 
-    n = (size_t)(end - body);
-    if (n > cap - 1)
-        n = cap - 1;
-    memcpy(out, body, n);
-    out[n] = '\0';
-    return n;
+    /* 逐行抄，**剥掉装饰竖条**（"| "）。
+     * 不剥的话，复制出来的代码每行都带着一条竖线 —— 粘到别处就是错的。 */
+    {
+        const char *q = body;
+        size_t      w = 0;
+
+        while (q < end && w + 1 < cap) {
+            if (q[0] == '|' && q[1] == ' ') {
+                q += 2;
+                continue;
+            }
+            out[w++] = *q++;
+        }
+        out[w] = '\0';
+        return w;
+    }
+}
+
+/* 见 codebox.h。逐行扫：在围栏之间、且不是围栏行本身 → 前面加 "▍ "。
+ * 用临时缓冲再整体回写：原地插入会让后面的内容搬两次，容易写错。 */
+void codebox_decorate(char *buf, size_t cap)
+{
+    static char tmp[4096];
+    const char *p;
+    size_t      o = 0;
+    int         in_code = 0;
+
+    if (!buf || cap < 8 || strlen(buf) >= sizeof tmp)
+        return;
+
+    p = buf;
+    while (*p) {
+        const char *nl = strchr(p, '\n');
+        size_t      n  = nl ? (size_t)(nl - p) : strlen(p);
+        int         fence = (n >= 3 && p[0] == '`' && p[1] == '`' && p[2] == '`');
+
+        if (fence) {
+            in_code = !in_code;
+            if (o + n + 1 < sizeof tmp) {
+                memcpy(tmp + o, p, n);
+                o += n;
+                tmp[o++] = '\n';
+            }
+        } else if (in_code && n > 0) {
+            /* ⚠️ 原打算用 U+258D「▍」，但本机字库**没有这个字形** ——
+             *   屏上显示成豆腐块（实拍确认）。改用 ASCII '| '：
+             *   字库里必然有，而且本来就是"代码行"的通用记号。 */
+            static const char BAR[] = "| ";
+            if (o + 4 + n + 1 < sizeof tmp) {
+                memcpy(tmp + o, BAR, 4);
+                o += 4;
+                memcpy(tmp + o, p, n);
+                o += n;
+                tmp[o++] = '\n';
+            }
+        } else if (o + n + 1 < sizeof tmp) {
+            memcpy(tmp + o, p, n);
+            o += n;
+            tmp[o++] = '\n';
+        }
+
+        if (!nl)
+            break;
+        p = nl + 1;
+    }
+    tmp[o] = '\0';
+
+    if (o < cap)
+        memcpy(buf, tmp, o + 1);
 }

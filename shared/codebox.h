@@ -31,3 +31,12 @@ int codebox_extract(const char *text, char *summary, size_t cap);
  * 只能是**输入框**（可编辑、可再发），这是这台机器上最接近剪贴板的东西。
  * 超长时按 cap 截断并返回实际长度（调用方自己决定怎么提示）。 */
 size_t codebox_first_block(const char *text, char *out, size_t cap);
+
+/* 给围栏里的每一行加一个**左侧竖条**（"▍ "），让代码在对话里一眼可辨。
+ * 原地改写 buf；空间不够就原样返回（**绝不截断**：截断的代码比没框更糟）。
+ * 围栏本身保留 —— 「复制代码」还靠它来定位块。
+ *
+ * 为什么在**文本层**打标记而不是画矩形：这条消息的高度是另一趟
+ * （wrap_count）算出来的，只在绘制里画框会让两趟行数不一致，
+ * 直接表现是滚动位置错乱 —— 那种 bug 比没有框严重得多。 */
+void codebox_decorate(char *buf, size_t cap);
