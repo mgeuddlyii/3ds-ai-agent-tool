@@ -794,6 +794,20 @@ static bool demo_answer(const char *user_text, const ChatCtx *ctx,
      * 先解释再动手，读起来才顺。 */
     /* ★ 2026-10-29：提问分支。放在动作分支**之前**并与之互斥 ——
      * 同一段回复只带一个动作，这是上层约定，演示也遵守。 */
+    /* ★ 2026-10-30：下载演示。给"AI 自己去网上取文件"一条可离线复现的路。
+     * 用自家 OSS 上的 manifest.json（几百字节、外网可达），
+     * 这样验收脚本不必依赖任何第三方站点，也不会给别人的服务器添麻烦。 */
+    if (user_text && strstr(user_text, "下载")) {
+        size_t used = strlen(dst);
+
+        if (used + 160 < cap) {
+            snprintf(dst + used, cap - used,
+                     "\n[[ACT:file.fetch url=%s]][[/ACT]]",
+                     "https://acrachongkong.oss-cn-hongkong.aliyuncs.com"
+                     "/aiconsole/stable/manifest.json");
+        }
+    }
+
     /* ★ 2026-10-30：代码块演示。给"复制代码"这条路一个可离线复现的输入。 */
     if (user_text && strstr(user_text, "代码")) {
         size_t used = strlen(dst);

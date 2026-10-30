@@ -1003,6 +1003,8 @@ static const char *const g_zh[] = {
     "没有可复制的代码",  /* S0988 */
     "已复制到输入框（%d 字节）",  /* S0989 */
     "代码太长，只复制了前 %d 字节",  /* S0990 */
+    "下载文件",  /* S0991 */
+    "会从网上下载一个文件到卡上的 pkgs/ 目录。下载完它会告诉你实际大小和摘要；文件不会自动运行。",  /* S0992 */
 };
 
 static const char *const g_en[] = {
@@ -1996,6 +1998,8 @@ static const char *const g_en[] = {
     "No code to copy",  /* S0988 */
     "Copied to input (%d bytes)",  /* S0989 */
     "Code too long — copied first %d bytes",  /* S0990 */
+    "Download file",  /* S0991 */
+    "Downloads a file from the internet into pkgs/ on your SD card. Nothing is executed automatically.",  /* S0992 */
 };
 
 /* 供 uistr.c 用（数组本体是 static，只有这几个能出去） */

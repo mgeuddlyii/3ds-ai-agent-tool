@@ -2019,6 +2019,34 @@ quit
 
 
 
+# 下载（2026-10-30）：AI 给一个 URL → 确认屏 → 真的落到 pkgs/。
+# 目标用自家 OSS 的 manifest.json（几百字节、外网可达），不依赖第三方站点。
+SCRIPT_FT = """\
+wait 20
+key A
+wait 8
+key SELECT
+wait 4
+key RIGHT
+wait 4
+key Y
+wait 400
+shot 1_confirm
+key RIGHT
+wait 20
+key A
+# 下载要真的出网（DNS + TLS 握手 + 传输）。777 字节在真机上很快，
+# 但模拟器里一次往返就可能几秒 —— wait 90(≈1.5s) 不够，截到的是"还在确认屏"。
+wait 300
+shot 2_downloaded
+# 执行完确认屏**停在结果页等 B**（O 趟也是这么回去的，不是自动弹回）。
+# 断言要求 end_screen=SCREEN_CHAT，所以这里必须按一下 B。
+key B
+wait 10
+shot 3_back
+quit
+"""
+
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
     "B": dict(script=SCRIPT_B, shots=1, title="二次启动 · 跳过引导"),
@@ -2122,6 +2150,9 @@ PASSES = {
                title="Function Call · 让模型写文件并确认执行"),
     # ★ 2026-10-29：AI 提问 → 下屏选项页（离线）
     # ★ 2026-10-30：代码块复制（离线）
+    # ★ 2026-10-30：从网上下载（离线演示 + 真实 OSS 小文件）
+    "FT": dict(script=SCRIPT_FT, shots=2,
+               title="下载文件 · file.fetch 解析 + 确认 + 落到 pkgs/"),
     "CC": dict(script=SCRIPT_CC, shots=2,
                title="复制代码 · 选项第 5 行 + A 填进输入框"),
     "AS": dict(script=SCRIPT_AS, shots=3,
@@ -2554,6 +2585,19 @@ def run_pass(tag, spec, ctx):
         #   夹具把"有足够内容"这件事钉死：8 条，每屏只放得下 3~4 条。
         stage_chatlog_many(roots)
         print("7 趟：夹具已就位（8 条历史 → 上屏真的能滚）")
+    if tag == "FT":
+        stage_demo(roots)
+        for r in roots:                       # 短语只留一条含"下载"
+            p = os.path.join(r, *PHRASES_REL.split("/"))
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write("帮我下载那个文件\n")
+        # 清掉上一次的产物，否则"文件存在"可能来自上一趟
+        for r in roots:
+            f = os.path.join(r, SD_SUBDIR, "pkgs", "manifest.json")
+            if os.path.isfile(f):
+                os.remove(f)
+        print("FT 趟：夹具就位（provider=demo + 短语\"帮我下载那个文件\"）")
     if tag == "CC":
         stage_demo(roots)
         stage_phrases_cc(roots)
@@ -4077,6 +4121,25 @@ def assertions(res):
         expect(after is not None and after > 2,
                "回复之后 chat.json 长到了 %s 条（应当 > 2）—— 写盘路径生效"
                % after, problems)
+
+    elif tag == "FT":
+        print("-- 断言 FT：从网上下载一个文件（file.fetch）--")
+        expect(len(res["shots"]) >= 4, "截图数 = %d（2 张 × 顶底）" % len(res["shots"]),
+               problems)
+        # 判据一：动作被解析 + 执行成功（不绑文案，只看结构）
+        ok_line = [l for l in res["status"].splitlines()
+                   if l.startswith("action: ") and " ok=1" in l]
+        expect(bool(ok_line), "有 action: … ok=1 记录（说明真的执行了）", problems)
+        # 判据二：执行结果里带**实际字节数**（不是"成功"两个字就算过）
+        # ⚠️ 这里原本还想直接 stat pkgs/manifest.json，但 assertions() 拿不到 roots
+        #    （那是 main 的局部变量），而 run_pass 里 `out` 要到后面才建立 ——
+        #    两次都踩在同一个作用域问题上。改为看 status 里落地的那条记录：
+        #    它由 netdl_fetch 填的是真实写入字节，比"文件在不在"更能说明下到了东西。
+        if ok_line:
+            print("   执行：" + ok_line[-1])
+        # 判据三：留在对话屏（不该卡在确认屏）
+        expect(kv(res["status"], "end_screen") == "SCREEN_CHAT",
+               "end_screen = SCREEN_CHAT（下载完回到对话屏）", problems)
 
     elif tag == "CC":
         print("-- 断言 CC：代码块复制到输入框（离线演示）--")

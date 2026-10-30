@@ -988,5 +988,7 @@
   "S0987": "Code found — press A",
   "S0988": "No code to copy",
   "S0989": "Copied to input (%d bytes)",
-  "S0990": "Code too long — copied first %d bytes"
+  "S0990": "Code too long — copied first %d bytes",
+  "S0991": "Download file",
+  "S0992": "Downloads a file from the internet into pkgs/ on your SD card. Nothing is executed automatically."
 }

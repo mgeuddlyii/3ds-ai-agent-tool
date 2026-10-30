@@ -14,6 +14,8 @@
 #include <stdio.h>
 #include <stdlib.h>   /* strtol —— 严格解析整数（自己先逐位验过字符） */
 #include <string.h>
+
+#include "netdl.h"
 #include <strings.h>   /* strcasecmp —— 判 .cia 后缀用（大小写不敏感） */
 
 #define ACT_DIR "sdmc:/3ds/aiconsole/out"
@@ -38,6 +40,7 @@ const char *actions_verb(ActionId id)
 {
     switch (id) {
         case ACT_ASK:          return S(S0984);   /* 提问 */
+        case ACT_FILE_FETCH:   return S(S0991);   /* 下载文件 */
         case ACT_FILE_WRITE:   return S(S0828);
         case ACT_PKG_INSTALL:  return S(S0829);
         case ACT_LOCALE_SET:   return S(S0830);
@@ -68,6 +71,8 @@ const char *actions_verb(ActionId id)
 const char *actions_detail(ActionId id)
 {
     switch (id) {
+        case ACT_FILE_FETCH:
+            return S(S0992);
         case ACT_FILE_WRITE:
             return "会在 SD 卡的 3ds/aiconsole/out/ 里写一个文件。"
                    "同名文件会被覆盖，卡上别的东西它碰不到。";
@@ -292,7 +297,6 @@ static bool arg_get(const char *hdr, const char *key, char *out, size_t cap)
 {
     const char *p;
     size_t      n;
-    char        tmp[ACT_NAME_MAX + 8];
 
     if (!out || cap == 0)
         return false;
@@ -302,12 +306,16 @@ static bool arg_get(const char *hdr, const char *key, char *out, size_t cap)
 
     p += strlen(key);
     n = strcspn(p, " \t\r\n");
-    if (n == 0 || n >= sizeof tmp || n >= cap)
-        return false;               /* 空值或太长 —— 也一个字都不写 */
+    /* ★ 2026-10-30 修：原来这里有个 `char tmp[ACT_NAME_MAX + 8]`（72 字节），
+     *   超过就整条丢弃。文件名够用，但 **URL 动不动就一百多个字符** ——
+     *   file.fetch 的地址全被当成"太长"扔掉，动作执行时报"只接受 http/https"，
+     *   看起来像地址没填，实际是被这个缓冲吃了。
+     *   现在直接写进调用方的 out，长度上限只由 out 的容量决定。 */
+    if (n == 0 || n >= cap)
+        return false;               /* 空值或真的放不下 —— 一个字都不写 */
 
-    memcpy(tmp, p, n);
-    tmp[n] = '\0';
-    memcpy(out, tmp, n + 1);
+    memcpy(out, p, n);
+    out[n] = '\0';
     return true;
 }
 
@@ -315,7 +323,7 @@ ActionId actions_parse(const char *reply, char *clean, size_t clean_cap,
                        ActionReq *out)
 {
     const char *p, *hdr_end, *body, *tail, *after;
-    char        hdr[128];
+    char        hdr[512];       /* 要装得下 file.fetch 的整条 URL（含参数） */
     size_t      hlen, bn, pre, rest;
 
     if (clean && clean_cap)
@@ -394,6 +402,8 @@ ActionId actions_parse(const char *reply, char *clean, size_t clean_cap,
             out->id = ACT_TRASH_PURGE;
         else if (hdr_match(hdr, "svc.set"))
             out->id = ACT_SVC_SET;
+        else if (hdr_match(hdr, "file.fetch"))
+            out->id = ACT_FILE_FETCH;
         else if (hdr_match(hdr, "ask"))
             out->id = ACT_ASK;          /* AI 主动提问：不走确认屏，切下屏选项页 */
         else
@@ -438,6 +448,10 @@ ActionId actions_parse(const char *reply, char *clean, size_t clean_cap,
         /* file.rename 用 to= 新名 */
         if (out->id == ACT_FILE_RENAME)
             arg_get(hdr, "to=", out->to, sizeof out->to);
+
+        /* file.fetch 用：url= 要下载的地址（摘要复用上面的 sha256=）。 */
+        if (out->id == ACT_FILE_FETCH)
+            arg_get(hdr, "url=", out->url, sizeof out->url);
 
         /* ask 用：question= 问句，options= 用 | 分隔的选项。
          * 为什么选项用 | 分隔而不是数组：这套协议是**一行文本**里的键值对，
@@ -1125,6 +1139,53 @@ bool actions_run(const ActionReq *req, char *msg, size_t cap)
     if (!req) {
         snprintf(msg, cap, "没有待执行的动作。");
         return false;
+    }
+
+    /* ---- 从网上下载一个文件（2026-10-30）----
+     *
+     * 只下载到 pkgs/，**不执行、不安装**。装是另一个动作（pkg.install），
+     * 两者分开的理由：下载失败最多白下；装错了可能留半个 title。
+     *
+     * 文件名**由 URL 推出**，模型只能给地址，不能指定落盘路径 ——
+     * 第 4 道闸（路径不来自 AI）在这条路上同样是硬的。
+     */
+    if (req->id == ACT_FILE_FETCH) {
+        static char name[ACT_NAME_MAX + 1];
+        const char *u = req->url;
+        const char *base;
+        NetDlResult r;
+        size_t      bl;
+
+        if (!u || strncmp(u, "http://", 7) != 0)
+            if (!u || strncmp(u, "https://", 8) != 0) {
+                snprintf(msg, cap, "只接受 http/https 地址");
+                return false;
+            }
+
+        /* 取最后一段做文件名，并砍掉 ?query 与 #fragment。 */
+        base = strrchr(u, '/');
+        base = base ? base + 1 : u;
+        bl = strcspn(base, "?#");
+        if (bl == 0 || bl > ACT_NAME_MAX) {
+            snprintf(msg, cap, "地址里取不出合法文件名");
+            return false;
+        }
+        memcpy(name, base, bl);
+        name[bl] = '\0';
+
+        if (!name_ok(name)) {
+            snprintf(msg, cap, "文件名不合法，已拦下：%.40s", name);
+            return false;
+        }
+
+        /* 16MB 上限：3DS 的卡不是仓库，一个手滑的地址不该把卡写满。 */
+        if (!netdl_fetch(u, "sdmc:/3ds/aiconsole/pkgs", name,
+                         16u * 1024u * 1024u, req->sha256[0] ? req->sha256 : NULL, &r)) {
+            snprintf(msg, cap, "%s", r.msg);
+            return false;
+        }
+        snprintf(msg, cap, "%s → pkgs/%s（%.8s…）", r.msg, name, r.sha256);
+        return true;
     }
 
     /* ---- 安装一个程序 ----

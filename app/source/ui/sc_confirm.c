@@ -83,6 +83,7 @@ static bool can_allow(void)
      * 风险面比 file.write 小，但同样要过这一屏（用户要看见
      * "它要把安全等级从 L0 提到 L1"这句话，才谈得上决定）。 */
     return g_req.id == ACT_FILE_WRITE
+        || g_req.id == ACT_FILE_FETCH
         || g_req.id == ACT_PKG_INSTALL
         || g_req.id == ACT_LOCALE_SET
         || g_req.id == ACT_LOCALE_CLEAR

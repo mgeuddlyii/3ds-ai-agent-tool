@@ -119,6 +119,12 @@ typedef enum {
      * 它**不是**要动系统的动作，所以不走确认屏 —— 收到就直接把下屏切成
      * 选项页，用户点一项，那一项会填进输入框（还要用户自己按发送）。
      * 为什么不自动发：AI 会问、也可能问歪，自动发等于模型自己跟自己说话。 */
+    /* ★ 2026-10-30：从网上下载一个文件到 pkgs/。
+     * 用户要的是"下命令它自己把东西取回来"，这是那条链的前半截。
+     * 它**只下载、不执行、不安装** —— 装是另一个动作（pkg.install），
+     * 分开的理由：下载失败最多是白下，装错了可能留半个 title。 */
+    ACT_FILE_FETCH,
+
     ACT_ASK,
 
     ACT_COUNT,
@@ -152,6 +158,7 @@ typedef struct {
     char     to[ACT_NAME_MAX + 1];   /* 仅 file.rename 的新名 */
     char     question[160];          /* 仅 ask：它想问什么（给人看） */
     char     options[128];           /* 仅 ask：用 | 分隔的选项，最多 4 项 */
+    char     url[256];               /* 仅 file.fetch：要下载的地址 */
 } ActionReq;
 
 const char *actions_dir(void);     /* sdmc:/3ds/aiconsole/out —— 文件只能落这儿 */
