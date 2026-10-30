@@ -4344,7 +4344,7 @@ def assertions(res):
                    problems)
         else:
             print("   解析：" + parsed[-1])
-            expect("安装一个程序" in parsed[-1],
+            expect(("安装" in parsed[-1]) or ("install" in parsed[-1].lower()),
                    "解析出的是白名单内的 pkg.install（%s）" % parsed[-1], problems)
             expect(R_PKG in parsed[-1],
                    "参数里的包名被正确取出（%s）" % parsed[-1], problems)
@@ -4354,7 +4354,9 @@ def assertions(res):
         # 所以正确行为是**拒绝安装**。
         # 若 ok=1 出现在这里，说明摘要护栏没生效 —— 那正是
         # "装进去的东西下次会被执行"这件事最不能接受的失败模式。
-        execd = [l for l in lines if l.startswith("action: 安装一个程序 ok=")]
+        # ⚠️ 别把动词文案写死：status 记的是 i18n 之后的动词，英文界面是
+        #    "install an app"。与 O 趟同一条教训 —— 判据只看"有执行记录"。
+        execd = [l for l in lines if l.startswith("action: ") and " ok=" in l]
         if not execd:
             expect(False, "没有 action: 安装一个程序 ok= 记录 —— "
                           "确认屏上没走到执行那一步", problems)
@@ -4420,7 +4422,7 @@ def assertions(res):
                    problems)
         else:
             print("   解析：" + parsed[-1])
-            expect("安装一个程序" in parsed[-1],
+            expect(("安装" in parsed[-1]) or ("install" in parsed[-1].lower()),
                    "解析出的是 pkg.install（%s）" % parsed[-1], problems)
             expect(R_PKG in parsed[-1],
                    "包名正确（%s）" % parsed[-1], problems)
@@ -4429,7 +4431,9 @@ def assertions(res):
                    % parsed[-1], problems)
 
         # ---- 硬证据 2：执行成功 ----
-        execd = [l for l in lines if l.startswith("action: 安装一个程序 ok=")]
+        # ⚠️ 别把动词文案写死：status 记的是 i18n 之后的动词，英文界面是
+        #    "install an app"。与 O 趟同一条教训 —— 判据只看"有执行记录"。
+        execd = [l for l in lines if l.startswith("action: ") and " ok=" in l]
         if not execd:
             expect(False, "没有 action: 安装一个程序 ok= 记录 —— 没走到执行",
                    problems)
