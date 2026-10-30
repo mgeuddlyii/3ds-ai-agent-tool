@@ -95,6 +95,11 @@ void dockui_render_opt(void);
 bool dockui_touch_opt(int x, int y);
 void dockui_keys_opt(u32 down);
 
+/* 「选项」面板第 5 行 = 「复制代码」。实现由宿主屏提供：
+ * has() 决定这一行亮不亮，run() 是按下 A 之后要做什么。
+ * dock 不该知道对话历史，所以只留回调 —— 没注册时整行灰着。 */
+void dockui_opt_set_copy(bool (*has)(void), void (*run)(void));
+
 void dockui_ime_open(void);
 void dockui_ime_close(void);
 

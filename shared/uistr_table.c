@@ -998,6 +998,11 @@ static const char *const g_zh[] = {
     "已取消删除",  /* S0983 */
     "提问",  /* S0984 */
     "它想确认一件事，请选一项",  /* S0985 */
+    "复制代码",  /* S0986 */
+    "有代码，按 A 复制",  /* S0987 */
+    "没有可复制的代码",  /* S0988 */
+    "已复制到输入框（%d 字节）",  /* S0989 */
+    "代码太长，只复制了前 %d 字节",  /* S0990 */
 };
 
 static const char *const g_en[] = {
@@ -1986,6 +1991,11 @@ static const char *const g_en[] = {
     "Delete cancelled",  /* S0983 */
     "Ask",  /* S0984 */
     "It wants to confirm one thing — pick one",  /* S0985 */
+    "Copy code",  /* S0986 */
+    "Code found — press A",  /* S0987 */
+    "No code to copy",  /* S0988 */
+    "Copied to input (%d bytes)",  /* S0989 */
+    "Code too long — copied first %d bytes",  /* S0990 */
 };
 
 /* 供 uistr.c 用（数组本体是 static，只有这几个能出去） */

@@ -889,6 +889,50 @@ static void do_asr(void)
     }
 }
 
+/* ---- 「复制代码」：3DS 没有系统剪贴板，落点只能是输入框 ----------------
+ *
+ * 为什么不自动发送：复制的目的是"拿去改一行再发"，自动发就把改的机会堵死了。
+ *
+ * 只认**最后一个助手消息**里的第一个代码块。理由：面板那一行是一句话命令，
+ * 用户按下去时心里想的是"刚才那段"，让他再选一次反而更绕。
+ */
+static const Msg *last_code_msg(void)
+{
+    for (int i = g_count - 1; i >= 0; --i) {
+        /* 不按 kind 过滤：用户消息里也可能贴代码，而"复制最近一段代码"
+         * 对两者都成立。按 kind 过滤过一次，结果助手消息的 kind 判定
+         * 与这里不一致，整行一直是灰的 —— 判据越少越不容易错。 */
+        if (strstr(g_msgs[i].text, "```"))
+            return &g_msgs[i];
+    }
+    return NULL;
+}
+
+static bool copy_has(void)
+{
+    return g_count > 0 && last_code_msg() != NULL;
+}
+
+static void copy_run(void)
+{
+    const Msg *m = last_code_msg();
+    size_t         n;
+    char           tmp[CHAT_TEXT];
+
+    if (!m) {
+        app_status_set(S(S0988));
+        return;
+    }
+    n = codebox_first_block(m->text, tmp, sizeof tmp);
+    if (n == 0) {
+        app_status_set(S(S0988));
+        return;
+    }
+    snprintf(g_input, CHAT_TEXT, "%s", tmp);
+    app_status_set(n >= sizeof tmp - 1 ? S(S0990) : S(S0989), (int)n);
+    app_note("chat: copy code %d bytes to input", (int)n);
+}
+
 static void do_send(void)
 {
     /* 黑匣子：发送键是"卡死/没反应"投诉的高发路径，每次按都留痕 */
@@ -1934,6 +1978,8 @@ static void chat_enter(void)
      *   解绑放在 leave（见 chat_leave）：本屏退出后那块内存在别处可能已经
      *   不是输入框了，留着指针就是悬空的。 */
     dockui_bind_text(g_input, sizeof g_input);
+    /* 「选项」面板第 5 行「复制代码」由本屏提供实现（别的屏不该有这一行）。 */
+    dockui_opt_set_copy(copy_has, copy_run);
     /* ★ 先定"这次是哪一份历史"，再读它（2026-10-24）。
      *   顺序反了就会读到上一个任务的记录 —— 而读出来的东西看起来完全
      *   正常（就是那个任务聊过的话），没有任何报错，只能靠"上屏没换"
@@ -3344,6 +3390,7 @@ static void chat_handle(u32 down, u32 held)
 static void chat_leave(void)
 {
     dockui_bind_text(NULL, 0);
+    dockui_opt_set_copy(NULL, NULL);   /* 离屏即撤销：别的屏不该看到这一行 */
 }
 
 const Screen g_screen_chat = {

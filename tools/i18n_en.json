@@ -983,5 +983,10 @@
   "S0982": "Its chat history is deleted too. This cannot be undone.",
   "S0983": "Delete cancelled",
   "S0984": "Ask",
-  "S0985": "It wants to confirm one thing — pick one"
+  "S0985": "It wants to confirm one thing — pick one",
+  "S0986": "Copy code",
+  "S0987": "Code found — press A",
+  "S0988": "No code to copy",
+  "S0989": "Copied to input (%d bytes)",
+  "S0990": "Code too long — copied first %d bytes"
 }

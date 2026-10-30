@@ -1994,6 +1994,31 @@ quit
 
 
 
+# 复制代码（2026-10-30）：回复里带 ``` 块 → 「选项」第 5 行变亮 → A 复制到输入框。
+SCRIPT_CC = """\
+wait 20
+key A
+wait 8
+key SELECT
+wait 4
+key RIGHT
+wait 4
+key Y
+wait 400
+key LEFT
+wait 20
+shot 1_opt_row
+# 直接点第 5 行（y = 46 + 4*26 = 150，行高 24 → 中心 162）。
+# 为什么不用 ↑↓ 凑到位：切格过渡期会吃掉方向键，四次要只生效一次，
+# 而这个"少按一次"在屏上完全看不出来（光标停在 Turns，A 就把轮数改了）。
+touch 160 162
+wait 10
+shot 2_copied
+quit
+"""
+
+
+
 PASSES = {
     "A": dict(script=SCRIPT_A, shots=9, title="首启 · 引导三屏 + 新手教程四屏"),
     "B": dict(script=SCRIPT_B, shots=1, title="二次启动 · 跳过引导"),
@@ -2096,6 +2121,9 @@ PASSES = {
     "FC": dict(script=SCRIPT_FC, shots=4,
                title="Function Call · 让模型写文件并确认执行"),
     # ★ 2026-10-29：AI 提问 → 下屏选项页（离线）
+    # ★ 2026-10-30：代码块复制（离线）
+    "CC": dict(script=SCRIPT_CC, shots=2,
+               title="复制代码 · 选项第 5 行 + A 填进输入框"),
     "AS": dict(script=SCRIPT_AS, shots=3,
                title="AI 提问 · 下屏自动切选项页并填回输入框"),
     "IM": dict(script=SCRIPT_IM, shots=6,
@@ -2526,6 +2554,10 @@ def run_pass(tag, spec, ctx):
         #   夹具把"有足够内容"这件事钉死：8 条，每屏只放得下 3~4 条。
         stage_chatlog_many(roots)
         print("7 趟：夹具已就位（8 条历史 → 上屏真的能滚）")
+    if tag == "CC":
+        stage_demo(roots)
+        stage_phrases_cc(roots)
+        print("CC 趟：夹具已就位（provider=demo + 提问短语含\"代码\"）")
     if tag == "AS":
         stage_demo(roots)          # 离线演示：不花 API 额度
         stage_phrases_as(roots)    # 短语只留一条"问我"
@@ -4045,6 +4077,21 @@ def assertions(res):
         expect(after is not None and after > 2,
                "回复之后 chat.json 长到了 %s 条（应当 > 2）—— 写盘路径生效"
                % after, problems)
+
+    elif tag == "CC":
+        print("-- 断言 CC：代码块复制到输入框（离线演示）--")
+        expect(len(res["shots"]) >= 4, "截图数 = %d（2 张 × 顶底）" % len(res["shots"]),
+               problems)
+        # 判据一：真的执行了复制（只有 copy_run 才写这行）
+        expect("chat: copy code" in res["status"],
+               "status 里有 chat: copy code（说明点了第 5 行并执行了复制）", problems)
+        # 判据二：代码块确实被落成文件（同一段回复的副作用，证明围栏解析正常）
+        expect("codebox saved=" in res["status"],
+               "status 里有 codebox saved=（回复里的 ``` 块被识别并落盘）", problems)
+        expect(kv(res["status"], "end_screen") == "SCREEN_CHAT",
+               "end_screen = SCREEN_CHAT（复制后仍留在对话屏）", problems)
+        expect(res.get("layout_overflow", 0) == 0,
+               "layout_overflow = 0（第 5 行把面板撑高了，不能溢出）", problems)
 
     elif tag == "AS":
         print("-- 断言 AS：AI 提问 → 下屏选项页（离线演示）--")
@@ -6426,6 +6473,15 @@ def stage_phrases_o(roots):
         with open(p, "w", encoding="utf-8", newline="\n") as fh:
             fh.write("# O 趟夹具：只留一条动作演示短语\n")
             fh.write(O_PHRASE + "\n")
+
+
+def stage_phrases_cc(roots):
+    """CC 趟夹具：短语只留一条含"代码"的（演示据此回一段 ``` 块）。"""
+    for r in roots:
+        p = os.path.join(r, *PHRASES_REL.split("/"))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write("给我一段代码\n")
 
 
 def stage_phrases_as(roots):

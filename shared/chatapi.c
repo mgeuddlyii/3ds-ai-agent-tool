@@ -794,6 +794,16 @@ static bool demo_answer(const char *user_text, const ChatCtx *ctx,
      * 先解释再动手，读起来才顺。 */
     /* ★ 2026-10-29：提问分支。放在动作分支**之前**并与之互斥 ——
      * 同一段回复只带一个动作，这是上层约定，演示也遵守。 */
+    /* ★ 2026-10-30：代码块演示。给"复制代码"这条路一个可离线复现的输入。 */
+    if (user_text && strstr(user_text, "代码")) {
+        size_t used = strlen(dst);
+
+        if (used + 80 < cap) {
+            snprintf(dst + used, cap - used,
+                     "\n```c\nint main(void) { return 0; }\n```\n");
+        }
+    }
+
     if (demo_ask_trigger(user_text)) {
         if (!demo_ask_append(dst, cap)) {
             /* 放不下就不放，绝不送半截标记。 */

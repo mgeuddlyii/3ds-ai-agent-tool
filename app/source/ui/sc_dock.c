@@ -1312,11 +1312,26 @@ void dockui_render(int panel)
  * 用左右键调不了，得开文本框 —— 那是录入屏/设置屏的活。
  * ========================================================================== */
 
-#define OPT_ROWS  4
+/* ★ 2026-10-30：4 → 5。第 5 行是「复制代码」—— 一个**命令**行，
+ * 不是旋钮（左右键对它无效，只认 A）。加它的原因：3DS 没有系统剪贴板，
+ * 而所有按键都被占了，唯一不冲突的位置就是这里。 */
+#define OPT_ROWS  5
 #define OPT_Y0    46.0f
 #define OPT_H     24.0f
 
 static int g_opt_sel;
+
+/* 「复制代码」这一行由宿主屏（对话页）提供实现：
+ * 有没有可复制的、复制动作怎么做，dock 不该知道对话的历史。
+ * 没注册就整行灰着 —— 别的屏用这个面板时不该看到一个点不动的命令。 */
+static bool (*g_copy_has)(void);
+static void (*g_copy_run)(void);
+
+void dockui_opt_set_copy(bool (*has)(void), void (*run)(void))
+{
+    g_copy_has = has;
+    g_copy_run = run;
+}
 
 /* ★★ 2026-10-25 用户要求：
  *   「保证每个知识点都能连到思考强度开关；确定不了的，选项页那行字变灰、
@@ -1329,6 +1344,8 @@ static bool opt_avail(int i)
 {
     const AppConfig *c;
 
+    if (i == 4)
+        return g_copy_has && g_copy_has();
     if (i != 0)
         return true;
 
@@ -1392,6 +1409,9 @@ static void opt_value(int i, char *out, size_t n)
                  c->ai.reply_len == CONFIG_REPLY_SHORT ? S(S0861)
                : c->ai.reply_len == CONFIG_REPLY_LONG  ? S(S0862) : S(S0826));
         break;
+    case 4:
+        snprintf(out, n, "%s", (g_copy_has && g_copy_has()) ? S(S0987) : S(S0988));
+        break;
     default:
         /* ★ 这里原先写的是 S0001 / S0002 —— 而那两个编号真实内容是
          *   「这个键还没有对应实现」和「设置已改，但写不进配置文件」。
@@ -1409,7 +1429,7 @@ static void opt_label(int i, char *out, size_t n)
 {
     snprintf(out, n, "%s",
              i == 0 ? S(S0382) : i == 1 ? S(S0859)
-           : i == 2 ? S(S0858) : S(S0860));
+           : i == 2 ? S(S0858) : i == 4 ? S(S0986) : S(S0860));
 }
 
 /* 切一格。**改完立刻 config_save()** —— 这一屏的价值就是"即时生效"，
@@ -1424,6 +1444,12 @@ static void opt_step(int i, int delta)
     /* 卖不了的旋钮不许转：键盘、触摸、自动轮播都可能走到这里，
      * 守卫放在**动作入口**，比在每个调用点判一遍可靠。 */
     if (!opt_avail(i))
+        return;
+
+    /* 第 5 行是**命令**不是旋钮：左右键对它没有意义。
+     * 不早退的话会掉进 default，去改别的设置 —— 那种"按左键把语言改了"
+     * 的 bug 在屏上完全看不出来。 */
+    if (i == 4)
         return;
 
     switch (i) {
@@ -1524,6 +1550,14 @@ bool dockui_touch_opt(int tx, int ty)
             if (!opt_avail(i))
                 return true;        /* 点得中、但不给切：灰着就是答案 */
             g_opt_sel = i;
+            /* 第 5 行是**命令**：点一下就执行，不是"换下一档"。
+             * 只切档不执行的话，触摸用户点完什么也没发生 ——
+             * 而屏幕上写着"按 A 复制"，他既不知道 A 在哪，也看不到结果。 */
+            if (i == 4) {
+                if (g_copy_run)
+                    g_copy_run();
+                return true;
+            }
             opt_step(i, +1);        /* 点一下 = 换下一档，和设置屏一致 */
             return true;
         }
@@ -1535,7 +1569,17 @@ void dockui_keys_opt(u32 down)
 {
     if (down & KEY_UP)   { g_opt_sel = opt_step_row(g_opt_sel, -1); return; }
     if (down & KEY_DOWN) { g_opt_sel = opt_step_row(g_opt_sel, +1); return; }
-    if (down & (KEY_RIGHT | KEY_A)) { opt_step(g_opt_sel, +1); return; }
+    /* 第 5 行是命令：A = 执行，左右键什么都不做（opt_step 里已经早退）。 */
+    if (down & KEY_A) {
+        if (g_opt_sel == 4) {
+            if (g_copy_run && opt_avail(4))
+                g_copy_run();
+            return;
+        }
+        opt_step(g_opt_sel, +1);
+        return;
+    }
+    if (down & KEY_RIGHT)           { opt_step(g_opt_sel, +1); return; }
     if (down & KEY_LEFT)            { opt_step(g_opt_sel, -1); return; }
 }
 
