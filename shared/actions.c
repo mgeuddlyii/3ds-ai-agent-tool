@@ -458,6 +458,23 @@ ActionId actions_parse(const char *reply, char *clean, size_t clean_cap,
              * 用户点的那个按钮说的就是"下载并安装"，拆成两次点击只是多一步。 */
             if (arg_get(hdr, "install=", f, sizeof f) && f[0] == '1')
                 out->install_after = true;
+
+            /* 文件名在这里推一次，确认屏才有东西可显示。
+             * 仍然是**程序从 URL 推的**，模型指定不了 —— 第 4 道闸没松。 */
+            {
+                const char *u  = out->url;
+                const char *bs = u ? strrchr(u, '/') : NULL;
+                size_t      bl;
+
+                if (bs) {
+                    ++bs;
+                    bl = strcspn(bs, "?#");
+                    if (bl > 0 && bl <= ACT_NAME_MAX) {
+                        memcpy(out->name, bs, bl);
+                        out->name[bl] = '\0';
+                    }
+                }
+            }
         }
 
         /* ask 用：question= 问句，options= 用 | 分隔的选项。

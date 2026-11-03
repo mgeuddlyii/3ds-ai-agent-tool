@@ -990,5 +990,9 @@
   "S0989": "Copied to input (%d bytes)",
   "S0990": "Code too long — copied first %d bytes",
   "S0991": "Download file",
-  "S0992": "Downloads a file from the internet into pkgs/ on your SD card. Nothing is executed automatically."
+  "S0992": "Downloads a file from the internet into pkgs/ on your SD card. Nothing is executed automatically.",
+  "S0993": "Source",
+  "S0994": "Destination",
+  "S0995": "Downloads this file into pkgs/. It computes the hash afterwards and never runs it.",
+  "S0996": "Downloads and installs: fetches into pkgs/, verifies the hash, then installs into 3ds/."
 }

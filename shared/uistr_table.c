@@ -1005,6 +1005,10 @@ static const char *const g_zh[] = {
     "代码太长，只复制了前 %d 字节",  /* S0990 */
     "下载文件",  /* S0991 */
     "会从网上下载一个文件到卡上的 pkgs/ 目录。下载完它会告诉你实际大小和摘要；文件不会自动运行。",  /* S0992 */
+    "来源",  /* S0993 */
+    "落点",  /* S0994 */
+    "会从网上下载这个文件到 pkgs/。下载完会算出摘要，不会执行它。",  /* S0995 */
+    "会从网上下载并安装：下载到 pkgs/，摘要校验通过后装进 3ds/。",  /* S0996 */
 };
 
 static const char *const g_en[] = {
@@ -2000,6 +2004,10 @@ static const char *const g_en[] = {
     "Code too long — copied first %d bytes",  /* S0990 */
     "Download file",  /* S0991 */
     "Downloads a file from the internet into pkgs/ on your SD card. Nothing is executed automatically.",  /* S0992 */
+    "Source",  /* S0993 */
+    "Destination",  /* S0994 */
+    "Downloads this file into pkgs/. It computes the hash afterwards and never runs it.",  /* S0995 */
+    "Downloads and installs: fetches into pkgs/, verifies the hash, then installs into 3ds/.",  /* S0996 */
 };
 
 /* 供 uistr.c 用（数组本体是 static，只有这几个能出去） */

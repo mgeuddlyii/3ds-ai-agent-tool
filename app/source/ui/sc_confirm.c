@@ -175,6 +175,59 @@ static void render_top(void)
      * 早先这里写死了 .3dsx 的后缀和落点，装 .cia 时会显示成
      * "会装到 sdmc:/3ds/xxx.3dsx" —— 那是**错的，且方向危险**：
      * 用户会以为它不动主菜单。所以后缀判定在这里必须再做一次。 */
+    /* ---- 从网上下载（2026-11-03）----
+     * 这一屏最该回答的是"从哪下、下什么、核不核得住"。
+     * 原来它掉进了兜底分支，屏上连地址都没有，还给两段文案叠在一起 ——
+     * 用户等于被要求对一个看不见的东西点允许。 */
+    if (g_req.id == ACT_FILE_FETCH) {
+        const char *u = g_req.url;
+        const char *h = u;
+        char        host[56];
+        size_t      hl = 0;
+
+        if (strncmp(h, "https://", 8) == 0)      h += 8;
+        else if (strncmp(h, "http://", 7) == 0)  h += 7;
+        while (h[hl] && h[hl] != '/' && h[hl] != ':' && hl < sizeof host - 1)
+            ++hl;
+        /* 域名长了会被右边缘硬切（实拍：…aliyuncs.co 少个 m）。
+         * 这里自己截断并加省略号 —— 被切一半的域名看起来像"打错了"。 */
+        if (hl > 30) {
+            memcpy(host, h, 30);
+            host[30] = '\0';
+            strncat(host, "\xE2\x80\xA6", sizeof host - 31);   /* … */
+        } else {
+            memcpy(host, h, hl);
+            host[hl] = '\0';
+        }
+
+        /* 标签用「文件名」而不是「要装的包」：这一屏不一定在装东西，
+         * 而且 S0182 太长，96px 里被截成 "Package to ins"（实拍确认）。 */
+        y = w_kv(x, y, 96, S(S0227), g_req.name[0] ? g_req.name : "-",
+                 w_c(C_SLOT_MUTED), w_c(C_SLOT_ACC_DK), TEXT_LINE_H);
+        y = w_kv(x, y, 96, S(S0993), host,
+                 w_c(C_SLOT_MUTED), w_c(C_SLOT_FG), TEXT_LINE_H);
+        y = w_kv(x, y, 96, S(S0994), "sdmc:/3ds/aiconsole/pkgs",
+                 w_c(C_SLOT_MUTED), w_c(C_SLOT_MUTED), TEXT_LINE_H);
+
+        if (g_req.sha256[0])
+            snprintf(line, sizeof line, "%.32s…", g_req.sha256);
+        else
+            snprintf(line, sizeof line, "%s", S(S0188));
+        y = w_kv(x, y, 96, S(S0189), line,
+                 w_c(C_SLOT_MUTED),
+                 g_req.sha256[0] ? w_c(C_SLOT_FG) : w_c(C_SLOT_WARN),
+                 TEXT_LINE_H);
+
+        /* ★ 画完这四行就收尾，**不往下走通用段落**。
+         * 实拍过的翻车：不 return 的话，后面的分支还会再画一遍
+         * ——"Package to install / Content size 0 B / Will write into out/"
+         * 全冒出来，落点还是错的（out/ 是 file.write 的沙箱，不是 pkgs/），
+         * 而且那块是"下面是它要写的内容"的预览，对下载根本没有内容可预览。
+         * 这一屏要的是"从哪下、下什么、核不核得住"，四行正好。 */
+        w_top_footer(app_status(), S(S0179));
+        return;
+    }
+
     if (g_req.id == ACT_PKG_INSTALL) {
         int  sz = 0;
         bool is_cia;
@@ -527,7 +580,9 @@ static void render_bottom(void)
     y += TEXT_LINE_H + 4;
 
     /* 说明区的下界：往上收一点，绝不碰按钮 */
-    if (y < 146.0f - TEXT_LINE_H)
+    /* fetch 已经在上面把四行事实画完了，再叠一段 detail 就会重叠
+     * （实拍过：两段文字糊在一起）。 */
+    if (y < 146.0f - TEXT_LINE_H && g_req.id != ACT_FILE_FETCH)
         w_wrap(x, y, w, actions_detail(g_req.id), w_c(C_SLOT_MUTED),
                TEXT_LINE_H);
 
