@@ -46,7 +46,9 @@ LIBS    := -lctru -lm
 TARGET  := translate
 BUILD   := build
 
-SRCS_C  := main.c
+# font16.c 是烤出来的点阵字库（tools/mkfont16.py 生成），别手改。
+# 它 1.4MB 源码 / 235KB 二进制 —— 插件体积上限宽松，换来中文能直接显示。
+SRCS_C  := main.c cfg.c hud.c font16.c
 SRCS_S  := boot.s
 OBJS    := $(addprefix $(BUILD)/,$(SRCS_C:.c=.o)) $(addprefix $(BUILD)/,$(SRCS_S:.s=.o))
 

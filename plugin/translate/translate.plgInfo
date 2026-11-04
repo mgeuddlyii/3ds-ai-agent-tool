@@ -7,11 +7,13 @@
 
 Title: AI Console Translate
 Author: AI Console
-Description: 在游戏里弹出翻译面板：选中/输入一段文字，直接出译文。
+Summary: 游戏内翻译：按键截图 → 发给 AI → 译文显示在可移动的翻译屏
+Description: 短按触发键截图并翻译；长按进设置（屏幕/位置/大小/深浅/触发键）。设置存 sdmc:/3ds/aiconsole/plugin.ini。
 
+# 0.2.0：设置页 + 可定位翻译屏 + 内嵌宋体点阵字库（7540 字形）
 Version:
   Major: 0
-  Minor: 1
+  Minor: 2
   Revision: 0
 
 # 兼容性：Any = 真机与 Citra 都加载。写 Console 的话模拟器里看不到，

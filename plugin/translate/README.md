@@ -1,104 +1,75 @@
-# AI Console 翻译插件（3gx）
+# AI Console 翻译插件（Luma3DS .3gx）
 
-> 状态：**🚧 骨架可构建，加载链未真机验证；翻译逻辑未实现**
-> 2026-10-18：工程能编出 `translate.3gx`（97091 B），结构校验器全过；
-> **但插件里还没有翻译功能**，只画了一块面板。
+在游戏里按一个键，把当前画面截下来发给 AI，译文显示在一块**可以摆放位置**的翻译屏上。
+
+> 现状：**设置页、翻译屏定位、中文字库、抓屏**都做完了（`translate.3gx` 387KB，v0.2.0）。
+> **上传 + 调 AI 还没接**（要 soc/TLS，是插件里独立的一块风险）。
+> 全部代码**未在真机验证** —— Azahar 不加载 .3gx，模拟器里什么都看不到。
 
 ---
 
-## 这是什么
+## 装
 
-Luma3DS 的 **.3gx 插件**：在**别的游戏正在运行时**被 Rosalina 加载，
-可以在游戏画面上弹出一块自己的 UI。这是"边玩游戏边查／边翻译"唯一可行的形态
-——主程序（.3dsx/.cia）在游戏运行时根本不在 CPU 上。
-
-## 怎么装
-
-1. 把 `translate.3gx` 放到 SD 卡：
-   - `sd:/luma/plugins/<TitleID>/translate.3gx` —— 只对某一个游戏生效（**优先**）
-   - `sd:/luma/plugins/default.3gx` —— 对所有游戏生效
-2. 开机后按 **L + 下 + SELECT** 打开 Rosalina → Plugin Loader → 设为 **Enabled**
-3. 进游戏，按 **SELECT** 开关面板（骨架版的行为）
-
-> ⚠️ TitleID 是大写 16 位十六进制（如 `0004000000030800`）。
-> 不确定的话先放 `default.3gx`，最简单。
-
-## 构建
-
-```bash
-cd plugin/translate
-make DEVKITPRO='E:/devkitPro' DEVKITARM='E:/devkitPro/devkitARM'
-python ../../tools/plugin/verify_3gx.py translate.3gx
+```
+sdmc:/luma/plugins/default.3gx      ← 所有游戏都加载
+sdmc:/luma/plugins/<TitleID>/x.3gx  ← 只给某一个游戏加载
 ```
 
-依赖：`devkitPro`（devkitARM + libctru）+ **`3gxtool`**。
-`3gxtool` 不在官方 devkitPro 包里，装法见 `tools/plugin/README-3gxtool.md`。
+Luma 的插件开关要打开（Rosalina 菜单 → Plugin Loader）。
 
----
+## 用
 
-## 工程里每一个"为什么"（改之前先读）
+| 操作 | 效果 |
+|---|---|
+| **短按 SELECT**（或 ZL，看设置） | 抓当前画面 → 发给 AI → 译文进翻译屏 |
+| **长按 SELECT 约 0.75 秒** | 打开设置页 |
+| 设置页：↑↓ | 选行 |
+| 设置页：←→ | 改值 |
+| 设置页：A | 保存并退出 |
+| 设置页：B | 不保存退出 |
 
-### 链接地址必须正好 0x07000100
-Luma 的 `pluginLoader.s` 里是**硬编码** `ldr r5,=0x07000100; blx r5`，
-它**不读** ELF 的 `e_entry`。链接脚本把 `.` 定在 `0x07000100`，
-并且 `.text.boot` 排在最前 —— 两处对上才跳得进来。
+### 设置项（存在 `sdmc:/3ds/aiconsole/plugin.ini`，也能手改）
 
-### 必须正好 3 个 PT_LOAD，且顺序固定
-3gxtool 的硬性要求：`flags=5(R+X) → flags=4(R) → flags=6(RW)`，
-各段首尾相接，只有最后一段允许 `memsz > filesz`（bss）。
-所以：
-- 用 `PHDRS` 显式绑定三段；
-- **不能用 `-specs=3dsx.specs`** —— 它会再塞一个 `-T 3dsx.ld`，
-  两套脚本同时生效会链出两倍的段，3gxtool 报 `Too many segments!`；
-- 每个输出节加 `ALIGN(4) SUBALIGN(4)` —— 默认 8 字节对齐会在段间留 4 字节空隙，
-  3gxtool 报 `Non-contiguous segments!`。
-
-### 要自己补 crt0 提供的符号
-拿掉 crt0（`-nostartfiles`）之后，这些得自己定义，否则链不过：
-- `__service_ptr`、`__system_runflags`、`__apt_appid`（`main.c` 顶部）
-- `__tdata_align` / `__tdata_lma` / `__tdata_lma_end` /
-  `__tls_start` / `__tls_end` / `__end__`（`translate.ld` 里照着 3dsx.ld 抄）
-
-### BSS 要自己清
-加载器只拷 code/rodata/data 的**文件内容**，`.bss` 不会被清零。
-不清的话全局变量初值是上一个进程的垃圾，而且不同游戏表现不同，极难查。
-→ `boot.s` 的 `_start` 里先清 BSS 再调 `main`。
-
-### 每行代码都在游戏进程里跑
-- 可以直接读写游戏内存（RWX 全开），**所以任何越界写都会把游戏搞崩**。
-- 别调 `hidInit()`（社区报告在 New 3DS 上会拉起 irrst 冻结游戏）。
-- 插件没有"退出"，`main` 返回会跳飞 → `boot.s` 末尾死循环。
-
-### plgInfo 的 YAML 结构是固定的
-`Version` 必须是 **map**（`Major/Minor/Revision`），写 `0.1.0` 会报
-`operator[] call on a scalar (key: "Major")`。
-
----
-
-## 下一步（按依赖顺序，不能跳）
-
-| # | 任务 | 为什么必须在这一步 |
+| 键 | 值 | 说明 |
 |---|---|---|
-| 1 | **真机确认骨架能加载并画出面板** | 加载/绘制/按键任一坏了，后面全白搭。不验就写翻译 = 不知道 bug 在哪层 |
-| 2 | **中文字形渲染** | 插件没有主程序那套 2MB 字库。要么走系统共享字库（`APT:U` GetSharedFont → 解 BCFNT CMAP，简体字可能缺），要么自带点阵子集（~3500 常用字 ≈ 100–200 KB，可控） |
-| 3 | **文本输入** | 3DS 系统软键盘在插件里能否调用**未验证**；退路是"从 SD 读待译文本"或"读游戏内存里选中的文本" |
-| 4 | **联网 + TLS** | `socInit` 在插件里可行（ArticBaseServer 有先例，需 0x1000 对齐的 4MiB 缓冲）；但 **HTTPS 是硬骨头** —— `ssl:C` 在游戏进程里能否用**无先例**。退路：只支持自建 HTTP 网关，或干脆让**主程序**代发请求（插件写文件 → 主程序译 → 插件读结果） |
-| 5 | 翻译 UI 与交互 | 最后才做 |
-
-### 关于第 4 条的诚实判断
-
-这是整个项目**唯一可能让方案推倒重来**的点：
-- 若 `ssl:C` 在插件里可用 → 直连 AI API，方案成立。
-- 若不可用 → 只能退成"插件 ↔ 本地/PC 网关"或"插件落盘 → 主程序译"，
-  后者已经不是"游戏内直接翻译"的体验了。
-
-**所以第 1 步和第 4 步的可行性，必须在写任何翻译代码之前各自单独验一次。**
+| `screen` | `bottom` / `top` | 翻译屏画在哪块屏 |
+| `anchor` | `top-left` … `bottom-right`（九宫格） | 翻译屏贴哪一角 |
+| `cols` | 10–50 | 宽（字符列，1 列 = 8px） |
+| `rows` | 2–16 | 高（字符行，1 行 = 16px） |
+| `opacity` | 0–3 | 背板深浅（3DS 没有 alpha，只能调底色） |
+| `key` | `select` / `zl` | 触发键 |
 
 ---
 
-## 已知风险
+## 怎么做的（三个关键决定）
 
-- 本工程**从未在真机跑过**。Azahar 不加载 .3gx，模拟器里看不到任何东西。
-- `gfxInitDefault()` 在插件里的行为取决于游戏是否已 init 过 gsp —— 未验证。
-- `socInit` 需要 0x1000 对齐缓冲；若游戏自己已 init 过 soc，插件再 init 可能失败（无源码证据）。
-- 插件内存区 5MiB；10MiB 在部分游戏上可能导致地址空间不足。
+**1. 不用 `PrintConsole` 分窗**
+libctru 里 `windowX/Y/Width/Height` 四个字段标着 **not implemented**——它只能整屏。
+而"翻译屏可以随便摆"正是这个插件要的东西。所以连设置页也自绘，一套绘制代码。
+
+**2. 不用 citro2d + 系统字库**
+citro2d 要接管 GPU 状态，而插件跑在**游戏进程**里，跟正在跑的游戏抢 GPU 是最容易
+把游戏搞崩的一条路。改成往帧缓冲直接写像素，不碰 GPU 状态机。
+
+**3. 中文字库自己烤**
+系统控制台字体只有 ASCII。用 `tools/mkfont16.py` 把**宋体**烤成 16×16 1bpp 点阵：
+ASCII + GB2312 全表 = **7540 字形，235KB**。插件因此从 97KB 变成 387KB。
+（雅黑试过，16px 二值化会断笔；宋体本来就是按 16px 点阵设计的。）
+
+---
+
+## 现在还没做的两件事
+
+1. **上传**：抓到的画面是 BGR8 原始像素（400×240 或 320×240，约 230–280KB）。
+   要发出去得先编码（PNG/JPEG）+ base64，再配 `soc` 服务和 TLS。
+   插件内的 HTTPS 是**未经真机验证**的独立风险点，和界面无关。
+2. **AI 调用与返回解析**：和主程序用的是同一家 API，但插件里没有 minijson，
+   要么塞一个精简解析器，要么让模型只回纯文本。
+
+## 真机第一次跑，按这个顺序排错
+
+面板不出来 → 看是不是 `gfxInitDefault()` 在这个游戏里失败（有的游戏自己管 gsp）。
+按键没反应 → 确认没调 `hidInit()`（New 3DS 上会拉入 irrst 冻住游戏）。
+抓屏全黑 / 不是游戏画面 → 说明我们拿到的是插件自己的帧缓冲，得改用 GSP 的
+display capture（`GSPGPU_ImportDisplayCaptureInfo`）。
+游戏崩 → 先看是不是内存区不够（`translate.plgInfo` 里的 5MiB）。
