@@ -121,6 +121,46 @@ static Rgb back_color(int opacity)
     }
 }
 
+/* 按钮条的尺寸：三个按钮平分面板宽，高 20px。
+ * 20px 是 16px 字高 + 上下各 2px —— 再矮按钮里的字会顶到边框。 */
+#define TB_H     20
+#define TB_PAD   2
+#define TB_GAP   4
+
+static void btn_rect(const PluginCfg *cfg, int idx, int *bx, int *by, int *bw, int *bh)
+{
+    int x, y, w, h;
+    int inner;
+
+    cfg_panel_rect(cfg, cfg->screen == SCR_TOP ? 400 : 320, 240, &x, &y, &w, &h);
+    inner = w - TB_PAD * 2 - TB_GAP * (BTN_COUNT - 1);
+    *bw = inner / BTN_COUNT;
+    *bx = x + TB_PAD + idx * (*bw + TB_GAP);
+    *by = y + TB_PAD;
+    *bh = TB_H;
+}
+
+int hud_button_at(const PluginCfg *cfg, int tx, int ty)
+{
+    for (int i = 0; i < BTN_COUNT; ++i) {
+        int bx, by, bw, bh;
+
+        btn_rect(cfg, i, &bx, &by, &bw, &bh);
+        if (tx >= bx && tx < bx + bw && ty >= by && ty < by + bh)
+            return i;
+    }
+    return -1;
+}
+
+static const char *btn_label(int i)
+{
+    switch (i) {
+    case BTN_TRANSLATE: return "翻译";
+    case BTN_SETTINGS:  return "设置";
+    default:            return "说明";
+    }
+}
+
 bool hud_draw(const PluginCfg *cfg, HudState st, const char *text)
 {
     gfxScreen_t scr;
@@ -130,7 +170,7 @@ bool hud_draw(const PluginCfg *cfg, HudState st, const char *text)
 
     if (st == HUD_HIDDEN)
         return true;
-    screen_of(cfg, &scr);
+    scr = cfg->screen == SCR_TOP ? GFX_TOP : GFX_BOTTOM;
 
     fb = gfxGetFramebuffer(scr, GFX_LEFT, &sw, &sh);
     if (!fb)
@@ -139,31 +179,66 @@ bool hud_draw(const PluginCfg *cfg, HudState st, const char *text)
 
     cfg_panel_rect(cfg, sw, sh, &x, &y, &w, &h);
     fill(fb, stride, x, y, w, h, back_color(cfg->opacity));
-    box(fb, stride, x, y, w, h, (Rgb){ 90, 200, 190 });   /* 青色边框，和主程序一套 */
+    box(fb, stride, x, y, w, h, (Rgb){ 90, 200, 190 });
+
+    /* ---- 按钮条 ---- */
+    for (int i = 0; i < BTN_COUNT; ++i) {
+        int bx, by, bw, bh;
+
+        btn_rect(cfg, i, &bx, &by, &bw, &bh);
+        fill(fb, stride, bx, by, bw, bh, (Rgb){ 34, 42, 52 });
+        box(fb, stride, bx, by, bw, bh, (Rgb){ 70, 120, 130 });
+
+        {
+            /* 按钮文字居中：16px 一个字，按字数算宽度 */
+            int  tw = 0;
+            const char *lb = btn_label(i);
+
+            for (const char *q = lb; *q; ) {
+                const char *p2 = q;
+                (void)utf8_next(&p2);
+                q = p2;
+                tw += 16;
+            }
+            draw_text(fb, stride, bx + (bw - tw) / 2, by + 2, bx + bw, lb,
+                      (Rgb){ 220, 235, 240 });
+        }
+    }
+
+    /* 按钮条与正文之间一条分隔线 */
+    for (int i = 0; i < w - 4; ++i)
+        px(fb, stride, x + 2 + i, y + TB_PAD + TB_H + 1, (Rgb){ 60, 100, 110 });
 
     {
         Rgb fg = (Rgb){ 235, 240, 245 };
-        int tx = x + 6, ty = y + 6, maxx = x + w - 6;
+        int tx = x + 6, ty = y + TB_PAD + TB_H + 6, maxx = x + w - 6;
 
         switch (st) {
-        case HUD_CAPTURING: ty = draw_text(fb, stride, tx, ty, maxx, "capturing... / \xE6\x88\xAA\xE5\x9B\xBE\xE4\xB8\xAD", fg); break;
-        case HUD_WAITING:   ty = draw_text(fb, stride, tx, ty, maxx, "waiting for AI... / \xE7\xAD\x89\xE5\xBE\x85\xE5\x9B\x9E\xE7\xAD\x94", fg); break;
-        case HUD_ERROR:     ty = draw_text(fb, stride, tx, ty, maxx, text ? text : "error", (Rgb){ 255, 130, 120 }); break;
+        case HUD_CAPTURING:
+            draw_text(fb, stride, tx, ty, maxx, "截图中…", fg);
+            break;
+        case HUD_WAITING:
+            draw_text(fb, stride, tx, ty, maxx, "等 AI 回复…", fg);
+            break;
+        case HUD_ERROR:
+            draw_text(fb, stride, tx, ty, maxx, text ? text : "出错了",
+                      (Rgb){ 255, 150, 140 });
+            break;
         case HUD_TEXT:
-            /* 手动换行：16px 一行，从面板顶往下排，超出就停（不做滚动，
-             * 滚动要状态机，而这块屏是"瞟一眼"的用途）。 */
+            /* 手动换行：16px 一行，超出就停（不做滚动，这块屏是"瞟一眼"用的） */
             {
                 const char *p = text;
-                while (p && *p && ty + 16 <= y + h - 6) {
+
+                while (p && *p && ty + 16 <= y + h - 4) {
                     const char *nl = strchr(p, '\n');
-                    char  buf[256];
+                    char   buf[256];
                     size_t n = nl ? (size_t)(nl - p) : strlen(p);
 
                     if (n >= sizeof buf) n = sizeof buf - 1;
                     memcpy(buf, p, n);
                     buf[n] = '\0';
-                    ty = draw_text(fb, stride, tx, ty, maxx, buf, fg);
-                    ty += 2;
+                    draw_text(fb, stride, tx, ty, maxx, buf, fg);
+                    ty += 18;
                     p = nl ? nl + 1 : NULL;
                 }
             }

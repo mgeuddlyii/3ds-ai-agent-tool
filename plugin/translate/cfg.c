@@ -24,7 +24,7 @@ void cfg_defaults(PluginCfg *c)
     c->screen  = SCR_BOTTOM;
     c->anchor  = ANCH_BL;      /* 左下角：最不挡游戏画面的位置之一 */
     c->cols    = 34;
-    c->rows    = 6;
+    c->rows    = 7;   /* 按钮条吃掉 24px，6 行只剩 3 行正文 */
     c->opacity = 2;
     c->use_zl  = false;
 }

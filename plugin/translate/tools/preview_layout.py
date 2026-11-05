@@ -73,11 +73,26 @@ def panel(w=320, h=240, cols=34, rows=6):
     d.rectangle([x, y, x + pw - 1, y + ph - 1], outline=FRAME)
 
     f = ImageFont.truetype(FONT, 16)
-    lines = ["抓屏成功：320 x 240（225 KB）",
-             "AI 上传还没接上",
-             "第二行示意：这是一段很长的译文，用来",
-             "检查会不会顶到右边框外面去。"]
-    ty = y + 6
+
+    # 顶部按钮条：翻译 / 设置 / 说明，平分宽度、间隔 4、边距 2、高 20
+    PAD, GAP, BH = 2, 4, 20
+    inner = pw - PAD * 2 - GAP * 2
+    bw = inner // 3
+    for i, lb in enumerate(["翻译", "设置", "说明"]):
+        bx = x + PAD + i * (bw + GAP)
+        by = y + PAD
+        d.rectangle([bx, by, bx + bw - 1, by + BH - 1], fill=(34, 42, 52),
+                    outline=(70, 120, 130))
+        tw = d.textlength(lb, font=f)
+        d.text((bx + (bw - tw) / 2, by + 3), lb, font=f, fill=(220, 235, 240))
+    d.rectangle([x + 2, y + PAD + BH + 1, x + pw - 3, y + PAD + BH + 1],
+                fill=(60, 100, 110))
+
+    lines = ["上车吧，别磨蹭了。",
+             "这里显示译文，最多四行。",
+             "第三行示意：用来检查会不会",
+             "顶到右边框外面去。"]
+    ty = y + PAD + BH + 6
     for ln in lines:
         if ty + 16 > y + ph - 6:
             break

@@ -30,7 +30,8 @@ G3XTOOL := $(DEVKITPRO)/tools/bin/3gxtool.exe
 ARCH    := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 CFLAGS  := $(ARCH) -O2 -Wall -Wextra -std=gnu11 \
            -ffunction-sections -fdata-sections -fno-strict-aliasing \
-           -I$(DEVKITPRO)/libctru/include
+           -I$(DEVKITPRO)/libctru/include \
+           -I$(DEVKITPRO)/portlibs/3ds/include
 ASFLAGS := $(ARCH) -I$(DEVKITPRO)/libctru/include
 # ★ 不用 `-specs=3dsx.specs`：那套 specs 里带 `-T 3dsx.ld`，会和我们的
 #   `-T translate.ld` 同时生效 —— 结果是链接出**两套 PT_LOAD**
@@ -39,16 +40,18 @@ ASFLAGS := $(ARCH) -I$(DEVKITPRO)/libctru/include
 #   （不链 crt0，入口由 boot.s 当）和 libctru 的库路径。
 LDFLAGS := -nostartfiles \
            -L$(DEVKITPRO)/libctru/lib \
+           -L$(DEVKITPRO)/portlibs/3ds/lib \
            -T translate.ld $(ARCH) -O2 \
            -Wl,--gc-sections -Wl,-Map,translate.map
-LIBS    := -lctru -lm
+# 顺序有讲究：curl 依赖 mbedtls 与 zlib，静态链接时被依赖的放后面
+LIBS    := -lcurl -lmbedtls -lmbedx509 -lmbedcrypto -lz -lctru -lm
 
 TARGET  := translate
 BUILD   := build
 
 # font16.c 是烤出来的点阵字库（tools/mkfont16.py 生成），别手改。
 # 它 1.4MB 源码 / 235KB 二进制 —— 插件体积上限宽松，换来中文能直接显示。
-SRCS_C  := main.c cfg.c hud.c help.c font16.c
+SRCS_C  := main.c cfg.c hud.c help.c png.c net.c font16.c
 SRCS_S  := boot.s
 OBJS    := $(addprefix $(BUILD)/,$(SRCS_C:.c=.o)) $(addprefix $(BUILD)/,$(SRCS_S:.s=.o))
 

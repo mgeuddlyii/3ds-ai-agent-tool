@@ -22,9 +22,17 @@ typedef enum {
     HUD_ERROR
 } HudState;
 
-/* 取当前屏的帧缓冲并画一帧。text 为 NULL 时按 state 画占位。
+/* 面板上的三个按钮：翻译 / 设置 / 说明 */
+typedef enum { BTN_TRANSLATE = 0, BTN_SETTINGS, BTN_HELP, BTN_COUNT } HudBtn;
+
+/* 取当前屏的帧缓冲并画一帧（含顶部按钮条）。text 为 NULL 时按 state 画占位。
  * 返回 false = 拿不到帧缓冲（游戏没初始化 gfx 时可能发生）。 */
 bool hud_draw(const PluginCfg *cfg, HudState st, const char *text);
+
+/* 屏幕坐标 → 命中的按钮；没命中返回 -1。
+ * 触摸判定必须和绘制用**同一个** cfg_panel_rect，否则会出现
+ * "看着点在按钮上、实际点空" —— 这种偏差在真机上极难察觉。 */
+int hud_button_at(const PluginCfg *cfg, int tx, int ty);
 
 /* ---- 给设置页用的底层原语 ----------------------------------------------
  * 设置页和翻译屏都走同一套绘制（不引 console，也不引 citro2d）：
