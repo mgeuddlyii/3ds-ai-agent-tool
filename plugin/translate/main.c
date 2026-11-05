@@ -32,6 +32,7 @@
 #include <string.h>
 
 #include "cfg.h"
+#include "help.h"
 #include "hud.h"
 
 /* libctru 需要应用侧提供（见文件头第 1 条）。 */
@@ -41,6 +42,7 @@ u32   __apt_appid = 0;
 
 #define MODE_GAME     0
 #define MODE_SETTINGS 1
+#define MODE_HELP     2
 
 #define TRIGGER_LONG_FRAMES 45      /* 按住 ~0.75 秒算长按（60fps 折算） */
 
@@ -54,7 +56,7 @@ static bool      g_hold_fired;
 
 /* ---------------- 设置页 ---------------- */
 
-#define SET_ROWS 6
+#define SET_ROWS 7
 
 static const char *row_label(int i)
 {
@@ -64,7 +66,8 @@ static const char *row_label(int i)
     case 2: return "宽度（字符）";
     case 3: return "高度（字符）";
     case 4: return "背板深浅";
-    default: return "触发键";
+    case 5: return "触发键";
+    default: return "使用说明";
     }
 }
 
@@ -88,8 +91,11 @@ static void row_value(int i, char *out, size_t n)
         snprintf(out, n, "%s", kDeep[g_cfg.opacity & 3]);
         break;
     }
-    default:
+    case 5:
         snprintf(out, n, "%s", g_cfg.use_zl ? "ZL" : "SELECT");
+        break;
+    default:
+        snprintf(out, n, "%s", "按 A 打开");
         break;
     }
 }
@@ -120,9 +126,12 @@ static void row_step(int i, int dir)
     case 4:
         g_cfg.opacity = (g_cfg.opacity + dir + 4) & 3;
         break;
-    default:
+    case 5:
         g_cfg.use_zl = !g_cfg.use_zl;
         break;
+    default:
+        break;                    /* 说明行不响应左右键 */
+
     }
 }
 
@@ -211,15 +220,35 @@ int main(void)
         down = hidKeysDown();
         held = hidKeysHeld();
 
-        if (g_mode == MODE_SETTINGS) {
+        if (g_mode == MODE_HELP) {
+            if (down & KEY_UP)    help_scroll(-1);
+            if (down & KEY_DOWN)  help_scroll(+1);
+            if (down & KEY_LEFT)  help_page(-1);
+            if (down & KEY_RIGHT) help_page(+1);
+            if (down & (KEY_B | KEY_SELECT))
+                g_mode = MODE_SETTINGS;
+
+            if (g_mode == MODE_HELP) {
+                int w = 0, h = 0;
+
+                if (hud_begin(GFX_BOTTOM, &w, &h))
+                    help_draw(w, h);
+                hud_end();
+            }
+        } else if (g_mode == MODE_SETTINGS) {
             if (down & KEY_UP)   { if (--g_sel < 0) g_sel = SET_ROWS - 1; }
             if (down & KEY_DOWN) { if (++g_sel >= SET_ROWS) g_sel = 0; }
             if (down & KEY_LEFT)   row_step(g_sel, -1);
             if (down & KEY_RIGHT)  row_step(g_sel, +1);
             if (down & KEY_A) {
-                cfg_save(&g_cfg);
-                g_mode = MODE_GAME;
-                g_state = HUD_HIDDEN;
+                if (g_sel == SET_ROWS - 1) {      /* 最后一行 = 使用说明 */
+                    help_init(9);   /* 9 行一页：10 行时页脚会贴到最后一行上（预览看的） */
+                    g_mode = MODE_HELP;
+                } else {
+                    cfg_save(&g_cfg);
+                    g_mode = MODE_GAME;
+                    g_state = HUD_HIDDEN;
+                }
             }
             if (down & (KEY_B | KEY_SELECT)) {
                 cfg_load(&g_cfg);        /* 取消：把没保存的改动扔掉 */

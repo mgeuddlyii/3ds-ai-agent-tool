@@ -96,6 +96,87 @@ def panel(w=320, h=240, cols=34, rows=6):
     print("翻译屏 →", "preview_panel.png  （%dx%d @ %d,%d）" % (pw, ph, x, y))
 
 
+HELP_TEXT = """这是什么
+游戏运行时按一个键，把当前画面截下来发给 AI，译文显示在一块可以自己摆位置的翻译屏上。
+
+按键
+短按 SELECT：截屏并翻译
+长按 SELECT 约一秒：打开设置
+设置里 ↑↓ 选行，←→ 改值
+A 保存并退出，B 不保存退出
+
+设置项
+显示在哪块屏：上屏画面大，下屏不挡手
+翻译屏位置：九宫格，贴着哪个角
+宽/高：以字符为单位，1 字符 = 8×16 像素
+背板深浅：3DS 没有半透明，只能调底色
+触发键：SELECT 或 ZL（ZL 只有新三有）
+
+译文放不下怎么办
+先调高、再调宽。宽到 40 字符就顶满下屏了，再宽会被屏幕裁掉。
+
+现在还没做好的
+截屏已经能用了，面板上会显示抓到的分辨率。把画面传给 AI 这一步还没接 —— 所以你现在按下去，看到的是“抓屏成功”，不是译文。
+
+真机出问题先看这里
+面板不出现：多半是游戏自己管着显示服务，换个游戏试试，能出来的话就是这个原因。
+按键没反应：确认 Luma 的 Plugin Loader 开着。
+截出来的图是黑的：说明抓到的是插件自己的空画面，这条要靠改抓屏方式解决，不是设置问题。
+游戏直接崩：插件占的内存太多，这个要改插件打包时的内存设置。
+
+设置文件
+存在 sdmc:/3ds/aiconsole/plugin.cfg，也能用电脑记事本直接改，下次进游戏生效。
+
+版本
+翻译插件 0.2.0　作者 AI Console"""
+
+
+def wrap(text, cols=18):
+    out = []
+    for para in text.split("\n"):
+        if not para:
+            out.append("")
+            continue
+        line = ""
+        for ch in para:
+            if len(line) >= cols:
+                out.append(line)
+                line = ""
+            line += ch
+        out.append(line)
+    return out
+
+
+def help_page(idx=0, cols=18, per=9, w=320, h=240):
+    lines = wrap(HELP_TEXT, cols)
+    img = Image.new("RGB", (w, h), BG)
+    d = ImageDraw.Draw(img)
+    f = ImageFont.truetype(FONT, 16)
+
+    d.text((10, 6), "使用说明", font=f, fill=TITLE)
+    d.rectangle([10, 28, w - 11, 28], fill=BAR)
+
+    y = 34
+    for i in range(per):
+        k = idx * per + i
+        if k >= len(lines):
+            break
+        if y + 16 > h - 24:
+            break
+        head = (k + 1 < len(lines) and lines[k + 1] == "" and lines[k] != "")
+        d.text((10, y - 2), lines[k], font=f,
+               fill=(235, 240, 245) if head else (195, 205, 215))
+        y += 18
+
+    d.rectangle([10, h - 22, w - 11, h - 22], fill=BAR)
+    d.text((10, h - 20), "↑↓ 滚动   ←→ 翻页   %d/%d   B 返回"
+           % (idx + 1, (len(lines) + per - 1) // per), font=f, fill=HINT)
+    img.save(os.path.join(HERE, "..", "preview_help.png"))
+    print("说明页 → preview_help.png（共 %d 行，%d 页）"
+          % (len(lines), (len(lines) + per - 1) // per))
+
+
 if __name__ == "__main__":
     settings()
     panel()
+    help_page(0)
