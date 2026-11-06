@@ -76,9 +76,9 @@ def panel(w=320, h=240, cols=34, rows=6):
 
     # 顶部按钮条：翻译 / 设置 / 说明，平分宽度、间隔 4、边距 2、高 20
     PAD, GAP, BH = 2, 4, 20
-    inner = pw - PAD * 2 - GAP * 2
-    bw = inner // 3
-    for i, lb in enumerate(["翻译", "设置", "说明"]):
+    inner = pw - PAD * 2 - GAP * 3
+    bw = inner // 4
+    for i, lb in enumerate(["翻译", "设置", "说明", "测试"]):
         bx = x + PAD + i * (bw + GAP)
         by = y + PAD
         d.rectangle([bx, by, bx + bw - 1, by + BH - 1], fill=(34, 42, 52),

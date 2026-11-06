@@ -157,7 +157,8 @@ static const char *btn_label(int i)
     switch (i) {
     case BTN_TRANSLATE: return "翻译";
     case BTN_SETTINGS:  return "设置";
-    default:            return "说明";
+    case BTN_HELP:      return "说明";
+    default:            return "测试";
     }
 }
 

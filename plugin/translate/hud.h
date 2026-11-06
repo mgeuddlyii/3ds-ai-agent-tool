@@ -23,7 +23,7 @@ typedef enum {
 } HudState;
 
 /* 面板上的三个按钮：翻译 / 设置 / 说明 */
-typedef enum { BTN_TRANSLATE = 0, BTN_SETTINGS, BTN_HELP, BTN_COUNT } HudBtn;
+typedef enum { BTN_TRANSLATE = 0, BTN_SETTINGS, BTN_HELP, BTN_TEST, BTN_COUNT } HudBtn;
 
 /* 取当前屏的帧缓冲并画一帧（含顶部按钮条）。text 为 NULL 时按 state 画占位。
  * 返回 false = 拿不到帧缓冲（游戏没初始化 gfx 时可能发生）。 */

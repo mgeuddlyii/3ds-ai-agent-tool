@@ -10,10 +10,10 @@ Author: AI Console
 Summary: 游戏内翻译：按键截图 → 发给 AI → 译文显示在可移动的翻译屏
 Description: 触摸与按键都可操作。面板位置/大小/深浅可调，设置与说明都存在卡上。需要 sdmc:/3ds/aiconsole/key.txt。
 
-# 0.4.0：拖动摆放页（画布上拖着放，自由坐标）
+# 0.5.0：加"测试"按钮（纯文本探活，把网络/TLS/Key/余额分开报）
 Version:
   Major: 0
-  Minor: 4
+  Minor: 5
   Revision: 0
 
 # 兼容性：Any = 真机与 Citra 都加载。写 Console 的话模拟器里看不到，

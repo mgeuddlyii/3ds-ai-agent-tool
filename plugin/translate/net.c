@@ -371,3 +371,110 @@ bool net_translate(const uint8_t *bgr, int w, int h, char *out, size_t cap)
     free(url);
     return ok;
 }
+
+/* ---- 测试连接：把"通不通"和"能不能翻译"分开验 ------------------------- */
+
+bool net_ping(char *out, size_t cap)
+{
+    char   base[160], model[64], key[200];
+    char  *url;
+    char   body[256];
+    Buf    resp = { 0 };
+    CURL  *c;
+    CURLcode rc;
+    u64    t0, t1;
+    bool   ok = false;
+
+    if (!out || cap < 8)
+        return false;
+    out[0] = '\0';
+
+    read_creds(key, sizeof key, base, sizeof base, model, sizeof model);
+    if (!key[0]) {
+        snprintf(out, cap, "没有 Key\n放 sdmc:/3ds/aiconsole/key.txt");
+        return false;
+    }
+    if (!net_init()) {
+        snprintf(out, cap, "网络初始化失败");
+        return false;
+    }
+
+    url = malloc(strlen(base) + 64);
+    if (!url) {
+        snprintf(out, cap, "内存不够");
+        return false;
+    }
+    snprintf(url, strlen(base) + 64, "%s/chat/completions", base);
+
+    snprintf(body, sizeof body,
+             "{\"model\":\"%s\",\"max_tokens\":8,\"messages\":"
+             "[{\"role\":\"user\",\"content\":\"只回复 OK 两个字母\"}]}", model);
+
+    c = curl_easy_init();
+    if (!c) {
+        free(url);
+        snprintf(out, cap, "curl 初始化失败");
+        return false;
+    }
+
+    {
+        struct curl_slist *hdr = NULL;
+        char auth[256];
+
+        snprintf(auth, sizeof auth, "Authorization: Bearer %s", key);
+        hdr = curl_slist_append(hdr, "Content-Type: application/json");
+        hdr = curl_slist_append(hdr, auth);
+
+        curl_easy_setopt(c, CURLOPT_URL, url);
+        curl_easy_setopt(c, CURLOPT_POST, 1L);
+        curl_easy_setopt(c, CURLOPT_POSTFIELDS, body);
+        curl_easy_setopt(c, CURLOPT_HTTPHEADER, hdr);
+        curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, sink);
+        curl_easy_setopt(c, CURLOPT_WRITEDATA, &resp);
+        curl_easy_setopt(c, CURLOPT_TIMEOUT, 20L);   /* 纯文本，20s 足够 */
+        curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(c, CURLOPT_USERAGENT, "AIConsole-plugin/0.5");
+
+        t0 = osGetTime();
+        rc = curl_easy_perform(c);
+        t1 = osGetTime();
+
+        if (rc != CURLE_OK) {
+            /* 这几条是插件里最常见的三种死法，分开报 */
+            const char *why =
+                rc == CURLE_COULDNT_RESOLVE_HOST ? "DNS 解析失败（Wi-Fi 连了吗？）" :
+                rc == CURLE_COULDNT_CONNECT      ? "连不上服务器（端口被挡？）" :
+                rc == CURLE_SSL_CONNECT_ERROR    ? "TLS 握手失败" :
+                rc == CURLE_OPERATION_TIMEDOUT   ? "超时（网络太慢或服务不可达）" :
+                                                   curl_easy_strerror(rc);
+
+            snprintf(out, cap, "网络不通：%s", why);
+        } else {
+            long code = 0;
+
+            curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
+            if (code == 200) {
+                char txt[96] = { 0 };
+
+                if (resp.p)
+                    (void)extract_content(resp.p, txt, sizeof txt);
+                snprintf(out, cap, "连接正常 %llums\n模型：%s\n回：%s",
+                         (unsigned long long)(t1 - t0), model,
+                         txt[0] ? txt : "(空)");
+                ok = true;
+            } else if (code == 401) {
+                snprintf(out, cap, "HTTP 401：Key 不对\n检查 key.txt 的 key= 那行");
+            } else if (code == 402 || code == 429) {
+                snprintf(out, cap, "HTTP %ld：余额/限流\n换一把 Key 或充值", code);
+            } else {
+                snprintf(out, cap, "HTTP %ld\n%.60s", code, resp.p ? resp.p : "");
+            }
+        }
+        curl_slist_free_all(hdr);
+    }
+
+    curl_easy_cleanup(c);
+    free(resp.p);
+    free(url);
+    return ok;
+}

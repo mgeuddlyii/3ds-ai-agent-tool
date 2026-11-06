@@ -22,3 +22,8 @@ bool net_translate(const uint8_t *bgr, int w, int h, char *out, size_t cap);
 
 /* 一次性初始化（soc + curl）。重复调用无副作用。 */
 bool net_init(void);
+
+/* ★ 只发一句纯文本，用来在真机上**分步定位**问题：
+ *   soc 起不来 / DNS / TLS / 401 / 余额 —— 每种失败给一句不同的话。
+ *   不发图是有意的：图的编码、内存、超时都会把"网络到底通不通"这件事搅浑。 */
+bool net_ping(char *out, size_t cap);

@@ -48,6 +48,7 @@ static bool      g_hold_fired;
 static bool      g_touching, g_tap_used;
 
 static void do_translate(void);
+static void do_test(void);
 
 /* ---------------- 设置页 ---------------- */
 
@@ -494,6 +495,8 @@ int main(void)
                 } else if (b == BTN_HELP) {
                     help_init(9);
                     g_mode = MODE_HELP;
+                } else if (b == BTN_TEST) {
+                    do_test();
                 }
             }
 
@@ -534,4 +537,17 @@ static void do_translate(void)
         hud_draw(&g_cfg, HUD_ERROR, g_text);
 
     free(px);
+}
+
+/* 测试连接：只发一句纯文本。真机上第一次跑，先点这个 ——
+ * 它能把"网络/TLS/Key/余额"四种失败分开报出来，而翻译按钮只会给一个笼统的错。 */
+static void do_test(void)
+{
+    snprintf(g_text, sizeof g_text, "测试中…");
+    hud_draw(&g_cfg, HUD_WAITING, NULL);
+
+    if (net_ping(g_text, sizeof g_text))
+        hud_draw(&g_cfg, HUD_TEXT, g_text);
+    else
+        hud_draw(&g_cfg, HUD_ERROR, g_text);
 }
