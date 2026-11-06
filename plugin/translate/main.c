@@ -33,6 +33,7 @@ u32   __apt_appid = 0;
 #define MODE_GAME     0
 #define MODE_SETTINGS 1
 #define MODE_HELP     2
+#define MODE_LAYOUT   3
 
 #define TRIGGER_LONG_FRAMES 45
 
@@ -50,7 +51,7 @@ static void do_translate(void);
 
 /* ---------------- 设置页 ---------------- */
 
-#define SET_ROWS 6
+#define SET_ROWS 7
 
 static const char *row_label(int i)
 {
@@ -60,7 +61,8 @@ static const char *row_label(int i)
     case 2: return "宽度（字符）";
     case 3: return "高度（字符）";
     case 4: return "背板深浅";
-    default: return "触发键";
+    case 5: return "触发键";
+    default: return "摆放位置";
     }
 }
 
@@ -81,7 +83,10 @@ static void row_value(int i, char *out, size_t n)
         snprintf(out, n, "%s", k[g_cfg.opacity & 3]);
         break;
     }
-    default: snprintf(out, n, "%s", g_cfg.use_zl ? "ZL" : "SELECT"); break;
+    case 5: snprintf(out, n, "%s", g_cfg.use_zl ? "ZL" : "SELECT"); break;
+    default:
+        snprintf(out, n, "%s", g_cfg.free_pos ? "已拖动" : "按 A 拖动");
+        break;
     }
 }
 
@@ -108,7 +113,9 @@ static void row_step(int i, int dir)
         if (g_cfg.rows > 16) g_cfg.rows = 16;
         break;
     case 4: g_cfg.opacity = (g_cfg.opacity + dir + 4) & 3; break;
-    default: g_cfg.use_zl = !g_cfg.use_zl; break;
+    case 5: g_cfg.use_zl = !g_cfg.use_zl; break;
+    default: break;                 /* 摆放行不响应左右键 */
+
     }
 }
 
@@ -181,6 +188,158 @@ static u32 trigger_mask(void)
     return g_cfg.use_zl ? KEY_ZL : KEY_SELECT;
 }
 
+
+/* ---------------- 拖动摆放页 ----------------
+ *
+ * 触摸只在下屏有效，而目标屏可能是上屏 —— 所以这里画的是**缩略画布**：
+ * 下屏那块区域按比例代表目标屏，拖的是画布里的窗口。
+ * 直接"在上屏拖"是做不到的（上屏没有触摸层），这条限制绕不过去。
+ */
+
+#define LAY_TITLE_H 30
+#define LAY_BTN_H   40
+
+static int   g_drag;                 /* 正在拖 */
+static int   g_drag_dx, g_drag_dy;   /* 触摸点相对窗口左上角的偏移（屏像素） */
+static int   g_lay_x, g_lay_y;       /* 布局页里的自由坐标（目标屏像素） */
+
+static void lay_canvas(int *cx, int *cy, int *cw, int *ch, float *scale)
+{
+    int scr_w = g_cfg.screen == SCR_TOP ? 400 : 320;
+    int scr_h = 240;
+    int avail_w = 320;
+    int avail_h = 240 - LAY_TITLE_H - LAY_BTN_H;
+
+    *scale = (float)avail_w / scr_w;
+    if ((float)avail_h / scr_h < *scale)
+        *scale = (float)avail_h / scr_h;
+
+    *cw = (int)(scr_w * *scale);
+    *ch = (int)(scr_h * *scale);
+    *cx = (320 - *cw) / 2;
+    *cy = LAY_TITLE_H + (avail_h - *ch) / 2;
+}
+
+static void draw_layout(void)
+{
+    int   cx, cy, cw, ch;
+    float sc;
+    int   px, py, pw, ph;
+
+    if (!hud_begin(GFX_BOTTOM, NULL, NULL))
+        return;
+
+    hud_rect(0, 0, 320, 240, 10, 12, 16);
+    hud_text(10, 6, 310, g_cfg.screen == SCR_TOP ? "拖动摆放 · 上屏" : "拖动摆放 · 下屏",
+             120, 220, 210);
+
+    lay_canvas(&cx, &cy, &cw, &ch, &sc);
+
+    /* 画布 = 目标屏的缩影 */
+    hud_rect(cx, cy, cw, ch, 22, 26, 34);
+    hud_frame(cx, cy, cw, ch, 60, 90, 100);
+
+    {
+        int pw0 = g_cfg.cols * 8, ph0 = g_cfg.rows * 16;
+
+        if (pw0 > (g_cfg.screen == SCR_TOP ? 400 : 320)) pw0 = (g_cfg.screen == SCR_TOP ? 400 : 320);
+        if (ph0 > 240) ph0 = 240;
+
+        pw = (int)(pw0 * sc);
+        ph = (int)(ph0 * sc);
+        px = cx + (int)(g_lay_x * sc);
+        py = cy + (int)(g_lay_y * sc);
+
+        hud_rect(px, py, pw, ph, 40, 120, 130);
+        hud_frame(px, py, pw, ph, 120, 220, 210);
+        if (pw > 40 && ph > 20)
+            hud_text(px + 4, py + 4, px + pw - 4, "拖我", 235, 245, 250);
+    }
+
+    /* 底部三个按钮：换屏 / 确认 / 取消 */
+    {
+        static const char *kLbl[3] = { "换屏", "确认", "取消" };
+        int bw = (320 - 8 * 2 - 6 * 2) / 3;
+
+        for (int i = 0; i < 3; ++i) {
+            int bx = 8 + i * (bw + 6);
+            int by = 240 - LAY_BTN_H + 8;
+
+            hud_rect(bx, by, bw, LAY_BTN_H - 16, 34, 42, 52);
+            hud_frame(bx, by, bw, LAY_BTN_H - 16, 70, 120, 130);
+            {
+                int tw = hud_text_w(kLbl[i]);
+
+                hud_text(bx + (bw - tw) / 2, by + 4, bx + bw, kLbl[i], 220, 235, 240);
+            }
+        }
+    }
+
+    hud_end();
+}
+
+/* 布局页的触摸：返回 0=没动作 1=确认 2=取消 3=换屏 */
+static int layout_touch(int pressed, int tx, int ty)
+{
+    int   cx, cy, cw, ch;
+    float sc;
+    int   pw = (int)(g_cfg.cols * 8 * 0.0f);   /* 占位，下面重算 */
+
+    lay_canvas(&cx, &cy, &cw, &ch, &sc);
+
+    /* 底部按钮 */
+    {
+        int bw = (320 - 8 * 2 - 6 * 2) / 3;
+        int by = 240 - LAY_BTN_H + 8;
+
+        if (ty >= by && ty < by + LAY_BTN_H - 16) {
+            for (int i = 0; i < 3; ++i) {
+                int bx = 8 + i * (bw + 6);
+
+                if (tx >= bx && tx < bx + bw)
+                    return i == 0 ? 3 : (i == 1 ? 1 : 2);
+            }
+        }
+    }
+
+    {
+        int pw0 = g_cfg.cols * 8, ph0 = g_cfg.rows * 16;
+        int maxw = g_cfg.screen == SCR_TOP ? 400 : 320;
+
+        if (pw0 > maxw) pw0 = maxw;
+        if (ph0 > 240) ph0 = 240;
+        pw = (int)(pw0 * sc);
+
+        {
+            int ph  = (int)(ph0 * sc);
+            int px  = cx + (int)(g_lay_x * sc);
+            int py  = cy + (int)(g_lay_y * sc);
+
+            if (pressed) {
+                if (tx >= px && tx < px + pw && ty >= py && ty < py + ph) {
+                    g_drag    = 1;
+                    g_drag_dx = (int)((tx - px) / sc);
+                    g_drag_dy = (int)((ty - py) / sc);
+                }
+            } else if (g_drag) {
+                /* 拖动中：把画布坐标换算回目标屏像素 */
+                int nx = (int)((tx - cx) / sc) - g_drag_dx;
+                int ny = (int)((ty - cy) / sc) - g_drag_dy;
+                int maxx = maxw - pw0;
+                int maxy = 240 - ph0;
+
+                if (nx < 0) nx = 0;
+                if (ny < 0) ny = 0;
+                if (nx > maxx) nx = maxx;
+                if (ny > maxy) ny = maxy;
+                g_lay_x = nx;
+                g_lay_y = ny;
+            }
+        }
+    }
+    return 0;
+}
+
 /* ---------------- 主循环 ---------------- */
 
 int main(void)
@@ -244,14 +403,71 @@ int main(void)
             }
 
             if (down & KEY_A) {
-                cfg_save(&g_cfg);
-                g_mode = MODE_GAME;
+                if (g_sel == SET_ROWS - 1) {
+                    /* 进拖动页：把当前位置换算成自由坐标作为起点 */
+                    int sx, sy, sw2, sh2;
+
+                    cfg_panel_rect(&g_cfg, g_cfg.screen == SCR_TOP ? 400 : 320, 240,
+                                   &sx, &sy, &sw2, &sh2);
+                    g_lay_x = sx;
+                    g_lay_y = sy;
+                    g_drag  = 0;
+                    g_mode  = MODE_LAYOUT;
+                } else {
+                    cfg_save(&g_cfg);
+                    g_mode = MODE_GAME;
+                }
             }
             if (down & (KEY_B | KEY_SELECT))
                 g_mode = MODE_GAME;
 
             if (g_mode == MODE_SETTINGS)
                 draw_settings();
+        } else if (g_mode == MODE_LAYOUT) {
+            int pressed = (down & KEY_TOUCH) ? 1 : 0;
+            int heldt   = (held & KEY_TOUCH) ? 1 : 0;
+
+            if (down & KEY_LEFT)  { if ((g_lay_x -= 4) < 0) g_lay_x = 0; }
+            if (down & KEY_RIGHT) { g_lay_x += 4; }
+            if (down & KEY_UP)    { if ((g_lay_y -= 4) < 0) g_lay_y = 0; }
+            if (down & KEY_DOWN)  { g_lay_y += 4; }
+
+            if (pressed || heldt) {
+                touchPosition t2;
+
+                hidTouchRead(&t2);
+                {
+                    int act = layout_touch(pressed, t2.px, t2.py);
+
+                    if (act == 1) {              /* 确认 */
+                        g_cfg.free_pos = true;
+                        g_cfg.pos_x    = g_lay_x;
+                        g_cfg.pos_y    = g_lay_y;
+                        cfg_save(&g_cfg);
+                        g_drag = 0;
+                        g_mode = MODE_GAME;
+                    } else if (act == 2) {       /* 取消 */
+                        g_drag = 0;
+                        g_mode = MODE_SETTINGS;
+                    } else if (act == 3) {       /* 换屏 */
+                        g_cfg.screen = g_cfg.screen == SCR_TOP ? SCR_BOTTOM : SCR_TOP;
+                        g_lay_x = g_lay_y = 8;
+                        g_drag  = 0;
+                    }
+                }
+            }
+            if (down & KEY_A) {                  /* 键盘确认 */
+                g_cfg.free_pos = true;
+                g_cfg.pos_x    = g_lay_x;
+                g_cfg.pos_y    = g_lay_y;
+                cfg_save(&g_cfg);
+                g_mode = MODE_GAME;
+            }
+            if (down & (KEY_B | KEY_SELECT))
+                g_mode = MODE_SETTINGS;
+
+            if (g_mode == MODE_LAYOUT)
+                draw_layout();
         } else {
             /* ---- 游戏态：面板常驻，三个按钮 ---- */
             if (held & trigger_mask()) {

@@ -27,6 +27,9 @@ void cfg_defaults(PluginCfg *c)
     c->rows    = 7;   /* 按钮条吃掉 24px，6 行只剩 3 行正文 */
     c->opacity = 2;
     c->use_zl  = false;
+    c->free_pos = false;
+    c->pos_x    = 8;
+    c->pos_y    = 136;
 }
 
 const char *cfg_screen_name(CfgScreen s)
@@ -104,6 +107,12 @@ void cfg_load(PluginCfg *c)
                 c->opacity = clamp(atoi(v), 0, 3);
             else if (strcmp(k, "key") == 0)
                 c->use_zl = strcmp(v, "zl") == 0;
+            else if (strcmp(k, "free") == 0)
+                c->free_pos = atoi(v) != 0;
+            else if (strcmp(k, "pos_x") == 0)
+                c->pos_x = atoi(v);
+            else if (strcmp(k, "pos_y") == 0)
+                c->pos_y = atoi(v);
         }
         fclose(f);
     }
@@ -125,6 +134,9 @@ void cfg_save(const PluginCfg *c)
     fprintf(f, "rows=%d\n",    c->rows);
     fprintf(f, "opacity=%d\n", c->opacity);
     fprintf(f, "key=%s\n",     c->use_zl ? "zl" : "select");
+    fprintf(f, "free=%d\n",    c->free_pos ? 1 : 0);
+    fprintf(f, "pos_x=%d\n",   c->pos_x);
+    fprintf(f, "pos_y=%d\n",   c->pos_y);
     fclose(f);
 }
 
@@ -140,6 +152,20 @@ void cfg_panel_rect(const PluginCfg *c, int scr_w, int scr_h,
     ph = c->rows * 8;
     if (pw > scr_w) pw = scr_w;
     if (ph > scr_h) ph = scr_h;
+
+    if (c->free_pos) {
+        px = c->pos_x;
+        py = c->pos_y;
+        if (px > scr_w - pw) px = scr_w - pw;
+        if (py > scr_h - ph) py = scr_h - ph;
+        if (px < 0) px = 0;
+        if (py < 0) py = 0;
+        if (x) *x = px;
+        if (y) *y = py;
+        if (w) *w = pw;
+        if (h) *h = ph;
+        return;
+    }
 
     col = (int)c->anchor % 3;
     row = (int)c->anchor / 3;

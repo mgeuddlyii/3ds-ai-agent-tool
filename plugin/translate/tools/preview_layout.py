@@ -191,7 +191,54 @@ def help_page(idx=0, cols=18, per=9, w=320, h=240):
           % (len(lines), (len(lines) + per - 1) // per))
 
 
+def layout_page(target="bottom", px_free=40, py_free=60, cols=34, rows=7,
+                w=320, h=240):
+    """拖动摆放页：下屏画一块代表目标屏的画布。"""
+    scr_w = 400 if target == "top" else 320
+    scr_h = 240
+    TITLE_H, BTN_H = 30, 40
+    avail_w, avail_h = 320, h - TITLE_H - BTN_H
+
+    sc = min(avail_w / scr_w, avail_h / scr_h)
+    cw, ch = int(scr_w * sc), int(scr_h * sc)
+    cx, cy = (w - cw) // 2, TITLE_H + (avail_h - ch) // 2
+
+    img = Image.new("RGB", (w, h), BG)
+    d = ImageDraw.Draw(img)
+    f = ImageFont.truetype(FONT, 16)
+
+    d.text((10, 6), "拖动摆放 · " + ("上屏" if target == "top" else "下屏"),
+           font=f, fill=TITLE)
+
+    d.rectangle([cx, cy, cx + cw - 1, cy + ch - 1], fill=(22, 26, 34),
+                outline=(60, 90, 100))
+
+    pw0 = min(cols * 8, scr_w)
+    ph0 = min(rows * 16, scr_h)
+    pw, ph = int(pw0 * sc), int(ph0 * sc)
+    px, py = cx + int(px_free * sc), cy + int(py_free * sc)
+    d.rectangle([px, py, px + pw - 1, py + ph - 1], fill=(40, 120, 130),
+                outline=(120, 220, 210))
+    if pw > 40 and ph > 20:
+        d.text((px + 4, py + 2), "拖我", font=f, fill=(235, 245, 250))
+
+    bw = (320 - 16 - 12) // 3
+    for i, lb in enumerate(["换屏", "确认", "取消"]):
+        bx = 8 + i * (bw + 6)
+        by = h - BTN_H + 8
+        d.rectangle([bx, by, bx + bw - 1, by + BTN_H - 17], fill=(34, 42, 52),
+                    outline=(70, 120, 130))
+        tw = d.textlength(lb, font=f)
+        d.text((bx + (bw - tw) / 2, by + 4), lb, font=f, fill=(220, 235, 240))
+
+    img.save(os.path.join(HERE, "..", "preview_layout_page.png"))
+    print("摆放页 → preview_layout_page.png  画布 %dx%d @ (%d,%d) scale=%.3f"
+          % (cw, ch, cx, cy, sc))
+    return sc, cw, ch
+
+
 if __name__ == "__main__":
     settings()
     panel()
     help_page(0)
+    layout_page("bottom", 40, 60)

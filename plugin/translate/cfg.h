@@ -32,6 +32,14 @@ typedef struct {
     int       rows;       /* 面板高度（字符行，1 行 = 8px） */
     int       opacity;    /* 0..3 —— 背板深浅四档，不是 alpha（没有 alpha） */
     bool      use_zl;     /* true=用 ZL 触发，false=用 SELECT 单击 */
+
+    /* ★ 自由摆放（拖动页确认过的位置）。
+     *   free_pos=false 时按 anchor 的九宫格算，true 时直接用 pos_x/pos_y。
+     *   为什么两套并存：九宫格是"一键就能摆好"的快路径，
+     *   自由位置是"我想压在血条旁边"的精细路径。只有自由位置的话，
+     *   每次换游戏都要重新拖一遍。 */
+    bool      free_pos;
+    int       pos_x, pos_y;   /* 目标屏上的像素坐标（左上角） */
 } PluginCfg;
 
 void cfg_defaults(PluginCfg *c);
@@ -46,6 +54,7 @@ void cfg_save(const PluginCfg *c);
 const char *cfg_screen_name(CfgScreen s);
 const char *cfg_anchor_name(CfgAnchor a);
 
-/* 面板落在屏幕上的像素矩形。位置由 anchor + 屏幕尺寸算出来。 */
+/* 面板落在屏幕上的像素矩形。free_pos 时用 pos_x/pos_y（并夹在屏内），
+ * 否则按 anchor 的九宫格算。 */
 void cfg_panel_rect(const PluginCfg *c, int scr_w, int scr_h,
                     int *x, int *y, int *w, int *h);
