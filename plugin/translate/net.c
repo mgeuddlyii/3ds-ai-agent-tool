@@ -118,24 +118,77 @@ static void ini_get(const char *key, char *out, size_t cap, const char *def)
     }
 }
 
-/* 读 API Key：优先 key.txt（和主程序共用一份），再退回 ini 里的 key= */
-static void read_key(char *out, size_t cap)
+/* 读 key.txt。
+ *
+ * ★ 这里必须按**主程序同一套规则**解析：那个文件是带注释的 k=v 模板
+ *   （# 开头是注释，然后 key= / base_url= / model=），
+ *   **不是"第一行就是 Key"**。之前按第一行读，拿到的是 "# ====" 这行注释，
+ *   发出去就是一张 401 —— 而且报错长得像"Key 无效"，很容易误判成 Key 过期。
+ */
+static void read_creds(char *key, size_t kcap, char *base, size_t bcap,
+                       char *model, size_t mcap)
 {
     FILE *f;
 
-    out[0] = '\0';
+    key[0] = base[0] = model[0] = '\0';
     f = fopen(KEY_PATH, "r");
     if (f) {
-        if (fgets(out, (int)cap, f)) {
-            size_t n = strlen(out);
+        char line[256];
 
-            while (n && (out[n - 1] == '\n' || out[n - 1] == '\r'))
-                out[--n] = '\0';
+        while (fgets(line, sizeof line, f)) {
+            char  *s   = line;
+            char  *eq;
+            char  *eol;
+
+            while (*s == ' ' || *s == '\t')
+                ++s;
+            eol = s + strlen(s);
+            while (eol > s && (eol[-1] == '\n' || eol[-1] == '\r' ||
+                               eol[-1] == ' '  || eol[-1] == '\t'))
+                *--eol = '\0';
+
+            if (*s == '\0' || *s == '#')
+                continue;                 /* 注释与空行 */
+
+            eq = strchr(s, '=');
+            if (!eq) {
+                /* 没有等号：允许"只贴了一串 Key"的写法（老用户习惯） */
+                if (strlen(s) > 20 && !key[0])
+                    snprintf(key, kcap, "%s", s);
+                continue;
+            }
+            *eq = '\0';
+            {
+                char *k = s;
+                char *v = eq + 1;
+
+                while (*v == ' ' || *v == '\t')
+                    ++v;
+                if (strcmp(k, "key") == 0)
+                    snprintf(key, kcap, "%s", v);
+                else if (strcmp(k, "base_url") == 0 || strcmp(k, "url") == 0)
+                    snprintf(base, bcap, "%s", v);
+                else if (strcmp(k, "model") == 0)
+                    snprintf(model, mcap, "%s", v);
+            }
         }
         fclose(f);
     }
-    if (!out[0])
-        ini_get("key", out, cap, "");
+
+    /* 文件里没写的，用 plugin.ini 兜底（插件自己的覆盖优先级更高） */
+    {
+        char tmp[160];
+
+        ini_get("api_base", tmp, sizeof tmp, "");
+        if (tmp[0]) snprintf(base, bcap, "%s", tmp);
+        ini_get("model", tmp, sizeof tmp, "");
+        if (tmp[0]) snprintf(model, mcap, "%s", tmp);
+        ini_get("key", tmp, sizeof tmp, "");
+        if (!key[0] && tmp[0]) snprintf(key, kcap, "%s", tmp);
+    }
+
+    if (!base[0])  snprintf(base,  bcap,  "%s", "https://api.deepseek.com");
+    if (!model[0]) snprintf(model, mcap, "%s", "deepseek-chat");
 }
 
 /* \uXXXX → UTF-8 */
@@ -220,9 +273,7 @@ bool net_translate(const uint8_t *bgr, int w, int h, char *out, size_t cap)
         return false;
     out[0] = '\0';
 
-    ini_get("api_base", base,  sizeof base,  "https://api.deepseek.com");
-    ini_get("model",    model, sizeof model, "deepseek-chat");
-    read_key(key, sizeof key);
+    read_creds(key, sizeof key, base, sizeof base, model, sizeof model);
     if (!key[0]) {
         snprintf(out, cap, "没有 API Key\n放到 sdmc:/3ds/aiconsole/key.txt");
         return false;
