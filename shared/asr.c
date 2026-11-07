@@ -160,6 +160,28 @@ static const AsrDef kAsrTable[] = {
         "zh",
         ASR_KIND_BAIDU,
     },
+    /* ★★ 2026-11-07：自定义端点（本地中转 / 自带 Key 的任意 OpenAI 兼容服务）。
+     *
+     *   为什么必须有这一项：云端"免费"那几家已经全部失效（硅基 402 余额不足、
+     *   模力方舟要计费、Groq 注册被 Cloudflare 拦）。这时候再往表里加一家
+     *   只是换个地方失效 —— 真正的解法是让**地址可由用户指定**。
+     *
+     *   安全边界没松：白名单里仍然只有固定的几家 + 这一项；
+     *   这一项也只能填 `base_url=`，路径后缀由代码拼（/v1/audio/transcriptions），
+     *   用户改不了协议形态，也改不了别的厂商的地址。
+     *
+     *   两种典型用法：
+     *     ① 局域网里的一台电脑：base_url=http://192.168.1.5:8000
+     *        （电脑上跑 whisper，3DS 只负责录音上传 —— 零成本、不依赖外网）
+     *     ② 自己付费的任意 OpenAI 兼容 ASR：base_url=https://xxx/v1 ...
+     *        （key= 填自己的，留空则不带 Authorization 头，本地服务不需要） */
+    {
+        "custom",
+        "",                 /* 空 = 见 asr_url_of()：运行时用 base_url 拼 */
+        "whisper-1",
+        "zh",
+        ASR_KIND_OPENAI,
+    },
 };
 #define ASR_TABLE_N ((int)(sizeof kAsrTable / sizeof kAsrTable[0]))
 
@@ -169,6 +191,24 @@ static const AsrDef kAsrTable[] = {
 #define ASR_BOUNDARY "3dsAICONSOLEasr0"
 
 static char g_provider[24];              /* 空 = 用默认那家 */
+/* ★ custom 那家的 base_url（asr.txt 里 base_url= ...）。
+ *   只对 provider=custom 生效 —— 别的家仍然走编译期常量，这是白名单的底线。 */
+static char g_custom_base[160];
+
+/* 真正要请求的地址：固定那几家返回表里的常量，custom 用 base_url 拼后缀。 */
+static const char *asr_url_of(const AsrDef *d)
+{
+    static char buf[224];
+
+    if (!d)
+        return "";
+    if (d->url && d->url[0])
+        return d->url;
+    if (!g_custom_base[0])
+        return "";
+    snprintf(buf, sizeof buf, "%s/v1/audio/transcriptions", g_custom_base);
+    return buf;
+}
 static char g_key[ASR_KEY_MAX];          /* **当前生效**的那把（发送时用它） */
 
 /* ★ 两把 Key 分开存（2026-10-24）。
@@ -454,6 +494,9 @@ bool asr_load_file(const char *path)
             snprintf(lp, sizeof lp, "%s", val);
         else if (strcmp(p, "key") == 0)
             snprintf(lk, sizeof lk, "%s", val);
+        /* 自定义端点（provider=custom）才用得上；别家写了也忽略。 */
+        else if (strcmp(p, "base_url") == 0)
+            snprintf(g_custom_base, sizeof g_custom_base, "%s", val);
         /* 海外那家的 Key（2026-10-24）。单独一个键，因为它和上面那把
          * **不能互相顶替**：一把硅基流动、一把 Groq，各自只认自己的。
          * 写在同一行（`key=`）会让中文和英文里必有一边用错 Key。 */
@@ -921,7 +964,7 @@ static void baidu_transcribe(const AsrDef *d, const void *pcm, size_t bytes,
      *   也就是"参数全对，只差鉴权"。这条是拿真服务器试出来的，不是猜的。 */
     snprintf(url, sizeof url,
              "%s?cuid=aiconsole3ds&token=%s&dev_pid=1537&len=%u",
-             d->url, g_btok, (unsigned)wlen);
+             asr_url_of(d), g_btok, (unsigned)wlen);
 
     memset(&req, 0, sizeof req);
     req.url          = url;
@@ -1060,7 +1103,12 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
         }
     }
 
-    if (!g_key[0]) {
+    /* ★ custom（局域网那台电脑）通常不需要 Key：它是自己家的服务。
+     *   所以这一支要放行 —— 否则用户配好了 base_url，屏上还在说"没配 Key"，
+     *   而那个 Key 本来就没必要有。 */
+    if (g_key[0] || (d && d->name && strcmp(d->name, "custom") == 0)) {
+        /* 有 Key 或走自定义端点：继续 */
+    } else if (!g_key[0]) {
         /* ★ 必须把**路径和格式**说全。"没配 ASR Key（看 asr.txt）"只说了一半：
          *   用户不知道 asr.txt 该放哪、里面写什么，而本 App **没有配置语音
          *   Key 的界面**（对话的 Key 在 key.txt / 服务目录里，语音是另一份），
@@ -1093,7 +1141,7 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
     hdrs[1] = asr_content_type();
     hdrs[2] = NULL;
 
-    req.url          = d->url;
+    req.url          = asr_url_of(d);
     req.post_raw     = g_body;
     req.post_raw_len = n;
     req.headers      = hdrs;
