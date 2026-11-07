@@ -1,0 +1,38 @@
+# ===== 语音识别设置（按住 ZL 说话）=====
+#
+# ★ 默认分工（不写 provider 就按这个来）：
+#     中文 → 百度（国内直连快，个人认证送 5 万次）
+#     英文 → Groq（每天 2000 次 / 8 小时音频，免费）
+#   分工信号是"界面语言"：你在设置里选中文界面，就按中文那条走。
+#   两边都要**配齐凭据**才生效，缺一个会自动往下落，不会一按就说没配 Key。
+#
+# 2026-11-07 实测的各家现状：
+#   百度短语音（个人认证）：中文 5 万次、英文 3 万次，**一次性发放**
+#     https://console.bce.baidu.com/ → 语音技术 → 创建应用 → 拿 API Key + Secret Key
+#   Groq：Whisper 免费 2000 次/日、8 小时音频/日、20 次/分（不用绑卡）
+#     https://console.groq.com/keys → 创建 API Key（gsk_ 开头）
+#   硅基流动：402 余额不足（已不可用）
+#   模力方舟：400 没有可用的计费资源（要钱）
+#   Azure：每月 5 小时，境内外同一套接口（见下方方案 C）
+#
+# ---- 百度（中文）----
+key_baidu=
+secret_baidu=
+# 换成英文识别（百度英文模型）要改代码里的 dev_pid，不走这里
+
+# ---- Groq（英文 / 境外）----
+key_groq=
+
+# ---- 想固定用某一家，就取消下一行的注释并填名字 ----
+# provider=baidu        # baidu / groq / azure / custom / moark / siliconflow
+# provider=groq
+
+# ---- 方案 C：Azure（境内外同接口，每月 5 小时）----
+# provider=azure
+# key=<Azure 门户 → 语音服务 → 密钥 1>
+# region=chinaeast2     # 国内最快（实测 141ms）；出国改 eastasia（1167ms）
+# language=zh-CN        # 英文改 en-US
+
+# ---- 方案 D：局域网里的电脑（零成本，不依赖外网）----
+# provider=custom
+# base_url=http://192.168.1.5:8000
