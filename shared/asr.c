@@ -175,6 +175,30 @@ static const AsrDef kAsrTable[] = {
      *        （电脑上跑 whisper，3DS 只负责录音上传 —— 零成本、不依赖外网）
      *     ② 自己付费的任意 OpenAI 兼容 ASR：base_url=https://xxx/v1 ...
      *        （key= 填自己的，留空则不带 Authorization 头，本地服务不需要） */
+    /* ★★ 2026-11-07：Azure 语音（**唯一境内外都免费且接口相同的**一家）。
+     *
+     *   为什么选它：
+     *   ① 免费额度 5 音频小时/月（F0），不用卡；中国区（azure.cn）与全球区
+     *      （azure.com）**是同一套 REST 接口**，只换域名 —— 一台机器出国回国
+     *      都不用改代码；
+     *   ② 中文用 language=zh-CN、英文用 en-US，正好对上"中英各一条"，
+     *      而且是同一个接口的两个参数，不用维护两套请求；
+     *   ③ 协议最简单：**raw wav 直接当 body**，一个订阅头，回包
+     *      {"RecognitionStatus":"Success","DisplayText":"…"}。
+     *      3DS 上没有 multipart 拼装、没有 base64 膨胀、没有 WebSocket。
+     *
+     *   对比被否掉的几家（2026-11-07 查证）：
+     *   · 讯飞：每日 500 次免费，但接口是 **WebSocket + HMAC 签名**，3DS 上做不了；
+     *   · 阿里 qwen3-asr-flash：10 小时/90 天，但只吃 base64 或 URL；
+     *   · Speechmatics：480 分钟/月续期，但是自定义 JSON + base64；
+     *   · Groq：真免费 8 小时/天，可惜 console 注册被 Cloudflare 403。 */
+    {
+        "azure",
+        "",                 /* 见 azure_transcribe()：域名由 region 决定 */
+        "azure",
+        NULL,               /* 语言走 language= 参数，不用模型的 lang 字段 */
+        ASR_KIND_AZURE,
+    },
     {
         "custom",
         "",                 /* 空 = 见 asr_url_of()：运行时用 base_url 拼 */
@@ -194,6 +218,11 @@ static char g_provider[24];              /* 空 = 用默认那家 */
 /* ★ custom 那家的 base_url（asr.txt 里 base_url= ...）。
  *   只对 provider=custom 生效 —— 别的家仍然走编译期常量，这是白名单的底线。 */
 static char g_custom_base[160];
+/* Azure：region 决定域名（chinaeast2 → azure.cn，其它 → azure.com），
+ * language 决定中英（zh-CN / en-US）。两者都留了默认值，
+ * 这样"只填 key= 和 region=" 就能跑。 */
+static char g_azure_region[24] = "eastasia";
+static char g_azure_lang[16]   = "zh-CN";
 
 /* 真正要请求的地址：固定那几家返回表里的常量，custom 用 base_url 拼后缀。 */
 static const char *asr_url_of(const AsrDef *d)
@@ -497,6 +526,11 @@ bool asr_load_file(const char *path)
         /* 自定义端点（provider=custom）才用得上；别家写了也忽略。 */
         else if (strcmp(p, "base_url") == 0)
             snprintf(g_custom_base, sizeof g_custom_base, "%s", val);
+        /* Azure 用：region=eastasia / chinaeast2；language=zh-CN / en-US */
+        else if (strcmp(p, "region") == 0)
+            snprintf(g_azure_region, sizeof g_azure_region, "%s", val);
+        else if (strcmp(p, "language") == 0)
+            snprintf(g_azure_lang, sizeof g_azure_lang, "%s", val);
         /* 海外那家的 Key（2026-10-24）。单独一个键，因为它和上面那把
          * **不能互相顶替**：一把硅基流动、一把 Groq，各自只认自己的。
          * 写在同一行（`key=`）会让中文和英文里必有一边用错 Key。 */
@@ -1027,6 +1061,124 @@ static void baidu_transcribe(const AsrDef *d, const void *pcm, size_t bytes,
     }
 }
 
+/* ---- Azure 语音 ---------------------------------------------------------
+ *
+ * 协议就三步：raw wav 当 body、一个订阅头、回包拿 DisplayText。
+ *
+ * ★ 为什么用 baidu_wav() 造 wav：那个函数本来就是"PCM → 16k 单声道 wav"，
+ *   而 Azure 要的正好是同一个东西。**名字里带 baidu 不代表它只能给百度用** ——
+ *   当初只是先给百度写的，功能是通用的。省一份重复实现，也少一处会不一致的地方。
+ *
+ * ★ 域名跟 region 走：
+ *     chinaeast2 / chinanorth2 …  →  {region}.stt.speech.azure.cn    （世纪互联）
+ *     其它（eastasia / westus …） →  {region}.stt.speech.microsoft.com
+ *   这就是"境内外都能用"的全部代价：改一行 region。
+ */
+static void azure_transcribe(const AsrDef *d, const void *pcm, size_t bytes,
+                             AsrResult *out)
+{
+    static char        url[224];
+    static char        hdr_key[ASR_KEY_MAX + 40];
+    static const char *hdrs[3];
+    static char        eb[ASR_ERR_MAX];
+    HxReq  req;
+    size_t wlen;
+    long   http;
+
+    (void)d;
+
+    if (!g_key[0]) {
+        snprintf(out->err, sizeof out->err,
+                 "没配 azure 的 Key：asr.txt 加 key=（Azure 门户里的密钥 1）");
+        return;
+    }
+
+    wlen = baidu_wav((const s16 *)pcm, bytes / 2, g_body, sizeof g_body);
+    if (!wlen) {
+        snprintf(out->err, sizeof out->err, "音频封装失败（太长？）");
+        return;
+    }
+    g_last_body_len  = (int)wlen;
+    g_last_model_len = -1;
+
+    snprintf(url, sizeof url,
+             "https://%s.stt.speech.%s/speech/recognition/conversation"
+             "/cognitiveservices/v1?language=%s&format=simple",
+             g_azure_region,
+             strncmp(g_azure_region, "china", 5) == 0 ? "azure.cn"
+                                                      : "microsoft.com",
+             g_azure_lang);
+
+    snprintf(hdr_key, sizeof hdr_key, "Ocp-Apim-Subscription-Key: %s", g_key);
+    hdrs[0] = hdr_key;
+    hdrs[1] = NULL;
+
+    memset(&req, 0, sizeof req);
+    req.url          = url;
+    req.post_raw     = g_body;
+    req.post_raw_len = wlen;
+    req.content_type = "audio/wav; codecs=audio/pcm; samplerate=16000";
+    req.headers      = hdrs;
+    req.timeout_s    = 15;
+    req.follow       = false;
+    req.add_cookies  = false;
+    req.persist      = true;
+
+    g_resp_len = 0;
+    g_resp[0]  = '\0';
+    eb[0]      = '\0';
+
+    http = hx_perform(&req, sink_body, NULL, eb, sizeof eb);
+    if (http < 0) {                     /* 半死连接：换新连接再来一次 */
+        g_retried  = 1;
+        g_resp_len = 0;
+        g_resp[0]  = '\0';
+        eb[0]      = '\0';
+        req.persist = false;
+        http = hx_perform(&req, sink_body, NULL, eb, sizeof eb);
+    }
+    hx_last_timing(&g_t_dns, &g_t_conn, &g_t_tls, &g_t_total);
+    out->http = http;
+
+    if (http < 0) {
+        snprintf(out->err, sizeof out->err, "azure：%s", eb[0] ? eb : "网络错误");
+        return;
+    }
+    if (http == 401 || http == 403) {
+        snprintf(out->err, sizeof out->err,
+                 "azure 拒了 Key（HTTP %ld）\n检查 key= 与 region= 是否同一朵云",
+                 http);
+        return;
+    }
+    if (http != 200) {
+        snprintf(out->err, sizeof out->err, "azure 收 HTTP %ld", http);
+        return;
+    }
+
+    /* ★ Azure 的"没听清"也是 200：真正的结果在 RecognitionStatus 里。
+     *   不判这条会把 NoMatch 当成"识别出空文本"，让人以为录音坏了。 */
+    {
+        char st[32];
+
+        st[0] = '\0';
+        (void)jpick(g_resp, "RecognitionStatus", st, sizeof st);
+        if (st[0] && strcmp(st, "Success") != 0) {
+            snprintf(out->err, sizeof out->err, "azure：%s（没听清）", st);
+            return;
+        }
+    }
+
+    {
+        size_t tlen = pick_result(g_resp, out->text, sizeof out->text);
+
+        out->text_len = (int)tlen;
+        out->truncated = (tlen > 0 && strlen(out->text) == ASR_TEXT_MAX - 1);
+        out->ok = (tlen > 0);
+        if (!out->ok)
+            snprintf(out->err, sizeof out->err, "azure 没返回识别结果");
+    }
+}
+
 void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
 {
     const AsrDef  *d;
@@ -1065,6 +1217,10 @@ void asr_transcribe(const void *pcm, size_t bytes, AsrResult *out)
      * 放在这里而不是函数开头：上面的"没音频/太长"两道防御对它同样适用。 */
     if (d && d->kind == ASR_KIND_BAIDU) {
         baidu_transcribe(d, pcm, bytes, out);
+        return;
+    }
+    if (d && d->kind == ASR_KIND_AZURE) {
+        azure_transcribe(d, pcm, bytes, out);
         return;
     }
 

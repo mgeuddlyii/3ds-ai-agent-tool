@@ -42,6 +42,7 @@ typedef struct {
 
 #define ASR_KIND_OPENAI 0
 #define ASR_KIND_BAIDU  1
+#define ASR_KIND_AZURE  2   /* raw wav + 订阅头 + DisplayText（境内外同一套） */
 
 typedef struct {
     bool   ok;
