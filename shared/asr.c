@@ -1045,8 +1045,29 @@ static void baidu_transcribe(const AsrDef *d, const void *pcm, size_t bytes,
 
         msg[0] = '\0';
         jpick(g_resp, "err_msg", msg, sizeof msg);
-        snprintf(out->err, sizeof out->err, "百度 err_no=%d %s",
-                 atoi(num), msg[0] ? msg : "");
+
+        /* ★ 2026-11-13：把百度那几个码翻成人话。
+         *   "request pv too much"（3305）这种原样印在屏上，
+         *   用户只会以为是自己网不好 —— 实际是**账号侧没开通/没额度**，
+         *   要去控制台领"短语音识别"的免费额度。这条踩过，别再让人去猜。 */
+        {
+            int code = atoi(num);
+
+            if (code == 3301)
+                snprintf(out->err, sizeof out->err, "百度：音频质量不行（太吵/太短）");
+            else if (code == 3302)
+                snprintf(out->err, sizeof out->err, "百度：Key 不对（key_baidu/secret_baidu）");
+            else if (code == 3304 || code == 3305)
+                snprintf(out->err, sizeof out->err,
+                         "百度：没额度/没开通\n去控制台领「短语音识别」免费额度");
+            else if (code == 3307)
+                snprintf(out->err, sizeof out->err, "百度：音频太长（限 60 秒）");
+            else if (code == 3309)
+                snprintf(out->err, sizeof out->err, "百度：音频是空的");
+            else
+                snprintf(out->err, sizeof out->err, "百度 err_no=%d %s",
+                         code, msg[0] ? msg : "");
+        }
         return;
     }
 
