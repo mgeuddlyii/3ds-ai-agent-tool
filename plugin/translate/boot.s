@@ -51,6 +51,11 @@ _start:
     @ 插件专用栈（放在 bss 里，加载器不会清零也没关系，SP 只用来压栈）
     .section .bss
     .align  4
+    @ ★ 必须 .global：否则 `ldr sp,=_plugin_stack_top` 会生成
+    @   `R_ARM_ABS32 .bss + 0x4000` 这种"段相对"重定位，
+    @   真机转储里 SP 落在 0x0709EF08（代码段内）就是这么来的。
+    .global _plugin_stack_bottom
+    .global _plugin_stack_top
 _plugin_stack_bottom:
     .space  16384
 _plugin_stack_top:

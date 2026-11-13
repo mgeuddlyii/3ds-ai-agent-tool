@@ -54,17 +54,25 @@ u32   __apt_appid = 0;
 static struct _reent g_reent_store;
 static uint32_t      g_tls_block[16];     /* 32 字节头 + 余量，4 字节对齐 */
 
-/* 启动痕迹：每一步追加一行到卡上。
- * 插件崩了现场全黑、没有日志，这个文件是唯一能事后看的东西。
- * 只在启动阶段写 5 行，不进主循环。 */
+/* 启动痕迹：覆盖写一行到卡上，**全程不碰 newlib**。
+ *
+ * 为什么不用 fopen/fprintf：这正是我们要排查的那条路 ——
+ * TLS/reent 没弄好时，第一个 fopen 就会 svcBreak，于是"崩溃前想留个痕迹"
+ * 这件事本身也崩了，什么都留不下（前两次真机就是这样）。
+ * 所以这里直接用 libctru 的 FSUSER/FSFILE，绕开 newlib。
+ * 覆盖写而不是追加：文件里剩下的那一行就是最后到达的步骤。 */
 static void mark(const char *what)
 {
-    FILE *f = fopen("sdmc:/3ds/aiconsole/plugin_boot.txt", "a");
+    Handle    fh;
+    FS_Path   p  = fsMakePath(PATH_ASCII, "/3ds/aiconsole/plugin_boot.txt");
+    u32       nw = 0;
 
-    if (!f)
+    if (R_FAILED(FSUSER_OpenFileDirectly(&fh, ARCHIVE_SDMC,
+                                         fsMakePath(PATH_EMPTY, ""), p,
+                                         FS_OPEN_WRITE | FS_OPEN_CREATE, 0)))
         return;
-    fprintf(f, "%s\n", what);
-    fclose(f);
+    FSFILE_Write(fh, &nw, 0, what, (u32)strlen(what), FS_WRITE_FLUSH);
+    FSFILE_Close(fh);
 }
 
 static void plugin_bootstrap(void)
@@ -414,8 +422,9 @@ static int layout_touch(int pressed, int tx, int ty)
 
 int main(void)
 {
-    remove("sdmc:/3ds/aiconsole/plugin_boot.txt");   /* 每次启动重新记 */
-
+    /* ★ 这里绝对不能再写 remove()/fopen()：
+     *   上一版我把 remove() 放在最前面，那是 newlib 函数，
+     *   在 bootstrap 之前调用 → 直接 svcBreak（第三次真机崩溃就是它）。 */
     plugin_bootstrap();       /* ← 必须在任何 stdio / gfx 之前 */
     mark("1 bootstrap ok");
 
