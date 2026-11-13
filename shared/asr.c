@@ -1057,9 +1057,15 @@ static void baidu_transcribe(const AsrDef *d, const void *pcm, size_t bytes,
                 snprintf(out->err, sizeof out->err, "百度：音频质量不行（太吵/太短）");
             else if (code == 3302)
                 snprintf(out->err, sizeof out->err, "百度：Key 不对（key_baidu/secret_baidu）");
-            else if (code == 3304 || code == 3305)
+            else if (code == 3304)
                 snprintf(out->err, sizeof out->err,
-                         "百度：没额度/没开通\n去控制台领「短语音识别」免费额度");
+                         "百度：额度用完了\n去控制台领/买「短语音识别」额度");
+            /* ★ 3305 实测是**瞬时限流**，不是没额度：同一把 Key 隔几分钟再打就 success
+             *   （2026-11-13 连打三次：前两次 3305，等一会儿 err_no=0）。
+             *   所以这里别再写成"去领额度" —— 那会把用户支到控制台白找一圈。 */
+            else if (code == 3305)
+                snprintf(out->err, sizeof out->err,
+                         "百度：请求太频繁，歇几秒再按\n一直这样才去看额度");
             else if (code == 3307)
                 snprintf(out->err, sizeof out->err, "百度：音频太长（限 60 秒）");
             else if (code == 3309)
