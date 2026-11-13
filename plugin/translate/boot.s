@@ -21,6 +21,13 @@
     .type   _start, %function
 
 _start:
+    @ ---- 先给自己一块栈 ----
+    @ ★ 2026-11-13 真机崩溃后加的：boot.s 原来**完全没设 SP**，
+    @   于是插件用的是游戏线程的栈。一次写越界就会踩坏游戏的栈，
+    @   表现是"进游戏就崩"，而崩溃点看起来在完全无关的地方。
+    @   插件活这么久够了：16KB，只放绘制/网络调用。
+    ldr     sp, =_plugin_stack_top
+
     @ ---- 清 BSS ----
     ldr     r0, =__bss_start
     ldr     r1, =__bss_end
@@ -40,3 +47,10 @@ _start:
 
     .size _start, . - _start
     .pool
+
+    @ 插件专用栈（放在 bss 里，加载器不会清零也没关系，SP 只用来压栈）
+    .section .bss
+    .align  4
+_plugin_stack_bottom:
+    .space  16384
+_plugin_stack_top:

@@ -69,9 +69,22 @@ static void mark(const char *what)
 
 static void plugin_bootstrap(void)
 {
-    uint32_t *tp = g_tls_block;
+    uint32_t *tp = NULL;
 
-    __asm__ volatile ("mcr p15, 0, %0, c13, c0, 3" :: "r"(tp) : "memory");
+    /* ★★ 2026-11-13 第二次真机崩溃修正：
+     *   原来直接 `mcr p15,0,tp,c13,c0,3` 想把 TP 指到自己的块 —— **不管用**。
+     *   真机转储里 R3(TP)=0x1FFB1000，根本不是我们的缓冲：ARM11 上
+     *   TPIDRURO 对用户态是**只读**的，写不进去。
+     *
+     *   所以改成：**先读出当前 TP，把魔数和 reent 指针填进它指向的内存**。
+     *   那块内存是加载器/游戏给这个线程的 TLS 区，本来就是该放这些的地方。
+     *   只有读出来是 0 或明显非法时，才退回到自己写 TP 的老路。 */
+    __asm__ volatile ("mrc p15, 0, %0, c13, c0, 3" : "=r"(tp));
+
+    if (!tp || (uintptr_t)tp < 0x00100000u) {
+        tp = g_tls_block;
+        __asm__ volatile ("mcr p15, 0, %0, c13, c0, 3" :: "r"(tp) : "memory");
+    }
 
     tp[0] = 0x21545624u;                  /* libctru 的 TP 魔数 */
     tp[1] = 0u;
