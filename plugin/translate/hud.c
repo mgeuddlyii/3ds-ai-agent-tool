@@ -4,12 +4,37 @@
 
 #include "hud.h"
 #include "font16.h"
+#include "lcd.h"
 
 #include <stdlib.h>
 #include <string.h>
 
+/* ★★ 2026-11-14 后台大改：不再往 gfx 帧缓冲画
+ *
+ * 病根：插件里 `gspInit()` 会永久阻塞（gsp::Gpu 单会话独占，游戏握着），
+ * 所以 `gfxInitDefault()` / `gfxGetFramebuffer()` / `gfxFlushBuffers()` 全废。
+ *
+ * 现在的路子（照 CTRComposer）：
+ *   所有绘制先落到 RAM 里一块 row-major RGB888 的"合成缓冲"（就是原来的画法，
+ *   一行代码都不用改），画完再**一次性**贴到 LCD 的真帧缓冲。
+ *   为什么不逐像素直写 LCD：那块走物理镜像，很慢（全屏约 18ms）；
+ *   合成缓冲在普通内存里，最后一次 blit 只付一次代价。
+ */
+static u8 g_compose[(size_t)LCD_W_TOP * LCD_H_TOP * 3];   /* 288KB，bss */
+
+/* 当前绘制目标（= g_compose）与目标屏的 LCD 帧缓冲信息。
+ * 声明放这里是因为 hud_draw 在 hud_begin 之前就要用它们。 */
+static u8    *g_fb;
+static int    g_stride;
+static int    g_w, g_h;
+static LcdFb  g_lfb;
+
 /* 3DS 帧缓冲是 B,G,R。这里统一按 r,g,b 传，省得每个调用点记顺序。 */
 typedef struct { u8 r, g, b; } Rgb;
+
+/* 脏矩形（含边界）。只把"这一帧真的画过的区域"贴回 LCD ——
+ * 整屏贴会把合成缓冲里的上一帧残留糊到游戏画面上（合成缓冲不备份游戏内容）。 */
+static int g_dx0 = 0, g_dy0 = 0, g_dx1 = -1, g_dy1 = -1;
 
 static void px(u8 *fb, int stride, int x, int y, Rgb c)
 {
@@ -18,6 +43,11 @@ static void px(u8 *fb, int stride, int x, int y, Rgb c)
     p[0] = c.b;
     p[1] = c.g;
     p[2] = c.r;
+
+    if (x < g_dx0) g_dx0 = x;
+    if (y < g_dy0) g_dy0 = y;
+    if (x > g_dx1) g_dx1 = x;
+    if (y > g_dy1) g_dy1 = y;
 }
 
 static void fill(u8 *fb, int stride, int x0, int y0, int w, int h, Rgb c)
@@ -173,10 +203,18 @@ bool hud_draw(const PluginCfg *cfg, HudState st, const char *text)
         return true;
     scr = cfg->screen == SCR_TOP ? GFX_TOP : GFX_BOTTOM;
 
-    fb = gfxGetFramebuffer(scr, GFX_LEFT, &sw, &sh);
-    if (!fb)
-        return false;
-    stride = sw * 3;
+    /* ★ 改走合成缓冲：先 hud_begin 拿 LCD 帧缓冲信息并把 g_fb 指到 RAM 缓冲，
+     *   画完后由 hud_end() 一次性贴上去。 */
+    {
+        int cw = 0, chh = 0;
+
+        if (!hud_begin(scr, &cw, &chh))
+            return false;
+        fb     = g_fb;
+        sw     = (u16)cw;
+        sh     = (u16)chh;
+        stride = g_stride;
+    }
 
     cfg_panel_rect(cfg, sw, sh, &x, &y, &w, &h);
     fill(fb, stride, x, y, w, h, back_color(cfg->opacity));
@@ -248,60 +286,83 @@ bool hud_draw(const PluginCfg *cfg, HudState st, const char *text)
         }
     }
 
-    gfxFlushBuffers();
+    hud_end();          /* ★ 合成缓冲 → LCD 帧缓冲，一次性贴 */
     return true;
 }
 
 bool hud_grab(gfxScreen_t scr, u8 **out, int *w, int *h)
 {
-    u8  *fb;
-    u16  sw, sh;
+    LcdFb f;
     size_t n;
 
     if (!out || !w || !h)
         return false;
-    fb = gfxGetFramebuffer(scr, GFX_LEFT, &sw, &sh);
-    if (!fb)
+
+    /* ★ 从 LCD 的**可见帧缓冲**直接读（那正是游戏正在显示的画面），
+     *   不走 GSP，也不需要 gfxInit。抓出来的像素顺序是 R,G,B 逐字节。 */
+    if (lcd_visible(scr == GFX_TOP ? 0 : 1, &f) != 0)
         return false;
 
-    n = (size_t)sw * sh * 3;
+    n = (size_t)f.w * f.h * 3;
     *out = malloc(n);
     if (!*out)
         return false;
-    memcpy(*out, fb, n);
-    *w = sw;
-    *h = sh;
 
-    /* ⚠️ 这里拿到的是**我们自己的**帧缓冲。游戏是否在同一块内存上画，
-     *    未在真机确认 —— 抓屏之后要肉眼比对一次"抓到的画面是不是游戏画面"。
-     *    真机上如果抓到黑屏，说明得改用 GSP 的 display capture。 */
+    if (lcd_grab(&f, 0, 0, f.w, f.h, *out) != 0) {
+        free(*out);
+        *out = NULL;
+        return false;
+    }
+
+    *w = f.w;
+    *h = f.h;
     return true;
 }
 
 /* ---- 设置页原语 -------------------------------------------------------- */
 
-static u8  *g_fb;
-static int  g_stride;
-static int  g_w, g_h;
-
 bool hud_begin(gfxScreen_t scr, int *w, int *h)
 {
-    u16 sw, sh;
-
-    g_fb = gfxGetFramebuffer(scr, GFX_LEFT, &sw, &sh);
-    if (!g_fb)
+    /* 拿 LCD 的可见帧缓冲。失败就直接返回 —— 宁可这一帧不画，
+     * 也不要往一个无效地址写像素（那会 data abort 把游戏打崩）。 */
+    if (lcd_visible(scr == GFX_TOP ? 0 : 1, &g_lfb) != 0) {
+        g_fb = NULL;
         return false;
-    g_stride = sw * 3;
-    g_w = sw;
-    g_h = sh;
-    if (w) *w = sw;
-    if (h) *h = sh;
+    }
+
+    g_w      = g_lfb.w;
+    g_h      = g_lfb.h;
+    g_stride = g_w * 3;
+    g_fb     = g_compose;      /* ★ 画进 RAM，不直写 LCD */
+
+    /* 每帧重置脏矩形：hud_end 只贴"这一帧画过的"那块 */
+    g_dx0 = g_w; g_dy0 = g_h; g_dx1 = -1; g_dy1 = -1;
+
+    if (w) *w = g_w;
+    if (h) *h = g_h;
     return true;
 }
 
 void hud_end(void)
 {
-    gfxFlushBuffers();
+    int x0, y0, x1, y1;
+
+    if (!g_fb)
+        return;
+    if (g_dx1 < g_dx0 || g_dy1 < g_dy0)
+        return;                     /* 这一帧什么都没画 */
+
+    x0 = g_dx0 < 0 ? 0 : g_dx0;
+    y0 = g_dy0 < 0 ? 0 : g_dy0;
+    x1 = g_dx1 >= g_w ? g_w - 1 : g_dx1;
+    y1 = g_dy1 >= g_h ? g_h - 1 : g_dy1;
+    if (x1 < x0 || y1 < y0)
+        return;
+
+    /* 一次性把"画过的那块"贴到 LCD 可见帧缓冲。
+     * lcd_blit 内部已处理列主序 / Y 翻转 / BGR / 物理镜像四件事。 */
+    lcd_blit(&g_lfb, x0, y0, x1 - x0 + 1, y1 - y0 + 1,
+             g_compose + (size_t)y0 * g_stride + (size_t)x0 * 3, g_stride);
 }
 
 void hud_rect(int x, int y, int w, int h, int r, int g, int b)

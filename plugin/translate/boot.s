@@ -1,34 +1,51 @@
 @
 @ boot.s —— 3GX 插件入口
 @
-@ ── 为什么入口要做这三件事 ──
-@ 1. **清 BSS**：Luma 的加载器只把 code/rodata/data 的文件内容拷进内存，
-@    `.bss` 段（memsz > filesz 的那部分）**不会被清零**，里面是上一个
-@    进程残留的垃圾。不清就会出现"全局变量初值是随机数"，
-@    而且这种 bug 在不同游戏里表现不一样，极难查。
-@ 2. **调 main**：C 代码从这里开始。
-@ 3. **原地打转**：插件没有"退出"这回事 —— 返回会让 CPU 跳到垃圾地址。
-@    要停只能由用户换出/关掉插件，或写死循环。
+@ ── 权威依据（2026-11-13 22:28 对照两份源码得出）──
 @
-@ ★ 地址 0x07000100 是 Luma 硬编码的跳转目标（pluginLoader.s 里
-@   `ldr r5,=0x07000100; blx r5`），不读 ELF 的 e_entry。
-@   链接脚本已经把 .text.boot 放在最前，两处对得上才跳得进来。
+@ ① Luma 的 sysmodules/rosalina/source/plugin/pluginLoader.s：
+@       gamePatchFunc 钩在游戏入口 0x00100000 上，先存 r0-r12 + CPSR，
+@       然后 `push {r0}; ldr r5,=0x07000100; blx r5` 调插件；
+@       插件返回后 `add sp,#4`，再 `ldmfd sp!,...` 从【当前 SP】还原寄存器，
+@       最后 `ldr lr,=0x00100000; mov pc,lr` 跳去游戏真正的入口。
+@    ⇒ 契约：插件**必须返回**，且 **SP 必须原样还原**；
+@      r0-r12 / CPSR 可以随便用（加载器自己存还原过）。
+@
+@ ② CTRComposer（跑通的成品）的 Sources/bootloader.s 正是按这个契约写的：
+@       全程**不换 SP**，直接在加载器的栈上存/取现场。
+@    本文件照抄它的结构，只把 BSS 符号换成我们自己链接脚本里的名字。
+@
+@ ── 为什么不再"换到自己 32KB 栈再换回来"──
+@ 22:24 真机崩溃：`data abort / PC=00000000 / SP=0700C048`（SP 已掉到 BSS
+@ 起点 0700F168 下面 12KB）。那套写法的失败模式是：main 跑在自己的栈上，
+@ 一旦用栈超过预设，"保存区指针"本身就会被压栈冲掉，于是还原全错。
+@ CTRComposer 的写法根本没有这个失败模式 —— main 就跑在加载器的栈上，
+@ 只做轻量初始化，重活全丢给工作线程（线程自带栈）。
+@
+@ ── 历史三坑（保留备忘，别回头）──
+@ 坑 1：`bl main` 之后写 `b .` 原地打转 → 焊死加载器线程 → 卡开机 logo。
+@ 坑 2：`bl` 会覆盖 lr；拿 lr 当返回地址会跳回自己 → 死循环。
+@ 坑 3：换了 SP 却不精确还原 → 加载器从错误 SP 弹栈 → 跳到 0。
+@
+@ ★ 0x07000100 是 Luma 硬编码的跳转目标，不读 ELF 的 e_entry；
+@   链接脚本把 .text.boot 放在最前，两处对得上才跳得进来。
 @
 
     .arm
+    .align  4
     .section .text.boot, "ax", %progbits
     .global _start
     .type   _start, %function
 
 _start:
-    @ ---- 先给自己一块栈 ----
-    @ ★ 2026-11-13 真机崩溃后加的：boot.s 原来**完全没设 SP**，
-    @   于是插件用的是游戏线程的栈。一次写越界就会踩坏游戏的栈，
-    @   表现是"进游戏就崩"，而崩溃点看起来在完全无关的地方。
-    @   插件活这么久够了：16KB，只放绘制/网络调用。
-    ldr     sp, =_plugin_stack_top
+    @ ---- 在【加载器的栈】上保存现场（此刻 sp 还是加载器的，安全）----
+    stmfd   sp!, {r0-r12, lr}
+    mrs     r0, cpsr
+    stmfd   sp!, {r0}
 
     @ ---- 清 BSS ----
+    @ Luma 只拷 code/rodata/data 的文件内容，`.bss`（memsz > filesz 那部分）
+    @ 不清零，里面是上个进程的残留。不清 = 全局变量初值随机，极难查。
     ldr     r0, =__bss_start
     ldr     r1, =__bss_end
     mov     r2, #0
@@ -37,25 +54,18 @@ _start:
     bge     2f
     str     r2, [r0], #4
     b       1b
+
 2:
     @ ---- 进 C ----
+    @ 跑在加载器的栈上，所以 main 必须轻量：只做 TLS/服务初始化 + 起工作线程。
     bl      main
 
-    @ ---- 回来就原地打转（插件没有退出）----
-3:
-    b       3b
+    @ ---- 原样还原现场并返回 ----
+    @ `ldmfd sp!, {r0-r12, pc}` 一次弹完 r0-r12 并跳到弹出的 pc（= 存下的 lr，
+    @ 也就是加载器 `blx` 的返回地址）。SP 同时回到加载器给我们的原值，
+    @ 正好满足它 `add sp,#4` + `ldmfd sp!,...` 的还原契约。
+    ldmfd   sp!, {r0}
+    msr     cpsr, r0
+    ldmfd   sp!, {r0-r12, pc}
 
     .size _start, . - _start
-    .pool
-
-    @ 插件专用栈（放在 bss 里，加载器不会清零也没关系，SP 只用来压栈）
-    .section .bss
-    .align  4
-    @ ★ 必须 .global：否则 `ldr sp,=_plugin_stack_top` 会生成
-    @   `R_ARM_ABS32 .bss + 0x4000` 这种"段相对"重定位，
-    @   真机转储里 SP 落在 0x0709EF08（代码段内）就是这么来的。
-    .global _plugin_stack_bottom
-    .global _plugin_stack_top
-_plugin_stack_bottom:
-    .space  16384
-_plugin_stack_top:

@@ -86,7 +86,12 @@ SECTIONS
 
     /* NOLOAD：在 data 段里占地址，但不进文件（memsz > filesz 就是 bss） */
     __bss_start = .;
-    .bss (NOLOAD) : {
+    /* ★ ALIGN(4) SUBALIGN(4) 不能省（2026-11-14）：
+     *   .data 为空时（所有全局变量都是零初始化就会这样），.bss 会按它自己的
+     *   8 字节对齐起头，于是在 .rodata 与 RW 段之间留下 4 字节空隙，
+     *   3gxtool 直接报 "Non-contiguous segments!" 打包失败。
+     *   强制 4 字节后 .bss 紧贴前一段，三段首尾相接。 */
+    .bss (NOLOAD) : ALIGN(4) SUBALIGN(4) {
         *(.dynbss)
         *(.bss*)
         *(.gnu.linkonce.b*)

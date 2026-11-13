@@ -25,6 +25,7 @@
 #include "cfg.h"
 #include "help.h"
 #include "hud.h"
+#include "lcd.h"     /* HID_PAD：按键走寄存器，不调 hidInit */
 #include "net.h"
 
 void *__service_ptr = NULL;
@@ -75,7 +76,7 @@ static void mark(const char *what)
     FSFILE_Close(fh);
 }
 
-static void plugin_bootstrap(void)
+static void thread_tls(void)
 {
     uint32_t *tp = NULL;
 
@@ -100,10 +101,12 @@ static void plugin_bootstrap(void)
     tp[3] = 0xFFFFFFF8u;                  /* 与 initThreadVars 里写的值一致 */
     ((unsigned char *)tp)[24] = 0;
 
+    tp[4] = 0u;                           /* fs_magic=0 → 走全局 fs 会话 */
+
     _REENT_INIT_PTR(&g_reent_store);      /* 让 newlib 的 stdio/errno 可用 */
 
-    srvInit();                            /* 服务框架：gfx/fs 都靠它 */
-    fsInit();                             /* SD 卡文件系统（cfg_load 要用） */
+    /* ★ 服务初始化不在这里做：srvInit()/fsInit() 已在 main() 里调过，
+     *   它们是进程级的全局状态，工作线程直接用就行。 */
 }
 
 #define MODE_GAME     0
@@ -111,7 +114,8 @@ static void plugin_bootstrap(void)
 #define MODE_HELP     2
 #define MODE_LAYOUT   3
 
-#define TRIGGER_LONG_FRAMES 45
+/* 长按阈值：毫秒。别用帧数 —— 主循环是 4ms 一轮，帧率不等于 60fps。 */
+#define TRIGGER_LONG_MS 750
 
 static PluginCfg g_cfg;
 static int       g_mode = MODE_GAME;
@@ -119,6 +123,7 @@ static int       g_sel;
 static char      g_text[512] = "点「翻译」，或短按触发键";
 static int       g_boot_marked;
 static u32       g_hold;
+static u64       g_hold_t0;      /* 本次按下的起始时刻（osGetTime 毫秒） */
 static bool      g_hold_fired;
 
 /* 一次触摸只消费一次：按住不放不该反复触发 */
@@ -246,19 +251,20 @@ static void draw_settings(void)
 
 /* ---------------- 触摸 ---------------- */
 
+/* ⚠️ 触摸暂时停用（2026-11-14）。
+ *   读触摸屏要 `hid:USER` 的共享内存（HIDUSER_GetIPCHandles + svcMapMemoryBlock），
+ *   而 `hidInit()` 在 New 3DS 上会拉起 irrst 把游戏冻住 —— 这两件事不能简单解决。
+ *   当前版本：面板三个按钮用 ←/→ 选择、A 确认；全局触发键仍可用。
+ *   触摸的恢复方案写在 README 的待办里（自建最小 hid:USER 会话，只映射共享内存）。 */
 static bool touch_pressed(touchPosition *tp)
 {
-    if (!(hidKeysDown() & KEY_TOUCH)) {
-        g_touching = false;
-        g_tap_used = false;
-        return false;
+    if (tp) {
+        tp->px = 0;
+        tp->py = 0;
     }
-    if (g_touching && g_tap_used)
-        return false;
-    g_touching = true;
-    hidTouchRead(tp);
-    g_tap_used = true;
-    return true;
+    g_touching = false;
+    g_tap_used = false;
+    return false;
 }
 
 static u32 trigger_mask(void)
@@ -420,33 +426,74 @@ static int layout_touch(int pressed, int tx, int ty)
 
 /* ---------------- 主循环 ---------------- */
 
+/* ---------------- 线程与输入 ---------------- */
+
+/* ★ 2026-11-14：插件里**不能**调 hidInit()/hidScanInput()
+ *   （N3DS 上会拉 irrst 把游戏冻住，而且插件也拿不到 hid 的共享内存）。
+ *   按键直接读 HID 寄存器：0x10146000 低 12 位是**取反**的按下状态，
+ *   lcd.h 里的 HID_PAD 已经 ^0xFFF 并且走了物理镜像。
+ *   边沿（"刚按下"）自己算：本帧按下 & ~上帧按下。 */
+static u32 g_pad_prev;
+
+static u32 pad_now(void)
+{
+    return HID_PAD;
+}
+
+static u32 pad_down(void)
+{
+    u32 now = pad_now();
+    u32 d   = now & ~g_pad_prev;
+
+    g_pad_prev = now;
+    return d;
+}
+
+static u32     g_ui_stack[8192];    /* 32KB 工作线程栈 */
+static Handle  g_ui_thread;
+
+static void ui_thread(void *arg);
+
+/* main 只做三件事：拿服务、起 UI 线程、**立刻返回**。
+ * 返回是硬要求：Luma 的 pluginLoader.s 里 `blx r5` 之后还要
+ * `add sp,#4` 并从栈上还原寄存器、再跳去游戏真正的入口 0x00100000。
+ * 不返回 = 游戏永远停在开机 3DS logo（这一步真机验过两次）。 */
 int main(void)
 {
-    /* ★ 这里绝对不能再写 remove()/fopen()：
-     *   上一版我把 remove() 放在最前面，那是 newlib 函数，
-     *   在 bootstrap 之前调用 → 直接 svcBreak（第三次真机崩溃就是它）。 */
-    plugin_bootstrap();       /* ← 必须在任何 stdio / gfx 之前 */
-    mark("probe 1 bootstrap ok");
+    srvInit();
+    fsInit();
+    mark("0 entry srv+fs ok");
 
-#ifdef PROBE_NOGFX
-    /* 探针版：不碰 gfx，只证明"加载 + TLS + 服务"这一层能不能活。
-     * 如果这个也卡主菜单，说明问题比 gfx 更靠前。 */
-    for (;;) svcSleepThread(1000000000LL);
-#endif
+    if (R_FAILED(svcCreateThread(&g_ui_thread, (ThreadFunc)ui_thread, 0,
+                                 g_ui_stack + sizeof(g_ui_stack) / 4,
+                                 0x30, -1))) {
+        mark("1 thread FAILED");
+        return 0;
+    }
 
-    gfxInitDefault();
-    mark("probe 2 gfxInit ok");
+    mark("1 thread ok, returning");
+    return 0;
+}
+
+static void ui_thread(void *arg)
+{
+    u32 down = 0, held = 0;
+    touchPosition tp = { 0, 0 };
+
+    (void)arg;
+
+    /* ★ 裸 svcCreateThread 起的线程没有 libctru 的 ThreadVars，
+     *   第一次 snprintf/malloc/curl 都会在 __syscall_getreent 里 svcBreak。
+     *   所以这里必须先补 TLS，且必须排在任何 newlib 调用之前。 */
+    thread_tls();
+    mark("2 worker tls ok");
 
     cfg_load(&g_cfg);
     mark("3 cfg_load ok");
 
     for (;;) {
-        u32 down = 0, held = 0;
-        touchPosition tp = { 0, 0 };
-
-        hidScanInput();
-        down = hidKeysDown();
-        held = hidKeysHeld();
+        down = pad_down();
+        held = pad_now();
 
         if (g_mode == MODE_HELP) {
             int w = 0, h = 0;
@@ -526,9 +573,13 @@ int main(void)
             if (down & KEY_DOWN)  { g_lay_y += 4; }
 
             if (pressed || heldt) {
-                touchPosition t2;
+                /* ⚠️ 触摸暂停期间这个分支永远不可达：KEY_TOUCH = BIT(20)，
+                 *   而 HID_PAD 只给我们 0x10146000 的低 12 位。
+                 *   这里**绝不能**再调 hidTouchRead()（它依赖 hidInit 的共享内存，
+                 *   而 hidInit 在 N3DS 上会拉 irrst 把游戏冻住）。
+                 *   拖动改由 D-pad 完成（见上面四行），确认/取消走下面的 A / B。 */
+                touchPosition t2 = { 0, 0 };
 
-                hidTouchRead(&t2);
                 {
                     int act = layout_touch(pressed, t2.px, t2.py);
 
@@ -563,16 +614,26 @@ int main(void)
                 draw_layout();
         } else {
             /* ---- 游戏态：面板常驻，三个按钮 ---- */
+            /* ★ 长按用**毫秒**判定，不要数帧。
+             *   主循环现在按 4ms 睡一次，数帧的话 "45 帧" 只有 180ms，
+             *   稍微按久一点就直接进设置页了。 */
             if (held & trigger_mask()) {
-                if (++g_hold >= TRIGGER_LONG_FRAMES && !g_hold_fired) {
+                u64 now = osGetTime();
+
+                if (!g_hold) {
+                    g_hold    = 1;
+                    g_hold_t0 = now;
+                } else if (!g_hold_fired &&
+                           now - g_hold_t0 >= TRIGGER_LONG_MS) {
                     g_hold_fired = true;
                     g_sel = 0;
                     g_mode = MODE_SETTINGS;
                 }
             } else {
-                if (g_hold > 0 && g_hold < TRIGGER_LONG_FRAMES && !g_hold_fired)
+                if (g_hold && !g_hold_fired &&
+                    osGetTime() - g_hold_t0 < TRIGGER_LONG_MS)
                     do_translate();
-                g_hold = 0;
+                g_hold       = 0;
                 g_hold_fired = false;
             }
 
@@ -598,11 +659,11 @@ int main(void)
             }
         }
 
-        gfxFlushBuffers();
-        gfxSwapBuffers();
-        gspWaitForVBlank();
+        /* ★ 4ms 重刷（CTRComposer 实测值）：游戏每帧都会重画自己的帧缓冲，
+         *   我们的浮层会被盖掉；20ms 重贴会明显闪，4ms 就基本稳定。
+         *   不再有 gfxSwapBuffers/gspWaitForVBlank —— 那些都要 GSP，插件里拿不到。 */
+        svcSleepThread(4000000LL);
     }
-    return 0;
 }
 
 /* ---------------- 翻译 ---------------- */
