@@ -17,6 +17,7 @@
  */
 
 #include <3ds.h>
+#include <reent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,6 +31,60 @@ void *__service_ptr = NULL;
 u32   __system_runflags = 0;
 u32   __apt_appid = 0;
 
+/* --------------------------------------------------------------------------
+ * ★★ 插件必须自己做的三件"crt0 的活"（2026-11-13 真机崩溃后补）
+ *
+ * 现场：一进游戏就崩，PC=svcBreak、LR=__syscall_getreent。
+ * 反汇编 libctru 的 __syscall_getreent 才看清它要什么：
+ *
+ *     mrc p15,0,r3,cr13,cr0,3     @ 读线程指针 TP
+ *     ldr r1,[r3]                 @ 读 TP[0]
+ *     cmp r1,#0x21545624          @ 必须等于这个魔数
+ *     bne -> svcBreak             @ 不等就崩（我们就是死在这）
+ *     ldr r0,[r3,#8]              @ 返回 TP[8] 当 struct _reent*
+ *
+ * 也就是说：**TP 必须指向一块我们自己的内存，头 4 字节是魔数，
+ * 第 8 字节处放 reent 指针**。平时这些是 crt0 + initThreadVars() 干的，
+ * 而 3gx 插件拿掉了 crt0 —— 于是第一次调 fopen/snprintf 就崩，
+ * 且崩在"看起来跟这些毫无关系"的地方。
+ *
+ * srvInit/fsInit 同理：没有它们，服务句柄拿不到，fopen 与 gfx 都会失败。
+ * 顺序不能错：先 TLS（不然连 printf 都活不过），再服务，最后 gfx。
+ * ----------------------------------------------------------------------- */
+static struct _reent g_reent_store;
+static uint32_t      g_tls_block[16];     /* 32 字节头 + 余量，4 字节对齐 */
+
+/* 启动痕迹：每一步追加一行到卡上。
+ * 插件崩了现场全黑、没有日志，这个文件是唯一能事后看的东西。
+ * 只在启动阶段写 5 行，不进主循环。 */
+static void mark(const char *what)
+{
+    FILE *f = fopen("sdmc:/3ds/aiconsole/plugin_boot.txt", "a");
+
+    if (!f)
+        return;
+    fprintf(f, "%s\n", what);
+    fclose(f);
+}
+
+static void plugin_bootstrap(void)
+{
+    uint32_t *tp = g_tls_block;
+
+    __asm__ volatile ("mcr p15, 0, %0, c13, c0, 3" :: "r"(tp) : "memory");
+
+    tp[0] = 0x21545624u;                  /* libctru 的 TP 魔数 */
+    tp[1] = 0u;
+    tp[2] = (uint32_t)&g_reent_store;     /* TP[8] = struct _reent* */
+    tp[3] = 0xFFFFFFF8u;                  /* 与 initThreadVars 里写的值一致 */
+    ((unsigned char *)tp)[24] = 0;
+
+    _REENT_INIT_PTR(&g_reent_store);      /* 让 newlib 的 stdio/errno 可用 */
+
+    srvInit();                            /* 服务框架：gfx/fs 都靠它 */
+    fsInit();                             /* SD 卡文件系统（cfg_load 要用） */
+}
+
 #define MODE_GAME     0
 #define MODE_SETTINGS 1
 #define MODE_HELP     2
@@ -41,6 +96,7 @@ static PluginCfg g_cfg;
 static int       g_mode = MODE_GAME;
 static int       g_sel;
 static char      g_text[512] = "点「翻译」，或短按触发键";
+static int       g_boot_marked;
 static u32       g_hold;
 static bool      g_hold_fired;
 
@@ -345,8 +401,16 @@ static int layout_touch(int pressed, int tx, int ty)
 
 int main(void)
 {
+    remove("sdmc:/3ds/aiconsole/plugin_boot.txt");   /* 每次启动重新记 */
+
+    plugin_bootstrap();       /* ← 必须在任何 stdio / gfx 之前 */
+    mark("1 bootstrap ok");
+
     gfxInitDefault();
+    mark("2 gfxInit ok");
+
     cfg_load(&g_cfg);
+    mark("3 cfg_load ok");
 
     for (;;) {
         u32 down = 0, held = 0;
@@ -500,8 +564,10 @@ int main(void)
                 }
             }
 
-            if (g_mode == MODE_GAME)
-                hud_draw(&g_cfg, HUD_TEXT, g_text);
+            if (g_mode == MODE_GAME) {
+                if (!g_boot_marked) { hud_draw(&g_cfg, HUD_TEXT, g_text); mark("4 first draw ok"); g_boot_marked = 1; }
+                else hud_draw(&g_cfg, HUD_TEXT, g_text);
+            }
         }
 
         gfxFlushBuffers();
