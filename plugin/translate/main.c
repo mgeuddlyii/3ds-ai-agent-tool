@@ -426,10 +426,16 @@ int main(void)
      *   上一版我把 remove() 放在最前面，那是 newlib 函数，
      *   在 bootstrap 之前调用 → 直接 svcBreak（第三次真机崩溃就是它）。 */
     plugin_bootstrap();       /* ← 必须在任何 stdio / gfx 之前 */
-    mark("1 bootstrap ok");
+    mark("probe 1 bootstrap ok");
+
+#ifdef PROBE_NOGFX
+    /* 探针版：不碰 gfx，只证明"加载 + TLS + 服务"这一层能不能活。
+     * 如果这个也卡主菜单，说明问题比 gfx 更靠前。 */
+    for (;;) svcSleepThread(1000000000LL);
+#endif
 
     gfxInitDefault();
-    mark("2 gfxInit ok");
+    mark("probe 2 gfxInit ok");
 
     cfg_load(&g_cfg);
     mark("3 cfg_load ok");
