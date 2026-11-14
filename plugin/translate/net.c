@@ -425,6 +425,18 @@ bool net_translate(const uint8_t *bgr, int w, int h, char *out, size_t cap)
 
             curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &code);
             if (code != 200) {
+                /* ★ 2026-11-14 用真 Key 实测（DeepSeek）：同一个 Key 同一个端点，
+             *   纯文本 200，加图 400，原话是
+             *   "You have uploaded an unsupported image. Please make sure your
+             *    image is valid and in a supported image format."
+             *   那句英文用户看不懂，容易误以为是自己的图有问题（其实是模型
+             *   根本不读图）。这里翻成一句话，并给出下一步动作。 */
+            if (resp.p && strstr(resp.p, "unsupported image"))
+                snprintf(out, cap,
+                         "这个模型读不了图\n"
+                         "换一个视觉模型（名字带 VL/Vision）\n"
+                         "或换一把 Key 再试");
+            else
                 snprintf(out, cap, "HTTP %ld\n%.80s", code, resp.p ? resp.p : "");
             } else if (!resp.p || !extract_content(resp.p, out, cap)) {
                 snprintf(out, cap, "回包里没找到译文\n%.80s", resp.p ? resp.p : "(空)");
