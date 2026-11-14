@@ -42,6 +42,21 @@
  * 只支持扁平 JSON（本场景够用），不做嵌套对象解析。
  * `\uXXXX` 直接写成 '?'（回复里的中文是原样 UTF-8，不走 \u 转义；
  * 真出现了也只影响一个字符，不会让解析整体失败）。 */
+/* ★ 2026-11-14：附件。db_chat 的请求体里那对 `"attachments":[...]` 原来是
+ * 硬编码空数组，所以豆包永远只能收到文字。现在由调用方先上传图片
+ * （shared/doubao_img.c 的四步），再把生成的 attachment 对象塞进来。
+ * 空串表示"没有附件"，此时仍发 []。 */
+static char g_att[600];
+
+void db_set_attachment(const char *att_json)
+{
+    if (!att_json || !*att_json) {
+        g_att[0] = '\0';
+        return;
+    }
+    snprintf(g_att, sizeof g_att, "[%s]", att_json);
+}
+
 static bool json_str(const char *json, const char *key, char *out, size_t cap)
 {
     char        needle[64];
@@ -697,12 +712,12 @@ DbState db_chat(const char *user_text, const char *conversation_id,
             "\"local_conversation_id\":\"local_%u\","
             "\"local_message_id\":\"%08x%08x\","
             "\"messages\":[{\"content\":\"%s\",\"content_type\":2001,"
-            "\"attachments\":[],\"references\":[]}],"
+            "\"attachments\":%s,\"references\":[]}],"
             /* use_search 在 ext 里，值是**字符串 "1"** —— 不是布尔，
              * 也不是数字。放错地方/写错类型都不会报错，只是联网搜索不生效。 */
             "\"ext\":{\"use_search\":\"1\"}}",
             mk, conv, (unsigned)rand(), (unsigned)rand(), (unsigned)rand(),
-            cesc);
+            cesc, g_att[0] ? g_att : "[]");
         if (n < 0 || (size_t)n >= sizeof body) {
             snprintf(msg, msg_cap, "请求体太长，请把问题说短一点");
             return DB_ERR_EMPTY;

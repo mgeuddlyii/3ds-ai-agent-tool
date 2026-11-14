@@ -113,3 +113,14 @@ DbState db_chat(const char *user_text, const char *conversation_id,
  * （每一句都会开一个新会话，在手机端历史里看着像一堆碎对话）。
  * 没聊过、或响应里没带，返回空串。 */
 const char *db_last_conversation_id(void);
+
+/* 给下一次 db_chat 挂一个附件（图片等）。
+ *
+ * ★ 2026-11-14：db_chat 的请求体里 `"attachments"` 原来是硬编码的 `[]`，
+ *   所以豆包永远只能收到文字。附件对象由 shared/doubao_img.c 的四步上传
+ *   产出（AWS4 签名 → imagex → TOS → Commit），这里只负责把它塞进请求体。
+ *
+ * att_json 传 attachment **对象**本身（不带外层方括号），内部会补成数组；
+ * 传 NULL 或空串表示"这次没有附件"。**一次性**：调用方在用完下一轮
+ * db_chat 之后应主动传空串清掉，否则后面每一句都会带着那张图。 */
+void db_set_attachment(const char *att_json);

@@ -70,7 +70,9 @@ OBJS    := $(addprefix $(BUILD)/,$(SRCS_C:.c=.o)) $(addprefix $(BUILD)/,$(SRCS_S
 # ---------------------------------------------------------------------------
 SHARED_SRC := ../../shared/keystore.c ../../shared/creds.c ../../shared/crypto.c \
               ../../shared/minijson.c ../../shared/sha256.c ../../shared/provider.c \
-              ../../shared/uistr.c ../../shared/uistr_table.c ../../shared/locale.c
+              ../../shared/uistr.c ../../shared/uistr_table.c ../../shared/locale.c \
+              ../../shared/httpx.c ../../shared/util.c \
+              ../../shared/doubao.c ../../shared/doubao_img.c
 SHARED_OBJ := $(addprefix $(BUILD)/sh_,$(notdir $(SHARED_SRC:.c=.o)))
 
 $(BUILD)/sh_%.o: ../../shared/%.c $(HDRS) | $(BUILD)
