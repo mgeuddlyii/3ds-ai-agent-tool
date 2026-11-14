@@ -361,8 +361,48 @@ static void toggle(void)
 
 /* ---- 绘制 ------------------------------------------------------------ */
 
+/* 一行"卡片"：面板底 + 边框 + 里面一行字。
+ *
+ * 为什么不用 w_line 直接排：用户明确要求"要做成卡片状"。w_line 只画字，
+ * 行与行之间没有边界，一屏七行看起来是一坨文字；有了卡片的边框和底色，
+ * 每一行是一个可点的对象，选中态也有地方体现（边框换成强调色）。
+ *
+ * 返回下一行的 y。 */
+static float card(float x, float y, float w, const char *text, bool sel, RColor fg)
+{
+    Rect r;
+    const float h = 20.0f;
+
+    r.x = x;
+    r.y = y;
+    r.w = w;
+    r.h = h;
+    r.z = 0.0f;
+    w_panel(&r, w_c(sel ? C_SLOT_PANEL : C_SLOT_BG),
+                w_c(sel ? C_SLOT_ACCENT : C_SLOT_LINE));
+    w_line(x + 8.0f, y + 1.0f, w - 16.0f, text, fg);
+    return y + h + 3.0f;
+}
+
 static void render_top(void)
 {
+    /* 说明 / 安装教程**显示在上屏**。
+     *
+     * 为什么：Rosalina 菜单（L + 下 + SELECT）是弹在**下屏**的，而安装教程
+     * 讲的正是"进 Rosalina 打开 Plugin Loader"。如果教程自己也占着下屏，
+     * 用户就得先记住步骤再切过去 —— 放在上屏才能一边看一边操作。 */
+    if (g_mode == PM_HELP || g_mode == PM_INSTALL) {
+        const char *const *lines = (g_mode == PM_HELP) ? k_help : k_install;
+        float y = (float)W_TOP_CONTENT_Y;
+
+        for (int i = 0; lines[i] && y < 190.0f; ++i)
+            y = w_line((float)W_TOP_MARGIN, y, (float)W_TOP_USABLE,
+                       lines[i], w_c(C_SLOT_FG));
+
+        w_top_footer(app_status(), "B 返回");
+        return;
+    }
+
     w_bot_header(S(S0881));
 
     /* 顶屏放"为什么需要 Rosalina"这一句 —— 它是这一页唯一会让用户
@@ -389,8 +429,8 @@ static void render_list(float x, float w, float y)
         /* 状态放在最前面并用同样的宽度 —— 一列对齐比"读到句尾才知道状态"好扫。 */
         snprintf(line, sizeof line, "[%s] %s", g_it[i].on ? "ON " : "OFF",
                  g_it[i].label);
-        y = w_line(x, y, w, line,
-                   i == g_sel ? w_c(C_SLOT_OK) : w_c(C_SLOT_FG));
+        y = card(x, y, w, line, i == g_sel,
+                 i == g_sel ? w_c(C_SLOT_OK) : w_c(C_SLOT_FG));
         if (y > 190.0f)
             break;
     }
@@ -401,7 +441,7 @@ static void render_detail(float x, float w, float y)
     const char *rows[DETAIL_ROWS];
     char        buf[64];
 
-    snprintf(buf, sizeof buf, "启用状态：%s", g_it[g_sel].on ? "ON" : "OFF");
+    snprintf(buf, sizeof buf, "启用状态    %s", g_it[g_sel].on ? "ON" : "OFF");
     rows[0] = buf;
     rows[1] = "设置        >";
     rows[2] = "说明        >";
@@ -409,17 +449,16 @@ static void render_detail(float x, float w, float y)
 
     /* 标题：告诉用户当前在改哪个插件 */
     y = w_line(x, y, w, g_it[g_sel].label, w_c(C_SLOT_MUTED));
-    y += 4.0f;
+    y += 6.0f;
 
     for (int i = 0; i < DETAIL_ROWS; ++i)
-        y = w_line(x, y, w, rows[i],
-                   i == g_row ? w_c(C_SLOT_OK) : w_c(C_SLOT_FG));
+        y = card(x, y, w, rows[i], i == g_row,
+                 i == g_row ? w_c(C_SLOT_OK) : w_c(C_SLOT_FG));
 }
 
 static void render_cfg(float x, float w, float y)
 {
-    char        buf[DETAIL_ROWS + CFG_ROWS][64];
-    const char *rows[CFG_ROWS];
+    char        buf[CFG_ROWS][64];
     int         i;
 
     snprintf(buf[0], 64, "显示屏      %s", k_screen_cn[g_pc.screen]);
@@ -430,23 +469,14 @@ static void render_cfg(float x, float w, float y)
     snprintf(buf[5], 64, "触发键      %s", k_trigger[g_pc.trigger]);
     snprintf(buf[6], 64, "暂停游戏    %s", g_pc.beta_pause ? "开(Beta)" : "关");
 
-    for (i = 0; i < CFG_ROWS; ++i)
-        rows[i] = buf[i];
+    y = w_line(x, y, w, "←/→ 改，A 保存，B 放弃", w_c(C_SLOT_MUTED));
+    y += 6.0f;
 
-    y = w_line(x, y, w, "设置（←/→ 改，A 保存）", w_c(C_SLOT_MUTED));
-    y += 4.0f;
-
-    for (i = 0; i < CFG_ROWS; ++i)
-        y = w_line(x, y, w, rows[i],
-                   i == g_row ? w_c(C_SLOT_OK) : w_c(C_SLOT_FG));
-}
-
-static void render_text(float x, float w, float y, const char *const *lines)
-{
-    for (int i = 0; lines[i]; ++i) {
-        if (y > 196.0f)
+    for (i = 0; i < CFG_ROWS; ++i) {
+        if (y > 190.0f)
             break;
-        y = w_line(x, y, w, lines[i], w_c(C_SLOT_FG));
+        y = card(x, y, w, buf[i], i == g_row,
+                 i == g_row ? w_c(C_SLOT_OK) : w_c(C_SLOT_FG));
     }
 }
 
@@ -456,6 +486,15 @@ static void render_bottom(void)
     const float x = (float)W_BOT_MARGIN;
     const float w = (float)W_BOT_USABLE;
 
+    /* 说明 / 安装教程的正文在**上屏**，下屏只留一句"看上面"，
+     * 免得用户在下屏找内容。 */
+    if (g_mode == PM_HELP || g_mode == PM_INSTALL) {
+        w_bot_header(S(S0881));
+        w_line(x, y, w, "内容在上屏 ↑", w_c(C_SLOT_MUTED));
+        w_bot_footer("B 返回");
+        return;
+    }
+
     w_bot_header(S(S0881));
 
     switch (g_mode) {
@@ -464,12 +503,6 @@ static void render_bottom(void)
         break;
     case PM_CFG:
         render_cfg(x, w, y);
-        break;
-    case PM_HELP:
-        render_text(x, w, y, k_help);
-        break;
-    case PM_INSTALL:
-        render_text(x, w, y, k_install);
         break;
     default:
         render_list(x, w, y);

@@ -6,6 +6,7 @@
 #include "font16.h"
 #include "lcd.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -287,27 +288,54 @@ bool hud_draw(const PluginCfg *cfg, HudState st, const char *text)
     return true;
 }
 
+/* 抓屏失败时留一句**具体**的原因。原来面板只说"抓屏失败"，用户和我们都
+ * 不知道是没画面、格式不认还是内存不够 —— 这三种的处理完全不同。 */
+static char g_grab_err[96];
+
+const char *hud_grab_error(void)
+{
+    return g_grab_err;
+}
+
 bool hud_grab(gfxScreen_t scr, u8 **out, int *w, int *h)
 {
     LcdFb f;
     size_t n;
+    int scr0, rc;
 
+    g_grab_err[0] = '\0';
     if (!out || !w || !h)
         return false;
 
-    /* ★ 从 LCD 的**可见帧缓冲**直接读（那正是游戏正在显示的画面），
-     *   不走 GSP，也不需要 gfxInit。抓出来的像素顺序是 R,G,B 逐字节。 */
-    if (lcd_visible(scr == GFX_TOP ? 0 : 1, &f) != 0)
-        return false;
+    scr0 = (scr == GFX_TOP) ? 0 : 1;
+    rc   = lcd_visible(scr0, &f);
+
+    /* ★ 2026-11-14：配置的那块屏可能**根本没有画面**（有些游戏会关掉下屏，
+     *   此时那块屏的 FBA 寄存器是 0）。这种情况下换另一块屏去抓，
+     *   总比直接报"抓屏失败"有用 —— 用户要的是译文，不是非得在某块屏上。 */
+    if (rc != 0) {
+        if (lcd_visible(scr0 ^ 1, &f) != 0) {
+            snprintf(g_grab_err, sizeof g_grab_err,
+                     "两块屏都拿不到画面（FBA=0）");
+            return false;
+        }
+        snprintf(g_grab_err, sizeof g_grab_err,
+                 "配置的屏没画面，已改用另一块");
+    }
 
     n = (size_t)f.w * f.h * 3;
     *out = malloc(n);
-    if (!*out)
+    if (!*out) {
+        snprintf(g_grab_err, sizeof g_grab_err,
+                 "内存不够（要 %u KB）", (unsigned)(n / 1024));
         return false;
+    }
 
     if (lcd_grab(&f, 0, 0, f.w, f.h, *out) != 0) {
         free(*out);
         *out = NULL;
+        snprintf(g_grab_err, sizeof g_grab_err,
+                 "读像素失败 fmt=%u bpp=%u", (unsigned)f.fmt, (unsigned)f.bpp);
         return false;
     }
 

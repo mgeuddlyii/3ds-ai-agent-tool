@@ -793,10 +793,13 @@ static void ui_thread(void *arg)
             }
         }
 
-        /* ★ 4ms 重刷（CTRComposer 实测值）：游戏每帧都会重画自己的帧缓冲，
-         *   我们的浮层会被盖掉；20ms 重贴会明显闪，4ms 就基本稳定。
-         *   不再有 gfxSwapBuffers/gspWaitForVBlank —— 那些都要 GSP，插件里拿不到。 */
-        svcSleepThread(4000000LL);
+        /* ★ 面板开着时**不睡**。
+         *   游戏每帧都在重画同一块区域；睡 4ms 就会明显闪（用户实测反馈）。
+         *   不睡能把面板占空比拉满，但仍然抢不赢 60fps 的游戏 ——
+         *   想彻底不闪，要在「更多→插件→设置」里把「暂停游戏」开成 Beta。
+         *   面板收起来后立刻恢复 4ms，不空转 CPU。 */
+        if (!(g_mode == MODE_GAME && g_panel_on))
+            svcSleepThread(4000000LL);
     }
 }
 
@@ -812,7 +815,21 @@ static void do_translate(void)
     hud_draw(&g_cfg, HUD_CAPTURING, NULL);
 
     if (!hud_grab(scr, &px, &w, &h)) {
-        snprintf(g_text, sizeof g_text, "抓屏失败\n拿不到帧缓冲");
+        /* 带上**具体**原因（没画面 / 内存不够 / 读像素失败），
+         * 并把两块屏的寄存器状态写进痕迹 —— 这样"为什么没画面"
+         * 一次就能问清楚，不用反复试。 */
+        char  tb[128];
+        LcdFb t, b;
+        int   rt = lcd_visible(0, &t);
+        int   rb = lcd_visible(1, &b);
+
+        snprintf(tb, sizeof tb,
+                 "G top=%d fmt=%u fb=%08x | bot=%d fmt=%u fb=%08x",
+                 rt, (unsigned)t.fmt, (unsigned)t.fb,
+                 rb, (unsigned)b.fmt, (unsigned)b.fb);
+        mark(tb);
+
+        snprintf(g_text, sizeof g_text, "抓屏失败\n%s", hud_grab_error());
         hud_draw(&g_cfg, HUD_ERROR, g_text);
         return;
     }

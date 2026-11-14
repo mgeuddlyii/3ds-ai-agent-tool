@@ -51,3 +51,8 @@ int  hud_text_w(const char *s);
 /* 抓当前屏的一块像素（目前只做整屏拷贝，给上传用）。
  * 成功返回 true，并填 w/h/stride；调用方负责 free。 */
 bool hud_grab(gfxScreen_t scr, u8 **out, int *w, int *h);
+
+/* 上一次 hud_grab 失败的具体原因（"两块屏都拿不到画面" / "内存不够" /
+ * "读像素失败 fmt=.. bpp=.."）。调用方应该把它贴到面板上 ——
+ * 只说"抓屏失败"等于什么都没说。 */
+const char *hud_grab_error(void);
