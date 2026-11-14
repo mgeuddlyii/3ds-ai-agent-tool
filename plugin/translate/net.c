@@ -189,13 +189,17 @@ static void read_creds(char *key, size_t kcap, char *base, size_t bcap, char *mo
     if (!e)
         return;
 
-    /* 豆包是**扫码登录**（cookie），不走 Key 仓库，插件这一版不支持。
-     * ★ 这里明确失败：清空 Key，绝不静默退回 key.txt ——
-     *   否则用户看到"切换成功"却还在用旧 Key。 */
-    if (strcmp(e->provider, "doubao") == 0) {
-        key[0] = 0;
+    /* ★★ 2026-11-14 真机修正：豆包条目**不再清空 Key**。
+     *
+     * 原来是 `key[0]=0; return;`（"明确失败，不静默退回"）。真机后果是：
+     * 用户在 App 里登录过豆包，仓库里就有一条 provider=doubao 的条目，
+     * 于是插件永远报"没有 API Key"—— 而他的 key.txt 里明明有一把好 Key，
+     * 且没有任何线索知道是被豆包条目挡住的。
+     *
+     * 现在：豆包条目（或空 Key 的条目）**退回 key.txt**。用户要的是翻译结果，
+     * 不是"严格服从当前选中的条目"；真的没 Key 才报错。 */
+    if (strcmp(e->provider, "doubao") == 0 || !e->key[0])
         return;
-    }
 
     if (e->key[0]) {
         snprintf(key, kcap, "%s", e->key);

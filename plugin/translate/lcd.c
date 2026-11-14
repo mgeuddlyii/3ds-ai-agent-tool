@@ -174,6 +174,38 @@ void lcd_blit(const LcdFb *f, int x, int y, int w, int h,
 {
     if (!f->fb) return;
 
+    /* ★★ 2026-11-14 性能：格式判断提到循环外，并**按列**写。
+     *
+     * 面板 272×56 ≈ 1.5 万像素。原来每个像素都要过一遍 px_addr()、
+     * 一次 fmt/bpp 分支、再进 put() 里的二次分支。真机上这段越慢，
+     * 面板被游戏擦掉之后的"复原延迟"就越长 —— 表现出来就是一直闪。
+     * 24 位（bpp==3）是最常见的情况，单独给一条直路。 */
+    if (f->bpp == 3) {
+        for (int cx = 0; cx < w; ++cx) {
+            int       sx = x + cx;
+            const u8 *s  = src + (size_t)cx * 3;
+
+            if (sx < 0 || sx >= f->w)
+                continue;
+
+            for (int cy = 0; cy < h; ++cy) {
+                int       sy = y + cy;
+                u8       *p;
+
+                if (sy < 0 || sy >= f->h)
+                    continue;
+
+                p = px_addr(f, sx, sy);
+                p[0] = s[2];                        /* B */
+                p[1] = s[1];                        /* G */
+                p[2] = s[0];                        /* R */
+                s   += src_stride;
+            }
+        }
+        return;
+    }
+
+    /* 16 位（RGB565 / 4444）与 32 位走通用路径 */
     for (int cy = 0; cy < h; ++cy) {
         int sy = y + cy;
 

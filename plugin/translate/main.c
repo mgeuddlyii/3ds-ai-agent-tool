@@ -398,8 +398,20 @@ static void game_pause(int on)
     if (on == g_paused)
         return;
 
+    /* ★★ 2026-11-14 真机推断：arg 的语义与"直觉"相反。
+     *
+     * 痕迹里**没有** `5 beta pause FAILED`，说明 svc 调用是成功的；
+     * 但游戏一直在重画（面板持续闪），也就是**一个线程都没停住**。
+     * 若谓词判反，被停的会是**我们自己**（插件当场失去响应），实际没有；
+     * 若 op 号错，调用应当失败并写痕迹，也没有。
+     * 三者只剩一种自洽解释：**arg=0 才是"设置（暂停）"，1 是"清除（恢复）"**。
+     * 这也解释了为什么"开面板"时什么都没发生 —— 我们一直在传"恢复"。
+     *
+     * 于是这里对调：on → 0（暂停），off → 1（恢复）。
+     * ⚠️ 若推断有误，表现会是"开面板时游戏照跑、关面板时游戏定住"，
+     *    那就把这两个值再换回来。 */
     rc = svc_control_process(CUR_PROCESS_HANDLE_, PROCESSOP_SCHEDULE_THREADS_,
-                             on ? 1u : 0u, on ? (void *)pause_pred : NULL);
+                             on ? 0u : 1u, (void *)pause_pred);
     if (R_FAILED(rc)) {
         /* 失败就本会话内关掉它，别每 4ms 重试一遍 */
         mark("5 beta pause FAILED, disabled");
