@@ -29,6 +29,11 @@
  * 声明放在这里而不是 net_translate 附近：拼请求那段在文件前部，必须先声明。 */
 static char g_target[24] = "简体中文";
 
+/* 1×1 透明 PNG 的 base64（92 字节）。「测试」按钮发它来验"这个模型到底
+ * 能不能读图" —— 比按模型名猜可靠，也不依赖卡上任何文件。 */
+#define PNG_1X1_B64 \
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+
 #define SOC_BUF_SIZE 0x100000        /* 1MiB：插件内存区总共 5MiB，别贪 */
 #define KEY_PATH     "sdmc:/3ds/aiconsole/key.txt"
 #define CFG_PATH     "sdmc:/3ds/aiconsole/plugin.ini"
@@ -467,7 +472,11 @@ bool net_ping(char *out, size_t cap)
 {
     char   base[160], model[64], key[200];
     char  *url;
-    char   body[256];
+    /* ★ 2026-11-14：从 256 加到 1024。
+     *   「测试」现在会带一张 1×1 的图（base64 92 字节），加上 content 数组
+     *   的 JSON 结构一共 267 字节 —— 256 装不下，编译期就会报截断，
+     *   运行期则会永远返回"请求体放不下"。 */
+    char   body[1024];
     Buf    resp = { 0 };
     CURL  *c;
     CURLcode rc;
@@ -495,9 +504,30 @@ bool net_ping(char *out, size_t cap)
     }
     snprintf(url, strlen(base) + 64, "%s/chat/completions", base);
 
-    snprintf(body, sizeof body,
-             "{\"model\":\"%s\",\"max_tokens\":8,\"messages\":"
-             "[{\"role\":\"user\",\"content\":\"只回复 OK 两个字母\"}]}", model);
+    /* ★★ 2026-11-14：测试**带着一张 1×1 的小图**发，一次就能分辨四件事：
+     *   200            → 网络通 / Key 对 / 有额度 / **能读图**
+     *   400 unsupported image → Key 通、但**这个模型不读图**
+     *   401            → Key 不对
+     *   402/429        → 额度或限流
+     *   为什么只发一次而不是"先文字再图片"：一次请求就能拿到全部信息，
+     *   少一次往返（插件里 3DS 的网络本来就慢），错误分支也不会打架。
+     *
+     * 这张 1×1 PNG 是内置常量（92 字节 base64），不从卡上读 ——
+     * 测试的意义是"验通路"，不该依赖任何外部文件。 */
+    {
+        int n = snprintf(body, sizeof body,
+                 "{\"model\":\"%s\",\"max_tokens\":8,\"messages\":[{\"role\":\"user\","
+                 "\"content\":[{\"type\":\"text\",\"text\":\"只回复 OK 两个字母\"},"
+                 "{\"type\":\"image_url\",\"image_url\":{\"url\":"
+                 "\"data:image/png;base64," PNG_1X1_B64 "\"}}]}]}", model);
+
+        /* 铁律：拼进固定缓冲，溢出必须显式失败，不许静默截断成半截 JSON */
+        if (n < 0 || (size_t)n >= sizeof body) {
+            free(url);
+            snprintf(out, cap, "请求体放不下（缓冲区太小）");
+            return false;
+        }
+    }
 
     c = curl_easy_init();
     if (!c) {
@@ -547,14 +577,23 @@ bool net_ping(char *out, size_t cap)
 
                 if (resp.p)
                     (void)extract_content(resp.p, txt, sizeof txt);
-                snprintf(out, cap, "连接正常 %llums\n模型：%s\n回：%s",
+                /* 这次请求是**带图**的，所以 200 就等于"能读图"，
+                 * 这正是用户点「测试」最想知道的那一条。 */
+                snprintf(out, cap, "通 + 能读图 %llums\n模型：%s\n回：%s",
                          (unsigned long long)(t1 - t0), model,
                          txt[0] ? txt : "(空)");
                 ok = true;
             } else if (code == 401) {
-                snprintf(out, cap, "HTTP 401：Key 不对\n检查 key.txt 的 key= 那行");
+                snprintf(out, cap, "HTTP 401：Key 不对\n检查设置里选中的那把");
             } else if (code == 402 || code == 429) {
                 snprintf(out, cap, "HTTP %ld：余额/限流\n换一把 Key 或充值", code);
+            } else if (resp.p && strstr(resp.p, "unsupported image")) {
+                /* 实测（DeepSeek 2026-11-14）：纯文本 200、加图 400，原话
+                 * "You have uploaded an unsupported image..."。那句英文会被
+                 * 误解成"我的图有问题"，其实是模型不读图。 */
+                snprintf(out, cap,
+                         "Key 通了，但模型不读图\n模型：%s\n"
+                         "换成名字带 VL/Vision 的模型", model);
             } else {
                 snprintf(out, cap, "HTTP %ld\n%.60s", code, resp.p ? resp.p : "");
             }
