@@ -34,6 +34,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "keystore.h"      /* 「用哪把 Key」那一行要在已添加的 Key 之间切 */
 #include "screen.h"
 #include "uistr.h"
 #include "widgets.h"
@@ -65,7 +66,9 @@ static char     g_msg[96];
 #define PM_INSTALL 4
 
 #define DETAIL_ROWS 4
-#define CFG_ROWS    7
+/* 9 行：用哪把 Key / 模型 / 显示屏 / 位置 / 宽度 / 高度 / 背板深浅 /
+ * 触发键 / 暂停(Beta)。下屏可用高度约 196px，卡片按 18+2 排正好放得下。 */
+#define CFG_ROWS    9
 
 static int g_mode = PM_LIST;
 static int g_row;
@@ -323,7 +326,8 @@ static void plugins_enter(void)
     g_mode = PM_LIST;
     g_msg[0] = '\0';
     scan_plugins();
-    app_note("plugins: scanned %d item(s)", g_n);
+    keystore_load();        /* 「用哪把 Key」那一行要用它 */
+    app_note("plugins: scanned %d item(s), %d key(s)", g_n, keystore_count());
 }
 
 /* 启用/禁用：改名。这是**唯一**改文件的地方，而且是可逆的。
@@ -371,7 +375,7 @@ static void toggle(void)
 static float card(float x, float y, float w, const char *text, bool sel, RColor fg)
 {
     Rect r;
-    const float h = 20.0f;
+    const float h = 18.0f;
 
     r.x = x;
     r.y = y;
@@ -380,8 +384,8 @@ static float card(float x, float y, float w, const char *text, bool sel, RColor 
     r.z = 0.0f;
     w_panel(&r, w_c(sel ? C_SLOT_PANEL : C_SLOT_BG),
                 w_c(sel ? C_SLOT_ACCENT : C_SLOT_LINE));
-    w_line(x + 8.0f, y + 1.0f, w - 16.0f, text, fg);
-    return y + h + 3.0f;
+    w_line(x + 8.0f, y + 0.0f, w - 16.0f, text, fg);
+    return y + h + 2.0f;
 }
 
 static void render_top(void)
@@ -459,15 +463,27 @@ static void render_detail(float x, float w, float y)
 static void render_cfg(float x, float w, float y)
 {
     char        buf[CFG_ROWS][64];
+    const KeyEntry *e = keystore_active();
     int         i;
 
-    snprintf(buf[0], 64, "显示屏      %s", k_screen_cn[g_pc.screen]);
-    snprintf(buf[1], 64, "位置        %s", k_anchor_cn[g_pc.anchor]);
-    snprintf(buf[2], 64, "宽度        %d 列", g_pc.cols);
-    snprintf(buf[3], 64, "高度        %d 行", g_pc.rows);
-    snprintf(buf[4], 64, "背板深浅    %d", g_pc.opacity);
-    snprintf(buf[5], 64, "触发键      %s", k_trigger[g_pc.trigger]);
-    snprintf(buf[6], 64, "暂停游戏    %s", g_pc.beta_pause ? "开(Beta)" : "关");
+    /* 第 0、1 行是"用哪把 Key / 模型"。
+     * 为什么模型是只读：模型名跟着 Key 条目走（KeyEntry.model），
+     * 换 Key 自然换模型；单独改模型会写进条目、和 App 的 Key 管理打架。 */
+    if (e) {
+        snprintf(buf[0], 64, "Key   %s", e->name);
+        snprintf(buf[1], 64, "模型  %s", e->model[0] ? e->model : "(默认)");
+    } else {
+        snprintf(buf[0], 64, "Key   (没有已添加的)");
+        snprintf(buf[1], 64, "模型  —");
+    }
+
+    snprintf(buf[2], 64, "显示屏    %s", k_screen_cn[g_pc.screen]);
+    snprintf(buf[3], 64, "位置      %s", k_anchor_cn[g_pc.anchor]);
+    snprintf(buf[4], 64, "宽度      %d 列", g_pc.cols);
+    snprintf(buf[5], 64, "高度      %d 行", g_pc.rows);
+    snprintf(buf[6], 64, "背板深浅  %d", g_pc.opacity);
+    snprintf(buf[7], 64, "触发键    %s", k_trigger[g_pc.trigger]);
+    snprintf(buf[8], 64, "暂停游戏  %s", g_pc.beta_pause ? "开(Beta)" : "关");
 
     y = w_line(x, y, w, "←/→ 改，A 保存，B 放弃", w_c(C_SLOT_MUTED));
     y += 6.0f;
@@ -575,13 +591,38 @@ static void handle_cfg(u32 down)
 
     if (d != 0) {
         switch (g_row) {
-        case 0: g_pc.screen ^= 1; break;
-        case 1: g_pc.anchor = (g_pc.anchor + (d > 0 ? 1 : 8)) % 9; break;
-        case 2: g_pc.cols += d * 2; break;
-        case 3: g_pc.rows += d; break;
-        case 4: g_pc.opacity += d; break;
-        case 5: g_pc.trigger = (g_pc.trigger + (d > 0 ? 1 : 7)) % 8; break;
-        case 6: g_pc.beta_pause = !g_pc.beta_pause; break;
+        case 0: {                       /* 用哪把 Key：在已添加的 Key 之间切 */
+            int n = keystore_count();
+
+            if (n > 0) {
+                int cur = -1;
+
+                for (int i = 0; i < n; ++i) {
+                    const KeyEntry *e = keystore_at(i);
+
+                    if (e && !strcmp(e->name, keystore_active_name()))
+                        cur = i;
+                }
+                cur = (cur < 0) ? 0 : (cur + (d > 0 ? 1 : n - 1)) % n;
+                {
+                    const KeyEntry *e = keystore_at(cur);
+
+                    if (e && keystore_set_active(e->name)) {
+                        snprintf(g_msg, sizeof g_msg, "已切到 %s", e->name);
+                        app_status_set("%s", g_msg);
+                    }
+                }
+            }
+            break;
+        }
+        case 1: break;                  /* 模型只读：它跟着 Key 条目走 */
+        case 2: g_pc.screen ^= 1; break;
+        case 3: g_pc.anchor = (g_pc.anchor + (d > 0 ? 1 : 8)) % 9; break;
+        case 4: g_pc.cols += d * 2; break;
+        case 5: g_pc.rows += d; break;
+        case 6: g_pc.opacity += d; break;
+        case 7: g_pc.trigger = (g_pc.trigger + (d > 0 ? 1 : 7)) % 8; break;
+        case 8: g_pc.beta_pause = !g_pc.beta_pause; break;
         default: break;
         }
         pc_clamp();
