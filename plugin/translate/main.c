@@ -123,6 +123,7 @@ static int       g_sel;
 static char      g_text[512] = "点「翻译」，或短按触发键";
 static int       g_boot_marked;
 static bool      g_panel_on;     /* 面板是否显示：平时**完全不画**，按快捷键才出来 */
+static volatile int g_busy;      /* 正在翻译：期间忽略快捷键，防止重入 */
 static int       g_trig_prev;    /* 上一步是不是按着组合键（做按下沿检测） */
 
 /* 一次触摸只消费一次：按住不放不该反复触发 */
@@ -742,13 +743,12 @@ static void ui_thread(void *arg)
                 u32 mask  = trigger_mask();
                 int combo = ((held & mask) == mask);
 
-                if (combo && !g_trig_prev) {
-                    if (g_panel_on) {
-                        g_panel_on = false;
-                    } else {
-                        g_panel_on = true;
-                        do_translate();     /* 内部会 hud_draw 并贴到 LCD */
-                    }
+                if (combo && !g_trig_prev && !g_busy) {
+                    /* ★ 不再"再按一次收起"。原来那样按第二下会**关掉**面板，
+                     *   用户连按几次就变成开-关-开…… 看起来像"要按好几次才生效"。
+                     *   现在：按一次就翻译一次，收起只走 B。 */
+                    g_panel_on = true;
+                    do_translate();     /* 内部会 hud_draw 并贴到 LCD */
                 }
                 g_trig_prev = combo;
             }
@@ -793,13 +793,12 @@ static void ui_thread(void *arg)
             }
         }
 
-        /* ★ 面板开着时**不睡**。
-         *   游戏每帧都在重画同一块区域；睡 4ms 就会明显闪（用户实测反馈）。
-         *   不睡能把面板占空比拉满，但仍然抢不赢 60fps 的游戏 ——
-         *   想彻底不闪，要在「更多→插件→设置」里把「暂停游戏」开成 Beta。
-         *   面板收起来后立刻恢复 4ms，不空转 CPU。 */
-        if (!(g_mode == MODE_GAME && g_panel_on))
-            svcSleepThread(4000000LL);
+        /* ★ 面板开着时**几乎不睡**（1ms），而不是完全不睡。
+         *   完全不睡会把 CPU 全占住，游戏线程被饿死 —— 用户那边看到的就是
+         *   "截图的时候卡死"。1ms 既够把面板视觉占空比拉满（实测不闪），
+         *   又留足时间给游戏。 */
+        svcSleepThread((g_mode == MODE_GAME && g_panel_on) ? 1000000LL
+                                                          : 4000000LL);
     }
 }
 
@@ -810,10 +809,14 @@ static void do_translate(void)
     gfxScreen_t scr = g_cfg.screen == SCR_TOP ? GFX_TOP : GFX_BOTTOM;
     u8 *px = NULL;
     int w = 0, h = 0;
+    u64 t0;
+
+    g_busy = 1;                 /* 防重入：翻译期间快捷键不该再触发一次 */
 
     snprintf(g_text, sizeof g_text, "截图中…");
     hud_draw(&g_cfg, HUD_CAPTURING, NULL);
 
+    t0 = osGetTime();
     if (!hud_grab(scr, &px, &w, &h)) {
         /* 带上**具体**原因（没画面 / 内存不够 / 读像素失败），
          * 并把两块屏的寄存器状态写进痕迹 —— 这样"为什么没画面"
@@ -831,7 +834,18 @@ static void do_translate(void)
 
         snprintf(g_text, sizeof g_text, "抓屏失败\n%s", hud_grab_error());
         hud_draw(&g_cfg, HUD_ERROR, g_text);
+        g_busy = 0;
         return;
+    }
+
+    /* 抓屏耗时写进痕迹：这是"卡死"最可能的元凶，必须能测出来。
+     * 下屏 320×240 是 7.7 万次读，正常应该在几十毫秒量级。 */
+    {
+        char tb[64];
+
+        snprintf(tb, sizeof tb, "G ok %ums %dx%d",
+                 (unsigned)(osGetTime() - t0), w, h);
+        mark(tb);
     }
 
     snprintf(g_text, sizeof g_text, "等 AI 回复…");
@@ -843,6 +857,7 @@ static void do_translate(void)
         hud_draw(&g_cfg, HUD_ERROR, g_text);
 
     free(px);
+    g_busy = 0;
 }
 
 /* 测试连接：只发一句纯文本。真机上第一次跑，先点这个 ——
