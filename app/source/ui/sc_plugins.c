@@ -382,8 +382,19 @@ static float card(float x, float y, float w, const char *text, bool sel, RColor 
     r.w = w;
     r.h = h;
     r.z = 0.0f;
-    w_panel(&r, w_c(sel ? C_SLOT_PANEL : C_SLOT_BG),
-                w_c(sel ? C_SLOT_ACCENT : C_SLOT_LINE));
+
+    /* ★★ 2026-11-14 性能：**只给选中行**画整块面板。
+     *
+     * w_panel 是软件填充矩形（r_rect + r_frame_rect）。一屏 9 行全画，
+     * 每帧约 5 万次像素写，在 268MHz 的 3DS 上就是"这一页非常卡"——
+     * 用户实测反馈。未选中行只画一条下边线当分隔，视觉上仍是分行的卡片，
+     * 代价从 5 万次降到 5 千次量级。 */
+    if (sel) {
+        w_panel(&r, w_c(C_SLOT_PANEL), w_c(C_SLOT_ACCENT));
+    } else {
+        w_hr(x, y + h, w, w_c(C_SLOT_LINE));
+    }
+
     w_line(x + 8.0f, y + 0.0f, w - 16.0f, text, fg);
     return y + h + 2.0f;
 }

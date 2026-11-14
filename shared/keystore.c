@@ -129,8 +129,13 @@ bool keystore_load(void)
     g_count = 0;
     g_active[0] = '\0';
 
-    /* 1) 加密仓库 */
-    if (creds_exists() && load_from_creds()) {
+    /* ★★ 2026-11-14：`g_count > 0` 这个条件不能省。
+     *
+     * 原来只要 creds.enc **存在且能读**就直接 return —— 哪怕里面一条都没有，
+     * 于是 keys.json 里明明有 Key，界面上却显示"没有已添加的"。
+     * 用户卡上正好是这种情况：一个 96 字节的空加密仓库把明文仓库挡住了。
+     * 加密仓库读出来是空的话，继续往下走读明文的。 */
+    if (creds_exists() && load_from_creds() && g_count > 0) {
         g_loaded = true;
         return finish_active_check();
     }
