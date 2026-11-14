@@ -122,15 +122,16 @@ static int       g_mode = MODE_GAME;
 static int       g_sel;
 static char      g_text[512] = "点「翻译」，或短按触发键";
 static int       g_boot_marked;
-static u32       g_hold;
-static u64       g_hold_t0;      /* 本次按下的起始时刻（osGetTime 毫秒） */
-static bool      g_hold_fired;
+static bool      g_panel_on;     /* 面板是否显示：平时**完全不画**，按快捷键才出来 */
+static int       g_trig_prev;    /* 上一步是不是按着组合键（做按下沿检测） */
 
 /* 一次触摸只消费一次：按住不放不该反复触发 */
 static bool      g_touching, g_tap_used;
 
 static void do_translate(void);
 static void do_test(void);
+static const char *trigger_name(void);   /* 定义在下面，设置页要先声明 */
+static int         trig_idx(void);
 
 /* ---------------- 设置页 ---------------- */
 
@@ -166,7 +167,7 @@ static void row_value(int i, char *out, size_t n)
         snprintf(out, n, "%s", k[g_cfg.opacity & 3]);
         break;
     }
-    case 5: snprintf(out, n, "%s", g_cfg.use_zl ? "ZL" : "SELECT"); break;
+    case 5: snprintf(out, n, "%s", trigger_name()); break;
     default:
         snprintf(out, n, "%s", g_cfg.free_pos ? "已拖动" : "按 A 拖动");
         break;
@@ -196,7 +197,11 @@ static void row_step(int i, int dir)
         if (g_cfg.rows > 16) g_cfg.rows = 16;
         break;
     case 4: g_cfg.opacity = (g_cfg.opacity + dir + 4) & 3; break;
-    case 5: g_cfg.use_zl = !g_cfg.use_zl; break;
+    case 5:
+        g_cfg.trigger = trig_idx() + (dir > 0 ? 1 : CFG_TRIGGER_MAX - 1);
+        if (g_cfg.trigger >= CFG_TRIGGER_MAX) g_cfg.trigger = 0;
+        if (g_cfg.trigger < 0) g_cfg.trigger = CFG_TRIGGER_MAX - 1;
+        break;
     default: break;                 /* 摆放行不响应左右键 */
 
     }
@@ -267,9 +272,41 @@ static bool touch_pressed(touchPosition *tp)
     return false;
 }
 
+/* ---- 唤出面板的快捷键 ------------------------------------------------
+ * 只能从 HID 寄存器 0x10146000 的 12 个键里组合（ZL/ZR 拿不到，见 NOTES-3gx.md）。
+ * 设计原则：
+ *   ① 三键组合、必须"同时按下"才认，跟游戏抢键的概率最低；
+ *   ② **绝不用 L + ↓ + SELECT** —— 那是 Rosalina 菜单的组合，会被系统先截走；
+ *   ③ 这张表只能往后追加 —— 配置里存的是下标，插在中间会让老配置错位。
+ */
+static const struct { u32 mask; const char *name; } k_trig[CFG_TRIGGER_MAX] = {
+    { KEY_L | KEY_R | KEY_SELECT, "L+R+SELECT" },   /* 0 ← 默认 */
+    { KEY_L | KEY_R | KEY_START,  "L+R+START"  },
+    { KEY_L | KEY_R | KEY_X,      "L+R+X"      },
+    { KEY_L | KEY_R | KEY_Y,      "L+R+Y"      },
+    { KEY_L | KEY_R | KEY_A,      "L+R+A"      },
+    { KEY_L | KEY_R | KEY_B,      "L+R+B"      },
+    { KEY_L | KEY_R | KEY_DUP,    "L+R+上"     },
+    { KEY_SELECT,                 "SELECT"     },   /* 7 单键：最省事也最容易被游戏抢 */
+};
+
+static int trig_idx(void)
+{
+    int i = g_cfg.trigger;
+
+    if (i < 0 || i >= CFG_TRIGGER_MAX)
+        i = 0;
+    return i;
+}
+
 static u32 trigger_mask(void)
 {
-    return g_cfg.use_zl ? KEY_ZL : KEY_SELECT;
+    return k_trig[trig_idx()].mask;
+}
+
+static const char *trigger_name(void)
+{
+    return k_trig[trig_idx()].name;
 }
 
 
@@ -614,27 +651,39 @@ static void ui_thread(void *arg)
                 draw_layout();
         } else {
             /* ---- 游戏态：面板常驻，三个按钮 ---- */
-            /* ★ 长按用**毫秒**判定，不要数帧。
-             *   主循环现在按 4ms 睡一次，数帧的话 "45 帧" 只有 180ms，
-             *   稍微按久一点就直接进设置页了。 */
-            if (held & trigger_mask()) {
-                u64 now = osGetTime();
+            /* ---- 快捷键：按下沿切换面板 ----
+             * 三键组合用"全部按住"判定，再配边沿检测，
+             * 这样按住不放只切一次，不会来回跳。 */
+            {
+                u32 mask  = trigger_mask();
+                int combo = ((held & mask) == mask);
 
-                if (!g_hold) {
-                    g_hold    = 1;
-                    g_hold_t0 = now;
-                } else if (!g_hold_fired &&
-                           now - g_hold_t0 >= TRIGGER_LONG_MS) {
-                    g_hold_fired = true;
-                    g_sel = 0;
-                    g_mode = MODE_SETTINGS;
+                if (combo && !g_trig_prev)
+                    g_panel_on = !g_panel_on;
+                g_trig_prev = combo;
+            }
+
+            /* 面板开着时 B 先用来关面板，不然会跟"从子页返回"打架 */
+            if (g_panel_on && (down & KEY_B))
+                g_panel_on = false;
+
+            /* ★ 键盘操作面板按钮：←/→ 选，A 确认。
+             *   触摸停用期间这是**唯一**通路。没有它，"翻译/测试"这几个
+             *   只有触摸能到的分支会被 GCC 判成死代码、再被 --gc-sections 裁掉
+             *   （实测产物从 1.28MB 掉到 374KB，curl/mbedtls 全没了）。 */
+            if (g_panel_on) {
+                if (down & KEY_LEFT)  { if (--g_sel < 0) g_sel = BTN_COUNT - 1; }
+                if (down & KEY_RIGHT) { if (++g_sel >= BTN_COUNT) g_sel = 0; }
+
+                if (down & KEY_A) {
+                    int b = g_sel;
+
+                    if (b == BTN_TRANSLATE)
+                        do_translate();
+                    else if (b == BTN_SETTINGS) { g_sel = 0; g_mode = MODE_SETTINGS; }
+                    else if (b == BTN_HELP)     { help_init(9); g_mode = MODE_HELP; }
+                    else if (b == BTN_TEST)     do_test();
                 }
-            } else {
-                if (g_hold && !g_hold_fired &&
-                    osGetTime() - g_hold_t0 < TRIGGER_LONG_MS)
-                    do_translate();
-                g_hold       = 0;
-                g_hold_fired = false;
             }
 
             if (touch_pressed(&tp)) {
@@ -653,7 +702,10 @@ static void ui_thread(void *arg)
                 }
             }
 
-            if (g_mode == MODE_GAME) {
+            /* 只有面板开着才画。关着的时候**一个像素都不碰**：
+             * 既不花 4ms 重贴，也不会跟游戏画面抢帧缓冲。 */
+            if (g_mode == MODE_GAME && g_panel_on) {
+                hud_set_sel(g_sel);      /* 让用户看见 ←/→ 选中了哪个按钮 */
                 if (!g_boot_marked) { hud_draw(&g_cfg, HUD_TEXT, g_text); mark("4 first draw ok"); g_boot_marked = 1; }
                 else hud_draw(&g_cfg, HUD_TEXT, g_text);
             }

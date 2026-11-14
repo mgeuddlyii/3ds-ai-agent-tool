@@ -18,6 +18,9 @@ typedef enum {
     SCR_TOP              /* 上屏：400×240，不挡手指 */
 } CfgScreen;
 
+/* 快捷键组合的**个数**（真正的组合表在 main.c 的 k_trig[] 里）。 */
+#define CFG_TRIGGER_MAX 8
+
 /* 九宫格锚点。翻译屏的边角贴着哪一格。 */
 typedef enum {
     ANCH_TL = 0, ANCH_TC, ANCH_TR,
@@ -31,7 +34,10 @@ typedef struct {
     int       cols;       /* 面板宽度（字符列，1 列 = 8px） */
     int       rows;       /* 面板高度（字符行，1 行 = 8px） */
     int       opacity;    /* 0..3 —— 背板深浅四档，不是 alpha（没有 alpha） */
-    bool      use_zl;     /* true=用 ZL 触发，false=用 SELECT 单击 */
+    /* 唤出面板的快捷键：存的是**下标**，具体组合表在 main.c 的 k_trig[]。
+     * 为什么存下标不存字符串：组合会增删、名字会改，存下标最稳。
+     * ⚠️ 新增组合只能**追加到末尾**，不能插在中间 —— 插了老配置会错位。 */
+    int       trigger;
 
     /* ★ 自由摆放（拖动页确认过的位置）。
      *   free_pos=false 时按 anchor 的九宫格算，true 时直接用 pos_x/pos_y。

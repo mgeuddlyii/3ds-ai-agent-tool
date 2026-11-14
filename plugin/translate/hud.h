@@ -25,6 +25,10 @@ typedef enum {
 /* 面板上的三个按钮：翻译 / 设置 / 说明 */
 typedef enum { BTN_TRANSLATE = 0, BTN_SETTINGS, BTN_HELP, BTN_TEST, BTN_COUNT } HudBtn;
 
+/* 高亮哪个按钮（键盘用 ←/→ 选择时，必须让用户看见选中的是哪个）。
+ * 触摸可用时也用它做按下反馈。传 -1 取消高亮。 */
+void hud_set_sel(int i);
+
 /* 取当前屏的帧缓冲并画一帧（含顶部按钮条）。text 为 NULL 时按 state 画占位。
  * 返回 false = 拿不到帧缓冲（游戏没初始化 gfx 时可能发生）。 */
 bool hud_draw(const PluginCfg *cfg, HudState st, const char *text);

@@ -26,7 +26,7 @@ void cfg_defaults(PluginCfg *c)
     c->cols    = 34;
     c->rows    = 7;   /* 按钮条吃掉 24px，6 行只剩 3 行正文 */
     c->opacity = 2;
-    c->use_zl  = false;
+    c->trigger = 0;           /* 默认 L+R+SELECT */
     c->free_pos = false;
     c->pos_x    = 8;
     c->pos_y    = 136;
@@ -105,8 +105,12 @@ void cfg_load(PluginCfg *c)
                 c->rows = clamp(atoi(v), ROWS_MIN, ROWS_MAX);
             else if (strcmp(k, "opacity") == 0)
                 c->opacity = clamp(atoi(v), 0, 3);
+            else if (strcmp(k, "trigger") == 0)
+                c->trigger = clamp(atoi(v), 0, CFG_TRIGGER_MAX - 1);
             else if (strcmp(k, "key") == 0)
-                c->use_zl = strcmp(v, "zl") == 0;
+                /* 老版本存的是 key=zl / key=select，读到就迁到新下标：
+                 * 0 = L+R+SELECT（新的默认），7 = SELECT 单键（等价于老的 select）。 */
+                c->trigger = (strcmp(v, "zl") == 0) ? 0 : 7;
             else if (strcmp(k, "free") == 0)
                 c->free_pos = atoi(v) != 0;
             else if (strcmp(k, "pos_x") == 0)
@@ -133,7 +137,7 @@ void cfg_save(const PluginCfg *c)
     fprintf(f, "cols=%d\n",    c->cols);
     fprintf(f, "rows=%d\n",    c->rows);
     fprintf(f, "opacity=%d\n", c->opacity);
-    fprintf(f, "key=%s\n",     c->use_zl ? "zl" : "select");
+    fprintf(f, "trigger=%d\n", c->trigger);
     fprintf(f, "free=%d\n",    c->free_pos ? 1 : 0);
     fprintf(f, "pos_x=%d\n",   c->pos_x);
     fprintf(f, "pos_y=%d\n",   c->pos_y);

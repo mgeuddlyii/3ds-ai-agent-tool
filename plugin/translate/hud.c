@@ -29,6 +29,14 @@ static int    g_stride;
 static int    g_w, g_h;
 static LcdFb  g_lfb;
 
+/* 当前高亮的按钮（键盘 ←/→ 选择时用；-1 = 不高亮） */
+static int    g_btn_sel = 0;
+
+void hud_set_sel(int i)
+{
+    g_btn_sel = i;
+}
+
 /* 3DS 帧缓冲是 B,G,R。这里统一按 r,g,b 传，省得每个调用点记顺序。 */
 typedef struct { u8 r, g, b; } Rgb;
 
@@ -225,8 +233,14 @@ bool hud_draw(const PluginCfg *cfg, HudState st, const char *text)
         int bx, by, bw, bh;
 
         btn_rect(cfg, i, &bx, &by, &bw, &bh);
-        fill(fb, stride, bx, by, bw, bh, (Rgb){ 34, 42, 52 });
-        box(fb, stride, bx, by, bw, bh, (Rgb){ 70, 120, 130 });
+        {
+            int sel = (i == g_btn_sel);
+
+            fill(fb, stride, bx, by, bw, bh,
+                 sel ? (Rgb){ 52, 96, 110 } : (Rgb){ 34, 42, 52 });
+            box(fb, stride, bx, by, bw, bh,
+                 sel ? (Rgb){ 120, 230, 220 } : (Rgb){ 70, 120, 130 });
+        }
 
         {
             /* 按钮文字居中：16px 一个字，按字数算宽度 */
