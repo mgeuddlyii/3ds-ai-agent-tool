@@ -336,6 +336,39 @@ bool net_translate(const uint8_t *bgr, int w, int h, char *out, size_t cap)
         snprintf(out, cap, "没有 API Key\n放到 sdmc:/3ds/aiconsole/key.txt");
         return false;
     }
+
+    /* ★★ 2026-11-14：发图之前先判断「这个模型到底吃不吃图」。
+     *
+     * 为什么必须在这里提前拦：插件发的是 OpenAI 多模态格式
+     * （content 里带 image_url + base64 PNG）。纯文本模型收到它会回 400，
+     * 而用户在 3DS 上只看到"请求失败"四个字 —— 根本想不到是模型选错了。
+     * 与其发一个注定失败的请求，不如**当场说清楚该换成什么**。
+     *
+     * 判据是模型名（不是服务商）：同一家既有纯文本也有视觉模型，
+     * 比如智谱 glm-4-flash 不行、glm-4v 行；通义 qwen-plus 不行、qwen-vl 行。
+     * ⚠️ 白名单故意收紧：**宁可误报让用户换模型，也不要误放** ——
+     *    误放的结果是 400 加一句看不懂的错，比直接说"不支持"糟得多。 */
+    {
+        static const char *hint[] = {
+            "vl", "vision", "4o", "4.1", "gemini",
+            "claude-3", "claude-4", "pixtral",
+            "grok-2", "grok-3", "grok-4",
+            "seed-1", "qvq", NULL
+        };
+        int ok = 0;
+
+        for (int i = 0; hint[i] && !ok; ++i)
+            if (strstr(model, hint[i]))
+                ok = 1;
+
+        if (!ok) {
+            snprintf(out, cap,
+                     "这个模型读不了图\n当前模型：%s\n"
+                     "设置里换成带 VL / Vision 的\n"
+                     "（qwen-vl / glm-4v / gpt-4o）", model);
+            return false;
+        }
+    }
     if (!net_init()) {
         snprintf(out, cap, "网络初始化失败");
         return false;
