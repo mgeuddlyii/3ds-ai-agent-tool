@@ -31,7 +31,8 @@ ARCH    := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 CFLAGS  := $(ARCH) -O2 -Wall -Wextra -std=gnu11 \
            -ffunction-sections -fdata-sections -fno-strict-aliasing \
            -I$(DEVKITPRO)/libctru/include \
-           -I$(DEVKITPRO)/portlibs/3ds/include
+           -I$(DEVKITPRO)/portlibs/3ds/include \
+           -I../../shared
 ASFLAGS := $(ARCH) -I$(DEVKITPRO)/libctru/include
 # ★ 不用 `-specs=3dsx.specs`：那套 specs 里带 `-T 3dsx.ld`，会和我们的
 #   `-T translate.ld` 同时生效 —— 结果是链接出**两套 PT_LOAD**
@@ -54,6 +55,27 @@ BUILD   := build
 SRCS_C  := main.c cfg.c hud.c help.c png.c net.c font16.c lcd.c
 SRCS_S  := boot.s
 OBJS    := $(addprefix $(BUILD)/,$(SRCS_C:.c=.o)) $(addprefix $(BUILD)/,$(SRCS_S:.s=.o))
+
+# ---------------------------------------------------------------------------
+# 复用主程序的 Key 仓库与服务商表（2026-11-14）
+#
+# ★ 为什么必须复用、不能在插件里再写一套：
+#   用户要求"只能选已经添加的 Key"，而"已添加的 Key"就住在
+#   sdmc:/3ds/aiconsole/keys.json 里（shared/keystore.c 在管）。
+#   插件原来自己解析 key.txt，两套判断迟早不一致，且**不会报错**——
+#   只会静默用错 Key 或走错地址。
+# ★ 为什么还要 provider.c：KeyEntry 里**没有网址字段**，
+#   base_url 只存在于服务商表里。只拿 Key 不拿表，就会出现
+#   "用 A 家的 Key 发到 B 家的地址"这种最难查的错。
+# ---------------------------------------------------------------------------
+SHARED_SRC := ../../shared/keystore.c ../../shared/creds.c ../../shared/crypto.c \
+              ../../shared/minijson.c ../../shared/sha256.c ../../shared/provider.c \
+              ../../shared/uistr.c ../../shared/uistr_table.c ../../shared/locale.c
+SHARED_OBJ := $(addprefix $(BUILD)/sh_,$(notdir $(SHARED_SRC:.c=.o)))
+
+$(BUILD)/sh_%.o: ../../shared/%.c $(HDRS) | $(BUILD)
+	@echo "  CC   $<"
+	@$(CC) $(CFLAGS) -c $< -o $@
 
 .PHONY: all clean
 
@@ -78,9 +100,9 @@ $(BUILD)/%.o: %.s $(HDRS) | $(BUILD)
 
 -include $(OBJS:.o=.d)
 
-$(TARGET).elf: $(OBJS) translate.ld
+$(TARGET).elf: $(OBJS) $(SHARED_OBJ) translate.ld
 	@echo "  LD   $@"
-	@$(LD) $(OBJS) $(LDFLAGS) $(LIBS) -o $@
+	@$(LD) $(OBJS) $(SHARED_OBJ) $(LDFLAGS) $(LIBS) -o $@
 
 # ★ 3gxtool 吃的是 **ELF 本体**（v2 格式），不是 objcopy 出来的裸 bin。
 #   老教程里那句 `objcopy -O binary` 是 v1（3GX$0001）的写法，

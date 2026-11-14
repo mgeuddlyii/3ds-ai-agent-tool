@@ -12,6 +12,10 @@
 
 #pragma once
 
+/* ★ 2026-11-14：原来这里没有 <stdbool.h>，主程序里因为别的头先包含了它
+ * 才没暴露；插件单独编译这个头时报 "unknown type name 'bool'"。 */
+#include <stdbool.h>
+
 #include <stddef.h>
 #include <stdint.h>
 

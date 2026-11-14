@@ -22,6 +22,8 @@
 #include <string.h>
 
 #include "cfg.h"
+#include "keystore.h"   /* 用户已添加的 Key 都住在这里（keys.json） */
+#include "provider.h"   /* base_url 只存在于这张表里 */
 
 /* 译文目标语言。由 net_set_target() 在 cfg_load 之后灌进来。
  * 声明放在这里而不是 net_translate 附近：拼请求那段在文件前部，必须先声明。 */
@@ -122,6 +124,58 @@ static void ini_get(const char *key, char *out, size_t cap, const char *def)
     }
 }
 
+static void read_creds_file(char *key, size_t kcap, char *base, size_t bcap,
+                            char *model, size_t mcap);
+
+/* ★★ 2026-11-14：外面这层负责「仓库优先」。
+ *
+ * 先按老路读 key.txt（兜底），再用 keys.json 里**用户激活的那一条**覆盖它。
+ * 优先级与主程序 sc_chat.c 的 chat_enter 完全一致：
+ *     keystore 激活条目 > key.txt > config
+ * 用户要求"只能选已经添加的 Key"，而"已添加"就住在 keys.json 里。
+ * 猜错的后果是：用户在 AIConsole 里加了新 Key，插件却还用着 key.txt 的旧那把，
+ * 而且**不会报错**，只会 401 或者扣错账号的额度。
+ */
+static void read_creds(char *key, size_t kcap, char *base, size_t bcap, char *model, size_t mcap)
+{
+    static int      loaded;
+    const KeyEntry *e;
+
+    read_creds_file(key, kcap, base, bcap, model, mcap);
+
+    if (!loaded) {
+        keystore_load();          /* 文件不存在/坏掉时仓库为空，不会炸 */
+        loaded = 1;
+    }
+
+    e = keystore_active();        /* 没激活条目就返回 NULL，保持 key.txt 的结果 */
+    if (!e)
+        return;
+
+    /* 豆包是**扫码登录**（cookie），不走 Key 仓库，插件这一版不支持。
+     * ★ 这里明确失败：清空 Key，绝不静默退回 key.txt ——
+     *   否则用户看到"切换成功"却还在用旧 Key。 */
+    if (strcmp(e->provider, "doubao") == 0) {
+        key[0] = 0;
+        return;
+    }
+
+    if (e->key[0]) {
+        snprintf(key, kcap, "%s", e->key);
+        snprintf(model, mcap, "%s", e->model);
+
+        /* 地址必须跟着 provider 走：KeyEntry 里**没有**网址字段，
+         * 地址只存在于服务商表。只拿 Key 不拿表 = 用 A 家 Key 发到 B 家地址。
+         * ★ provider_find() 找不到时返回默认家而不是 NULL，所以必须**比名字**。 */
+        {
+            const ProviderDef *p = provider_find(e->provider);
+
+            if (p && strcmp(p->name, e->provider) == 0 && p->base_url[0])
+                snprintf(base, bcap, "%s", p->base_url);
+        }
+    }
+}
+
 /* 读 key.txt。
  *
  * ★ 这里必须按**主程序同一套规则**解析：那个文件是带注释的 k=v 模板
@@ -129,8 +183,8 @@ static void ini_get(const char *key, char *out, size_t cap, const char *def)
  *   **不是"第一行就是 Key"**。之前按第一行读，拿到的是 "# ====" 这行注释，
  *   发出去就是一张 401 —— 而且报错长得像"Key 无效"，很容易误判成 Key 过期。
  */
-static void read_creds(char *key, size_t kcap, char *base, size_t bcap,
-                       char *model, size_t mcap)
+static void read_creds_file(char *key, size_t kcap, char *base, size_t bcap,
+                            char *model, size_t mcap)
 {
     FILE *f;
 
