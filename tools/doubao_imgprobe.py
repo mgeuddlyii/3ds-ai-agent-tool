@@ -304,6 +304,23 @@ def main():
         "md5": hashlib.md5(png).hexdigest(),
         "size": len(png),
     }
+    # ── 2026-11-14：同一份上传结果，按环境变量换 attachment 形状 ──
+    # 为什么要这个开关：上面四步已经复跑验证通过，但第 5 步豆包答"没看到图"，
+    # 说明 chat 的 attachment 结构和服务端现在认的不一致。与其重写一份脚本
+    # （那样连请求本身都可能走样），不如就在这条已验证的路径上换形状。
+    #   DBIMG_VARIANT=A 原样 / B 去 md5+size / C 去 option / D key→uri / E state=1
+    _v = os.environ.get("DBIMG_VARIANT", "A").upper()
+    if _v == "B":
+        attachment.pop("md5", None)
+        attachment.pop("size", None)
+    elif _v == "C":
+        attachment.pop("option", None)
+    elif _v == "D":
+        attachment["uri"] = attachment.pop("key")
+    elif _v == "E":
+        attachment["file_review_state"] = 1
+        attachment["file_parse_state"] = 1
+    print("    attachment variant = %s" % _v)
     body = {
         "bot_id": "7338286299411103781",
         "completion_option": {
@@ -373,7 +390,18 @@ def main():
             answer += c
     if answer:
         print("    豆包的回答: %s" % answer[:400])
-        print("\n>>> 图片上传 + 识图 全链路通过")
+        # ★ 2026-11-14 修正判据：原来只要拿到非空回答就打印「全链路通过」——
+        #   于是"很抱歉呀，没有看到图呢"也被判成通过，这是**假阳性**。
+        #   测试图是红底白方块（见 make_png），真看到图时回答里一定会出现
+        #   颜色或形状词；只有这样才能区分"上传通了"和"模型真的看到了"。
+        _kw = ("红", "方", "矩", "块", "白", "square", "red", "rect")
+        if any(k in answer for k in _kw):
+            print("\n>>> 图片上传 + 识图 全链路通过（模型确实看到了图）")
+        else:
+            print("\n>>> 上传链路通了，但**模型没看到图** —— attachment 结构要改")
+            print("    （试: DBIMG_VARIANT=B/C/D/E 换形状，见 attachment 那段注释）")
+    else:
+        print("\n>>> 没拿到回答，链路没通")
         return 0
     print("    (no assistant text found)")
     print("    %s" % txt[:1500])
