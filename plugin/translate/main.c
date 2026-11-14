@@ -66,13 +66,28 @@ static void mark(const char *what)
 {
     Handle    fh;
     FS_Path   p  = fsMakePath(PATH_ASCII, "/3ds/aiconsole/plugin_boot.txt");
-    u32       nw = 0;
+    u32       nw = 0, nl = 0;
+    u64       sz = 0;
 
     if (R_FAILED(FSUSER_OpenFileDirectly(&fh, ARCHIVE_SDMC,
                                          fsMakePath(PATH_EMPTY, ""), p,
                                          FS_OPEN_WRITE | FS_OPEN_CREATE, 0)))
         return;
-    FSFILE_Write(fh, &nw, 0, what, (u32)strlen(what), FS_WRITE_FLUSH);
+
+    /* ★ 2026-11-14：改成**追加写一行**。
+     *   原来是"在偏移 0 覆盖写但不截断"—— 上一条比这一条长时，
+     *   尾巴会留在文件里（真机上读到过 `G ok 42ms 320x240rning`，
+     *   那个 rning 是上一轮 "returning" 的残余）；而且一轮里写好几条时
+     *   只能看到最后一条，看不到"暂停失败"这类更早的信息。
+     *   超过 2KB 就从头再来，避免无限增长。 */
+    FSFILE_GetSize(fh, &sz);
+    if (sz > 2048) {
+        FSFILE_SetSize(fh, 0);
+        sz = 0;
+    }
+
+    FSFILE_Write(fh, &nw, sz, what, (u32)strlen(what), 0);
+    FSFILE_Write(fh, &nl, sz + nw, "\n", 1, FS_WRITE_FLUSH);
     FSFILE_Close(fh);
 }
 
@@ -361,12 +376,15 @@ static bool pause_pred(void *th)
 {
     u32 tls_va;
 
-    if (*(void **)0xFFFF9000u == th)
-        return false;                       /* 别暂停调用者自己 */
-
+    /* ★ 2026-11-14：**去掉** `*(void**)0xFFFF9000` 那一句。
+     *   那是"当前内核线程指针"，属于内核态地址；在用户态谓词里读它
+     *   完全依赖 Rosalina 打过补丁，一旦不成立就是 fault —— 而谓词是在
+     *   内核回调里跑的，那里的 fault 连现场都看不到。
+     *   只保留魔数判断就够了：带我们魔数的线程放过，其余挂起。 */
     tls_va = *(u32 *)((u8 *)th + 0x94);     /* KThread->tls */
+
     if (tls_va && *(u32 *)tls_va == 0x21545624u)
-        return false;                       /* 别暂停我们自己的线程 */
+        return false;                       /* 我们自己的线程，别停 */
 
     return true;                            /* 其余（游戏线程）挂起 */
 }

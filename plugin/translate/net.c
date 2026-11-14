@@ -148,6 +148,38 @@ static void read_creds(char *key, size_t kcap, char *base, size_t bcap, char *mo
 
     read_creds_file(key, kcap, base, bcap, model, mcap);
 
+    /* ★★ 2026-11-14 真机定位：key.txt 可以是**一把裸 Key**。
+     *
+     * 用户卡上那个文件是 36 字节的 `sk-fc…`，**没有 key=**；而
+     * read_creds_file 只按 key=value 解析，于是读出来是空字符串，
+     * 面板报"没有 API Key" —— 明明文件里有 Key。
+     * 这里补一条兜底：找不到 key= 时，取第一条以 sk- 开头的行。 */
+    if (!key[0]) {
+        FILE *kf = fopen("sdmc:/3ds/aiconsole/key.txt", "r");
+
+        if (kf) {
+            char line[160];
+
+            while (fgets(line, sizeof line, kf)) {
+                char  *p = line;
+                size_t n;
+
+                while (*p == ' ' || *p == '\t')
+                    ++p;
+                if (strncmp(p, "sk-", 3) != 0)
+                    continue;
+
+                n = strlen(p);
+                while (n > 0 && (p[n - 1] == '\n' || p[n - 1] == '\r' ||
+                                 p[n - 1] == ' '))
+                    p[--n] = '\0';
+                snprintf(key, kcap, "%s", p);
+                break;
+            }
+            fclose(kf);
+        }
+    }
+
     if (!loaded) {
         keystore_load();          /* 文件不存在/坏掉时仓库为空，不会炸 */
         loaded = 1;
