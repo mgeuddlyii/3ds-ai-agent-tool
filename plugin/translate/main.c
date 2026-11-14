@@ -135,7 +135,7 @@ static int         trig_idx(void);
 
 /* ---------------- 设置页 ---------------- */
 
-#define SET_ROWS 7
+#define SET_ROWS 8
 
 static const char *row_label(int i)
 {
@@ -146,6 +146,7 @@ static const char *row_label(int i)
     case 3: return "高度（字符）";
     case 4: return "背板深浅";
     case 5: return "触发键";
+    case 6: return "暂停游戏(Beta)";
     default: return "摆放位置";
     }
 }
@@ -168,6 +169,10 @@ static void row_value(int i, char *out, size_t n)
         break;
     }
     case 5: snprintf(out, n, "%s", trigger_name()); break;
+    case 6:
+        /* 明确把风险写在值里，不藏在说明页 */
+        snprintf(out, n, "%s", g_cfg.beta_pause ? "开(可能卡死)" : "关");
+        break;
     default:
         snprintf(out, n, "%s", g_cfg.free_pos ? "已拖动" : "按 A 拖动");
         break;
@@ -202,6 +207,7 @@ static void row_step(int i, int dir)
         if (g_cfg.trigger >= CFG_TRIGGER_MAX) g_cfg.trigger = 0;
         if (g_cfg.trigger < 0) g_cfg.trigger = CFG_TRIGGER_MAX - 1;
         break;
+    case 6: g_cfg.beta_pause = !g_cfg.beta_pause; break;
     default: break;                 /* 摆放行不响应左右键 */
 
     }
@@ -307,6 +313,76 @@ static u32 trigger_mask(void)
 static const char *trigger_name(void)
 {
     return k_trig[trig_idx()].name;
+}
+
+/* ---- Beta：暂停游戏 ----------------------------------------------------
+ * `svcControlProcess(SCHEDULE_THREADS)` 会让**谓词返回 true 的线程被挂起**。
+ * 游戏线程一停就不重画帧缓冲，我们的面板自然不会被擦掉，也就不闪了。
+ *
+ * ★ 谓词里那两条判断都是保命的：
+ *   ① `0xFFFF9000` 是当前内核线程指针 —— 调用者自己绝不能暂停，
+ *      否则当场自锁（连恢复的代码都跑不到）。
+ *   ② 带我们魔数 `0x21545624` 的线程（UI 线程）要放过，
+ *      否则按完快捷键就再也反应不过来了。
+ *
+ * ⚠️ `KThread->tls` 的偏移 `0x94` 来自 CTRComposer，**未在本机内核复核**。
+ *    万一偏移不对，最坏结果是"该暂停的没暂停"或"游戏卡死只能长按电源"，
+ *    所以这个功能默认关闭，界面上标成 Beta。
+ */
+#define CUR_PROCESS_HANDLE_ 0xFFFF8001u
+
+/* libctru **没有导出** `svcControlProcess`（头文件里只有 `svcControlProcessMemory`
+ * 并在注释里 `@sa svcControlProcess`）。内核里它是 SVC 编号 0x3C，
+ * 紧邻已导出的 0x3D，所以这里自己发一条。参数按 AAPCS 放 r0-r3。 */
+static inline Result svc_control_process(Handle process, u32 op, u32 arg, void *addr)
+{
+    register u32 r0 __asm__("r0") = (u32)process;
+    register u32 r1 __asm__("r1") = op;
+    register u32 r2 __asm__("r2") = arg;
+    register u32 r3 __asm__("r3") = (u32)(uintptr_t)addr;
+
+    __asm__ volatile ("svc 0x3C"
+                      : "+r"(r0)
+                      : "r"(r1), "r"(r2), "r"(r3)
+                      : "memory");
+    return (Result)r0;
+}
+
+#define PROCESSOP_SCHEDULE_THREADS_ 5u
+
+static bool pause_pred(void *th)
+{
+    u32 tls_va;
+
+    if (*(void **)0xFFFF9000u == th)
+        return false;                       /* 别暂停调用者自己 */
+
+    tls_va = *(u32 *)((u8 *)th + 0x94);     /* KThread->tls */
+    if (tls_va && *(u32 *)tls_va == 0x21545624u)
+        return false;                       /* 别暂停我们自己的线程 */
+
+    return true;                            /* 其余（游戏线程）挂起 */
+}
+
+static int g_paused;
+
+static void game_pause(int on)
+{
+    Result rc;
+
+    if (on == g_paused)
+        return;
+
+    rc = svc_control_process(CUR_PROCESS_HANDLE_, PROCESSOP_SCHEDULE_THREADS_,
+                             on ? 1u : 0u, on ? (void *)pause_pred : NULL);
+    if (R_FAILED(rc)) {
+        /* 失败就本会话内关掉它，别每 4ms 重试一遍 */
+        mark("5 beta pause FAILED, disabled");
+        g_cfg.beta_pause = false;
+        g_paused = 0;
+        return;
+    }
+    g_paused = on;
 }
 
 
@@ -666,6 +742,12 @@ static void ui_thread(void *arg)
             /* 面板开着时 B 先用来关面板，不然会跟"从子页返回"打架 */
             if (g_panel_on && (down & KEY_B))
                 g_panel_on = false;
+
+            /* ---- Beta：只要我们在画东西（面板或子页），就暂停游戏 ----
+             * 游戏线程一停就不再重画帧缓冲，面板不会被擦掉，也就不闪。
+             * ★ 恢复那条必须无条件走到：少了它，面板一关游戏还停在原地。 */
+            game_pause(g_cfg.beta_pause &&
+                       (g_mode != MODE_GAME || g_panel_on) ? 1 : 0);
 
             /* ★ 键盘操作面板按钮：←/→ 选，A 确认。
              *   触摸停用期间这是**唯一**通路。没有它，"翻译/测试"这几个

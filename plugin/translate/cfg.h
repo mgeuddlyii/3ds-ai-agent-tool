@@ -46,6 +46,13 @@ typedef struct {
      *   每次换游戏都要重新拖一遍。 */
     bool      free_pos;
     int       pos_x, pos_y;   /* 目标屏上的像素坐标（左上角） */
+
+    /* ★ Beta 试验性：面板显示时暂停游戏（其它线程挂起，画面就不再被游戏擦掉）。
+     *   为什么默认关：它调的是 svcControlProcess(SCHEDULE_THREADS)，
+     *   在插件里跑属于非常规用法。万一内核谓词判断出错，
+     *   最坏情况是游戏卡死、只能长按电源重启。所以默认 false，
+     *   并且在界面上明确标成 Beta。 */
+    bool      beta_pause;
 } PluginCfg;
 
 void cfg_defaults(PluginCfg *c);
