@@ -17,6 +17,19 @@
 #define ROWS_MIN 2
 #define ROWS_MAX 16
 
+/* 译文目标语言。顺序就是配置里的下标，**只能往后追加**
+ * （插在中间会让老配置翻译到别的语言，而且玩家不一定马上发现）。 */
+static const char *k_lang[CFG_LANG_MAX] = {
+    "简体中文", "繁体中文", "英文", "日文",
+};
+
+const char *cfg_lang_name(int i)
+{
+    if (i < 0 || i >= CFG_LANG_MAX)
+        i = 0;
+    return k_lang[i];
+}
+
 void cfg_defaults(PluginCfg *c)
 {
     if (!c)
@@ -27,6 +40,7 @@ void cfg_defaults(PluginCfg *c)
     c->rows    = 7;   /* 按钮条吃掉 24px，6 行只剩 3 行正文 */
     c->opacity = 2;
     c->trigger = 0;           /* 默认 L+R+SELECT */
+    c->lang    = 0;           /* 默认简体中文 */
     c->beta_pause = false;    /* Beta：默认关，理由见 cfg.h */
     c->free_pos = false;
     c->pos_x    = 8;
@@ -112,6 +126,8 @@ void cfg_load(PluginCfg *c)
                 /* 老版本存的是 key=zl / key=select，读到就迁到新下标：
                  * 0 = L+R+SELECT（新的默认），7 = SELECT 单键（等价于老的 select）。 */
                 c->trigger = (strcmp(v, "zl") == 0) ? 0 : 7;
+            else if (strcmp(k, "lang") == 0)
+                c->lang = clamp(atoi(v), 0, CFG_LANG_MAX - 1);
             else if (strcmp(k, "beta_pause") == 0)
                 c->beta_pause = atoi(v) != 0;
             else if (strcmp(k, "free") == 0)
@@ -141,6 +157,7 @@ void cfg_save(const PluginCfg *c)
     fprintf(f, "rows=%d\n",    c->rows);
     fprintf(f, "opacity=%d\n", c->opacity);
     fprintf(f, "trigger=%d\n", c->trigger);
+    fprintf(f, "lang=%d\n",    c->lang);
     fprintf(f, "beta_pause=%d\n", c->beta_pause ? 1 : 0);
     fprintf(f, "free=%d\n",    c->free_pos ? 1 : 0);
     fprintf(f, "pos_x=%d\n",   c->pos_x);

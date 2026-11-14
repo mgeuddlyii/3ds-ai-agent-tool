@@ -20,6 +20,10 @@
  * 成功返回 true。 */
 bool net_translate(const uint8_t *bgr, int w, int h, char *out, size_t cap);
 
+/* 设置译文目标语言（cfg_load 之后由 main.c 灌进来）。
+ * 传进来的应该是 cfg_lang_name() 的结果，例如 "简体中文"。 */
+void net_set_target(const char *name);
+
 /* 一次性初始化（soc + curl）。重复调用无副作用。 */
 bool net_init(void);
 

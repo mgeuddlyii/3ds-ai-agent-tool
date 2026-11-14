@@ -135,7 +135,7 @@ static int         trig_idx(void);
 
 /* ---------------- 设置页 ---------------- */
 
-#define SET_ROWS 8
+#define SET_ROWS 9
 
 static const char *row_label(int i)
 {
@@ -147,6 +147,7 @@ static const char *row_label(int i)
     case 4: return "背板深浅";
     case 5: return "触发键";
     case 6: return "暂停游戏(Beta)";
+    case 7: return "翻译语言";
     default: return "摆放位置";
     }
 }
@@ -173,6 +174,7 @@ static void row_value(int i, char *out, size_t n)
         /* 明确把风险写在值里，不藏在说明页 */
         snprintf(out, n, "%s", g_cfg.beta_pause ? "开(可能卡死)" : "关");
         break;
+    case 7: snprintf(out, n, "%s", cfg_lang_name(g_cfg.lang)); break;
     default:
         snprintf(out, n, "%s", g_cfg.free_pos ? "已拖动" : "按 A 拖动");
         break;
@@ -208,6 +210,10 @@ static void row_step(int i, int dir)
         if (g_cfg.trigger < 0) g_cfg.trigger = CFG_TRIGGER_MAX - 1;
         break;
     case 6: g_cfg.beta_pause = !g_cfg.beta_pause; break;
+    case 7:
+        g_cfg.lang = (g_cfg.lang + 1) % CFG_LANG_MAX;
+        net_set_target(cfg_lang_name(g_cfg.lang));   /* 立即生效，不用重启 */
+        break;
     default: break;                 /* 摆放行不响应左右键 */
 
     }
@@ -602,6 +608,7 @@ static void ui_thread(void *arg)
     mark("2 worker tls ok");
 
     cfg_load(&g_cfg);
+    net_set_target(cfg_lang_name(g_cfg.lang));   /* 把目标语言灌给网络层 */
     mark("3 cfg_load ok");
 
     for (;;) {

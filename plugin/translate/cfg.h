@@ -21,6 +21,10 @@ typedef enum {
 /* 快捷键组合的**个数**（真正的组合表在 main.c 的 k_trig[] 里）。 */
 #define CFG_TRIGGER_MAX 8
 
+/* 译文目标语言的个数（名字表在 cfg.c）。 */
+#define CFG_LANG_MAX 4
+const char *cfg_lang_name(int i);
+
 /* 九宫格锚点。翻译屏的边角贴着哪一格。 */
 typedef enum {
     ANCH_TL = 0, ANCH_TC, ANCH_TR,
@@ -38,6 +42,9 @@ typedef struct {
      * 为什么存下标不存字符串：组合会增删、名字会改，存下标最稳。
      * ⚠️ 新增组合只能**追加到末尾**，不能插在中间 —— 插了老配置会错位。 */
     int       trigger;
+
+    /* 译文要翻译成哪种语言（下标，见 CFG_LANG_MAX）。 */
+    int       lang;
 
     /* ★ 自由摆放（拖动页确认过的位置）。
      *   free_pos=false 时按 anchor 的九宫格算，true 时直接用 pos_x/pos_y。

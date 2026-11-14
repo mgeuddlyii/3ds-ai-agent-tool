@@ -23,6 +23,10 @@
 
 #include "cfg.h"
 
+/* 译文目标语言。由 net_set_target() 在 cfg_load 之后灌进来。
+ * 声明放在这里而不是 net_translate 附近：拼请求那段在文件前部，必须先声明。 */
+static char g_target[24] = "简体中文";
+
 #define SOC_BUF_SIZE 0x100000        /* 1MiB：插件内存区总共 5MiB，别贪 */
 #define KEY_PATH     "sdmc:/3ds/aiconsole/key.txt"
 #define CFG_PATH     "sdmc:/3ds/aiconsole/plugin.ini"
@@ -306,10 +310,10 @@ bool net_translate(const uint8_t *bgr, int w, int h, char *out, size_t cap)
     snprintf(body, body_cap,
         "{\"model\":\"%s\",\"max_tokens\":400,\"messages\":[{\"role\":\"user\","
         "\"content\":[{\"type\":\"text\",\"text\":"
-        "\"把图里的文字翻译成简体中文。只输出译文，不要解释、不要引号。"
+        "\"把图里的文字翻译成%s。只输出译文，不要解释、不要引号。"
         "看不清就回“看不清”。\"},"
         "{\"type\":\"image_url\",\"image_url\":{\"url\":"
-        "\"data:image/png;base64,%s\"}}]}]}", model, b64);
+        "\"data:image/png;base64,%s\"}}]}]}", model, g_target, b64);
     free(b64);
 
     url = malloc(strlen(base) + 64);
@@ -372,7 +376,14 @@ bool net_translate(const uint8_t *bgr, int w, int h, char *out, size_t cap)
     return ok;
 }
 
-/* ---- 测试连接：把"通不通"和"能不能翻译"分开验 ------------------------- */
+void net_set_target(const char *name)
+{
+    if (!name || !*name)
+        return;
+    snprintf(g_target, sizeof g_target, "%s", name);
+}
+
+
 
 bool net_ping(char *out, size_t cap)
 {
