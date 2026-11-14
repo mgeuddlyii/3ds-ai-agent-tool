@@ -24,10 +24,18 @@
 #include "cfg.h"
 #include "keystore.h"   /* 用户已添加的 Key 都住在这里（keys.json） */
 #include "provider.h"   /* base_url 只存在于这张表里 */
+#include "doubao.h"     /* db_chat / db_load_cookie / db_set_attachment */
+#include "doubao_img.h" /* dbimg_upload：四步上传拿 ImageUri */
 
 /* 译文目标语言。由 net_set_target() 在 cfg_load 之后灌进来。
  * 声明放在这里而不是 net_translate 附近：拼请求那段在文件前部，必须先声明。 */
 static char g_target[24] = "简体中文";
+
+/* 当前用的是哪家服务商（read_creds 从 Key 条目里带出来）。
+ * 豆包不是"Key + base_url"这一套，所以必须单独知道它。
+ * ★ 声明放在这里而不是 doubao_translate 旁边：read_creds 要写它，
+ *   而 read_creds 在文件前部。 */
+static char g_provider[24];
 
 /* 1×1 透明 PNG 的 base64（92 字节）。「测试」按钮发它来验"这个模型到底
  * 能不能读图" —— 比按模型名猜可靠，也不依赖卡上任何文件。 */
@@ -146,6 +154,8 @@ static void read_creds(char *key, size_t kcap, char *base, size_t bcap, char *mo
     static int      loaded;
     const KeyEntry *e;
 
+    g_provider[0] = '\0';         /* 每轮重置：没有激活条目就回到"按 key.txt" */
+
     read_creds_file(key, kcap, base, bcap, model, mcap);
 
     /* ★★ 2026-11-14 真机定位：key.txt 可以是**一把裸 Key**。
@@ -188,6 +198,9 @@ static void read_creds(char *key, size_t kcap, char *base, size_t bcap, char *mo
     e = keystore_active();        /* 没激活条目就返回 NULL，保持 key.txt 的结果 */
     if (!e)
         return;
+
+    /* ★ 记住这一家是谁：豆包要单独走通道（cookie + 图片上传） */
+    snprintf(g_provider, sizeof g_provider, "%s", e->provider);
 
     /* ★★ 2026-11-14 真机修正：豆包条目**不再清空 Key**。
      *
@@ -354,6 +367,63 @@ static bool extract_content(const char *json, char *out, size_t cap)
     return o > 0;
 }
 
+/* 豆包通道：截图 → PNG → 上传 imagex → 带 attachment 问一句 → 取译文。
+ *
+ * 与 OpenAI 那条路的区别（也是为什么要单独一支）：
+ *   · 鉴权是扫码得到的 cookie，不是 Bearer Key
+ *   · 图片不是塞进 content 的 image_url，而是先上传拿 ImageUri 再挂 attachments
+ *   · 端点和响应格式都是豆包自己的 samantha / SSE
+ * 这些细节都在 shared/doubao*.c 里，这里只负责把三步串起来。 */
+static bool doubao_translate(const u8 *rgb, int w, int h, char *out, size_t cap)
+{
+    unsigned char *png;
+    size_t         n = 0;
+    char           att[600], err[160];
+
+    if (!db_load_cookie()) {
+        snprintf(out, cap, "豆包没登录\n到 App 的豆包页扫码");
+        return false;
+    }
+
+    snprintf(out, cap, "上传截图到豆包…");
+    png = png_encode(rgb, w, h, &n);
+    if (!png) {
+        snprintf(out, cap, "PNG 编码失败（内存不够）");
+        return false;
+    }
+    if (!dbimg_upload(png, n, w, h, att, sizeof att, err, sizeof err)) {
+        free(png);
+        snprintf(out, cap, "豆包上传失败\n%s", err);
+        return false;
+    }
+    free(png);
+
+    db_set_attachment(att);
+    {
+        char    prompt[128], m[192] = "";
+        DbState st;
+
+        snprintf(prompt, sizeof prompt,
+                 "把这张图里的文字翻译成%s。只输出译文，不要解释。", g_target);
+        snprintf(out, cap, "等豆包回复…");
+        st = db_chat(prompt, "0", out, cap, m, sizeof m);
+
+        /* 一次性：清掉附件，否则之后每一句都会带着这张图 */
+        db_set_attachment("");
+
+        if (st != DB_OK) {
+            snprintf(out, cap, "豆包：%s",
+                     m[0] ? m
+                          : (st == DB_ERR_NO_LOGIN ? "登录失效，去扫码"
+                           : st == DB_ERR_BLOCK    ? "被限流，等一会儿"
+                           : st == DB_ERR_NET      ? "网络不通"
+                                                   : "失败"));
+            return false;
+        }
+    }
+    return out[0] != '\0';
+}
+
 bool net_translate(const uint8_t *bgr, int w, int h, char *out, size_t cap)
 {
     char   base[160], model[64], key[200];
@@ -373,6 +443,13 @@ bool net_translate(const uint8_t *bgr, int w, int h, char *out, size_t cap)
     out[0] = '\0';
 
     read_creds(key, sizeof key, base, sizeof base, model, sizeof model);
+
+    /* ★ 2026-11-14：豆包走**自己的通道**（cookie + 图片上传 + samantha），
+     *   根本不用 Key。所以这支判断必须在"没有 API Key"之前 ——
+     *   否则选了豆包也永远走不到它。 */
+    if (!strcmp(g_provider, "doubao"))
+        return doubao_translate(bgr, w, h, out, cap);
+
     if (!key[0]) {
         snprintf(out, cap, "没有 API Key\n放到 sdmc:/3ds/aiconsole/key.txt");
         return false;
