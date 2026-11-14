@@ -228,35 +228,18 @@ bool hud_draw(const PluginCfg *cfg, HudState st, const char *text)
     fill(fb, stride, x, y, w, h, back_color(cfg->opacity));
     box(fb, stride, x, y, w, h, (Rgb){ 90, 200, 190 });
 
-    /* ---- 按钮条 ---- */
-    for (int i = 0; i < BTN_COUNT; ++i) {
-        int bx, by, bw, bh;
-
-        btn_rect(cfg, i, &bx, &by, &bw, &bh);
-        {
-            int sel = (i == g_btn_sel);
-
-            fill(fb, stride, bx, by, bw, bh,
-                 sel ? (Rgb){ 52, 96, 110 } : (Rgb){ 34, 42, 52 });
-            box(fb, stride, bx, by, bw, bh,
-                 sel ? (Rgb){ 120, 230, 220 } : (Rgb){ 70, 120, 130 });
-        }
-
-        {
-            /* 按钮文字居中：16px 一个字，按字数算宽度 */
-            int  tw = 0;
-            const char *lb = btn_label(i);
-
-            for (const char *q = lb; *q; ) {
-                const char *p2 = q;
-                (void)utf8_next(&p2);
-                q = p2;
-                tw += 16;
-            }
-            draw_text(fb, stride, bx + (bw - tw) / 2, by + 2, bx + bw, lb,
-                      (Rgb){ 220, 235, 240 });
-        }
-    }
+    /* ★★ 2026-11-14：**不再画按钮条**。
+     *
+     * 用户明确要求：插件只负责"显示文字"，所有设置（显示屏/位置/宽高/深浅/
+     * 触发键/说明/安装教程/启用开关）都搬到 AIConsole 的「更多 → 插件」页里。
+     *
+     * 原来这里有四个按钮（翻译/设置/说明/测试）。删掉的直接后果是：
+     * 面板里再也进不去设置页与说明页 —— 这是**要的效果**，不是功能缺失。
+     * 触发方式也随之一并简化：按快捷键就截图翻译并弹出面板，
+     * 再按一次或按 B 收起。
+     *
+     * ⚠️ BTN_* 那套枚举和 btn_rect() 先留着没删：sc_plugins 那边还要用
+     *    btn_rect 算行框，删了会牵连 cfg.c。等界面稳定下来再一起清理。 */
 
     /* 按钮条与正文之间一条分隔线 */
     for (int i = 0; i < w - 4; ++i)

@@ -6,14 +6,21 @@
  * 但它一直只能靠电脑往 luma/plugins/ 里拷贝，用户在 3DS 上既看不到装了
  * 什么、也关不掉任何一个 —— 装坏了只能拔卡去电脑上删。
  *
- * 这一页只做三件事：**看得到、能开关、能刷新**。刻意不做"删除"：
- * 禁用（改名 .off）已经能解决"它出问题"这个诉求，而删除是不可撤销的，
- * 在一个"插件崩了会连带游戏崩"的场景里不值得给一键删除。
+ * ── 2026-11-14 重大调整：插件的**一切**都收到这一页 ──
+ * 原来插件的面板里有「翻译/设置/说明/测试」四个按钮，设置页、说明页、
+ * 拖动摆放页都做在插件自己里面。用户明确指出这不对：
  *
- * ── Luma 的插件路径（写死，不要"更聪明"地去猜）──
- *   sdmc:/luma/plugins/<TITLE_ID>/<name>.3gx   只对该游戏生效
- *   sdmc:/luma/plugins/<name>.3gx              对所有游戏生效（全局）
- *   <name>.3gx.off                             存在但被禁用
+ *     插件只负责**显示文字**；能不能用、长什么样、在哪显示，
+ *     全部在 AIConsole 的「更多 → 插件」页里改。
+ *
+ * 所以现在这一页是插件的**唯一配置入口**：
+ *   A 进入某个插件的子页 → 启用/设置/说明/安装教程
+ *
+ * ── 数据落在哪 ──
+ *   插件文件：sdmc:/luma/plugins/<TID>/<name>.3gx
+ *   插件设置：sdmc:/3ds/aiconsole/plugin.ini   ← 这一页写，插件读
+ * 设置**不**写进 config.json：那份是主程序的配置，插件进程读它要多背
+ * 一整套 JSON 解析；而 plugin.ini 是极简 key=value，插件那边已经在用了。
  *
  * ⚠️ 插件是否真的被加载，最终由 Rosalina 决定（L + 下 + SELECT）。
  *    这一页只能改卡上的文件状态，改不了 Rosalina 的运行时开关 ——
@@ -23,6 +30,7 @@
 #include <3ds.h>
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "app.h"
@@ -35,6 +43,7 @@
 #define PLUG_MAX 9
 #define PLUG_DIR "sdmc:/luma/plugins"
 #define PLUG_NAME 48
+#define PLUG_INI "sdmc:/3ds/aiconsole/plugin.ini"
 
 typedef struct {
     char rel[PLUG_NAME];    /* 相对 PLUG_DIR 的路径，如 "default.3gx" */
@@ -47,6 +56,81 @@ static PlugItem g_it[PLUG_MAX];
 static int      g_n;
 static int      g_sel;
 static char     g_msg[96];
+
+/* ---- 子页状态 -------------------------------------------------------- */
+#define PM_LIST    0
+#define PM_DETAIL  1
+#define PM_CFG     2
+#define PM_HELP    3
+#define PM_INSTALL 4
+
+#define DETAIL_ROWS 4
+#define CFG_ROWS    7
+
+static int g_mode = PM_LIST;
+static int g_row;
+
+/* plugin.ini 的镜像。字段与 plugin/translate/cfg.c 一一对应，
+ * 名字/取值必须**完全一致**，否则插件读不出来（那边按字面值比较）。 */
+static struct {
+    int screen;     /* 0=下屏 1=上屏 */
+    int anchor;     /* 0..8 九宫格 */
+    int cols;       /* 面板宽（字符列） */
+    int rows;       /* 面板高（字符行） */
+    int opacity;    /* 0..3 背板深浅 */
+    int trigger;    /* 触发键组合下标 0..7 */
+    int beta_pause; /* Beta：显示时暂停游戏 */
+} g_pc;
+
+static const char *const k_anchor[9] = {
+    "top-left",  "top-center",  "top-right",
+    "mid-left",  "center",      "mid-right",
+    "bottom-left", "bottom-center", "bottom-right",
+};
+
+static const char *const k_anchor_cn[9] = {
+    "左上", "上中", "右上",
+    "左中", "居中", "右中",
+    "左下", "下中", "右下",
+};
+
+static const char *const k_trigger[8] = {
+    "L+R+SELECT", "L+R+START", "L+R+X", "L+R+Y",
+    "L+R+A", "L+R+B", "L+R+上", "SELECT",
+};
+
+static const char *const k_screen_cn[2] = { "下屏", "上屏" };
+
+/* 说明 / 安装教程的正文。
+ * ⚠️ 这几行是**新加的界面文字**，还没走 i18n 三道闸（见 NOTES）。
+ *    英文模式下它们仍显示中文 —— 已知，待补英文后一并生成表。 */
+static const char *const k_help[] = {
+    "按快捷键唤出翻译面板，再按一次收起。",
+    "面板只显示文字，不能在这里改任何东西。",
+    "",
+    "要改显示屏、位置、宽高、深浅、触发键，",
+    "请到这里：更多 → 插件 → 选中插件 → 设置。",
+    "",
+    "翻译要用能读图的模型（名字带 VL / Vision）。",
+    "在 Key 管理里加一把视觉模型的 Key 再选它。",
+    NULL,
+};
+
+static const char *const k_install[] = {
+    "1. 把 .3gx 放到卡上：",
+    "   luma/plugins/<TitleID>/名字.3gx",
+    "   （对所有游戏生效就放 luma/plugins/）",
+    "",
+    "2. 开机进 Rosalina：L + 下 + SELECT",
+    "   打开 Plugin Loader 开关",
+    "",
+    "3. 回到这一页，确认对应插件是 ON",
+    "",
+    "4. 进游戏按快捷键，面板出现即成功",
+    "",
+    "加载成功时开机 logo 会闪一下颜色。",
+    NULL,
+};
 
 static bool ends_with(const char *s, const char *suf)
 {
@@ -132,9 +216,111 @@ static void scan_plugins(void)
         g_sel = (g_n > 0) ? g_n - 1 : 0;
 }
 
+/* ---- plugin.ini 读写 -------------------------------------------------
+ *
+ * 为什么不让插件自己写、这里只读：用户要求"设置必须在软件里改"，
+ * 所以写入口在这一页。插件那边删掉了设置页，只保留读取。
+ *
+ * 格式是极简 key=value（一行一个，# 开头是注释）—— 插件里没有 JSON
+ * 解析器，也不该为了六个字段引一个。 */
+
+static void pc_clamp(void)
+{
+    if (g_pc.screen < 0 || g_pc.screen > 1)        g_pc.screen = 0;
+    if (g_pc.anchor < 0 || g_pc.anchor > 8)        g_pc.anchor = 6;
+    if (g_pc.cols < 10) g_pc.cols = 10;
+    if (g_pc.cols > 50) g_pc.cols = 50;
+    if (g_pc.rows < 2)  g_pc.rows = 2;
+    if (g_pc.rows > 16) g_pc.rows = 16;
+    if (g_pc.opacity < 0 || g_pc.opacity > 3)      g_pc.opacity = 2;
+    if (g_pc.trigger < 0 || g_pc.trigger > 7)      g_pc.trigger = 0;
+    g_pc.beta_pause = g_pc.beta_pause ? 1 : 0;
+}
+
+static void pc_defaults(void)
+{
+    g_pc.screen = 0;
+    g_pc.anchor = 6;          /* 左下 */
+    g_pc.cols   = 34;
+    g_pc.rows   = 7;
+    g_pc.opacity = 2;
+    g_pc.trigger = 0;         /* L+R+SELECT */
+    g_pc.beta_pause = 0;
+}
+
+static void pc_load(void)
+{
+    FILE *f;
+    char  line[128];
+
+    pc_defaults();
+    f = fopen(PLUG_INI, "r");
+    if (!f) {
+        pc_clamp();
+        return;
+    }
+
+    while (fgets(line, sizeof line, f)) {
+        char *eq, *v;
+        int   n;
+
+        if (line[0] == '#' || line[0] == '\n')
+            continue;
+        eq = strchr(line, '=');
+        if (!eq)
+            continue;
+        *eq = '\0';
+        v = eq + 1;
+        n = (int)strlen(v);
+        while (n > 0 && (v[n - 1] == '\n' || v[n - 1] == '\r' || v[n - 1] == ' '))
+            v[--n] = '\0';
+
+        if (!strcmp(line, "screen"))            g_pc.screen = !strcmp(v, "top");
+        else if (!strcmp(line, "anchor")) {
+            for (int i = 0; i < 9; ++i)
+                if (!strcmp(v, k_anchor[i]))
+                    g_pc.anchor = i;
+        }
+        else if (!strcmp(line, "cols"))         g_pc.cols = atoi(v);
+        else if (!strcmp(line, "rows"))         g_pc.rows = atoi(v);
+        else if (!strcmp(line, "opacity"))      g_pc.opacity = atoi(v);
+        else if (!strcmp(line, "trigger"))      g_pc.trigger = atoi(v);
+        else if (!strcmp(line, "beta_pause"))   g_pc.beta_pause = atoi(v);
+        /* 认不出的键一律忽略：老版本文件里有 key=/model=/api_base=，
+         * 那些已经不用了，读到只当没看见，**不要**因此报错。 */
+    }
+    fclose(f);
+    pc_clamp();
+}
+
+static void pc_save(void)
+{
+    FILE *f = fopen(PLUG_INI, "w");
+
+    if (!f) {
+        snprintf(g_msg, sizeof g_msg, "设置写不进去（卡只读？）");
+        app_status_set("%s", g_msg);
+        return;
+    }
+    fprintf(f, "# AIConsole 翻译插件设置（在 更多→插件→设置 里改）\n");
+    fprintf(f, "screen=%s\n",     g_pc.screen ? "top" : "bottom");
+    fprintf(f, "anchor=%s\n",     k_anchor[g_pc.anchor]);
+    fprintf(f, "cols=%d\n",       g_pc.cols);
+    fprintf(f, "rows=%d\n",       g_pc.rows);
+    fprintf(f, "opacity=%d\n",    g_pc.opacity);
+    fprintf(f, "trigger=%d\n",    g_pc.trigger);
+    fprintf(f, "beta_pause=%d\n", g_pc.beta_pause);
+    fclose(f);
+    snprintf(g_msg, sizeof g_msg, "已保存，进游戏生效");
+    app_status_set("%s", g_msg);
+    app_note("plugins: saved %s", PLUG_INI);
+}
+
 static void plugins_enter(void)
 {
-    g_sel = 0;
+    g_sel  = 0;
+    g_row  = 0;
+    g_mode = PM_LIST;
     g_msg[0] = '\0';
     scan_plugins();
     app_note("plugins: scanned %d item(s)", g_n);
@@ -173,6 +359,8 @@ static void toggle(void)
     app_status_set("%s", S(S0887));
 }
 
+/* ---- 绘制 ------------------------------------------------------------ */
+
 static void render_top(void)
 {
     w_bot_header(S(S0881));
@@ -188,6 +376,80 @@ static void render_top(void)
     w_top_footer(app_status(), S(S0885));
 }
 
+static void render_list(float x, float w, float y)
+{
+    if (g_n == 0) {
+        w_line(x, y, w, S(S0882), w_c(C_SLOT_MUTED));
+        return;
+    }
+
+    for (int i = 0; i < g_n; ++i) {
+        char line[96];
+
+        /* 状态放在最前面并用同样的宽度 —— 一列对齐比"读到句尾才知道状态"好扫。 */
+        snprintf(line, sizeof line, "[%s] %s", g_it[i].on ? "ON " : "OFF",
+                 g_it[i].label);
+        y = w_line(x, y, w, line,
+                   i == g_sel ? w_c(C_SLOT_OK) : w_c(C_SLOT_FG));
+        if (y > 190.0f)
+            break;
+    }
+}
+
+static void render_detail(float x, float w, float y)
+{
+    const char *rows[DETAIL_ROWS];
+    char        buf[64];
+
+    snprintf(buf, sizeof buf, "启用状态：%s", g_it[g_sel].on ? "ON" : "OFF");
+    rows[0] = buf;
+    rows[1] = "设置        >";
+    rows[2] = "说明        >";
+    rows[3] = "安装教程    >";
+
+    /* 标题：告诉用户当前在改哪个插件 */
+    y = w_line(x, y, w, g_it[g_sel].label, w_c(C_SLOT_MUTED));
+    y += 4.0f;
+
+    for (int i = 0; i < DETAIL_ROWS; ++i)
+        y = w_line(x, y, w, rows[i],
+                   i == g_row ? w_c(C_SLOT_OK) : w_c(C_SLOT_FG));
+}
+
+static void render_cfg(float x, float w, float y)
+{
+    char        buf[DETAIL_ROWS + CFG_ROWS][64];
+    const char *rows[CFG_ROWS];
+    int         i;
+
+    snprintf(buf[0], 64, "显示屏      %s", k_screen_cn[g_pc.screen]);
+    snprintf(buf[1], 64, "位置        %s", k_anchor_cn[g_pc.anchor]);
+    snprintf(buf[2], 64, "宽度        %d 列", g_pc.cols);
+    snprintf(buf[3], 64, "高度        %d 行", g_pc.rows);
+    snprintf(buf[4], 64, "背板深浅    %d", g_pc.opacity);
+    snprintf(buf[5], 64, "触发键      %s", k_trigger[g_pc.trigger]);
+    snprintf(buf[6], 64, "暂停游戏    %s", g_pc.beta_pause ? "开(Beta)" : "关");
+
+    for (i = 0; i < CFG_ROWS; ++i)
+        rows[i] = buf[i];
+
+    y = w_line(x, y, w, "设置（←/→ 改，A 保存）", w_c(C_SLOT_MUTED));
+    y += 4.0f;
+
+    for (i = 0; i < CFG_ROWS; ++i)
+        y = w_line(x, y, w, rows[i],
+                   i == g_row ? w_c(C_SLOT_OK) : w_c(C_SLOT_FG));
+}
+
+static void render_text(float x, float w, float y, const char *const *lines)
+{
+    for (int i = 0; lines[i]; ++i) {
+        if (y > 196.0f)
+            break;
+        y = w_line(x, y, w, lines[i], w_c(C_SLOT_FG));
+    }
+}
+
 static void render_bottom(void)
 {
     float y = (float)W_BOT_CONTENT_Y;
@@ -196,26 +458,22 @@ static void render_bottom(void)
 
     w_bot_header(S(S0881));
 
-    if (g_n == 0) {
-        y = w_line(x, y, w, S(S0882), w_c(C_SLOT_MUTED));   /* 空状态：没有插件 */
-        w_bot_footer(S(S0885));
-        return;
-    }
-
-    for (int i = 0; i < g_n; ++i) {
-        char line[96];
-        const char *mark = g_it[i].on ? "on " : "off";
-
-        /* 状态放在最前面并用同样的宽度 —— 一列对齐比"读到句尾才知道状态"好扫。 */
-        /* 不做"全局"标记：default.3gx 在根目录、按游戏的带 TitleID 前缀，
-         * 从路径本身就看得出来，再缀一个词反而让 144px 的行更容易溢出。 */
-        (void)mark;
-        snprintf(line, sizeof line, "[%s] %s", g_it[i].on ? "ON " : "OFF",
-                 g_it[i].label);
-        y = w_line(x + (i == g_sel ? 0.0f : 0.0f), y, w, line,
-                   i == g_sel ? w_c(C_SLOT_OK) : w_c(C_SLOT_FG));
-        if (y > 200.0f)
-            break;
+    switch (g_mode) {
+    case PM_DETAIL:
+        if (g_n > 0) render_detail(x, w, y);
+        break;
+    case PM_CFG:
+        render_cfg(x, w, y);
+        break;
+    case PM_HELP:
+        render_text(x, w, y, k_help);
+        break;
+    case PM_INSTALL:
+        render_text(x, w, y, k_install);
+        break;
+    default:
+        render_list(x, w, y);
+        break;
     }
 
     if (g_msg[0])
@@ -224,20 +482,10 @@ static void render_bottom(void)
     w_bot_footer(S(S0883));
 }
 
-static void plugins_handle(u32 down, u32 held)
-{
-    (void)held;
+/* ---- 输入 ------------------------------------------------------------ */
 
-    if (down & KEY_B) {
-        app_pop();
-        return;
-    }
-    if (down & KEY_Y) {
-        g_msg[0] = '\0';
-        scan_plugins();
-        app_status_set("%s", S(S0887));
-        return;
-    }
+static void handle_list(u32 down)
+{
     if (down & KEY_UP) {
         if (g_sel > 0) --g_sel;
         return;
@@ -247,8 +495,111 @@ static void plugins_handle(u32 down, u32 held)
         return;
     }
     if (down & KEY_A) {
-        toggle();
+        if (g_n > 0) {
+            g_mode = PM_DETAIL;      /* 不再直接切换，先进子页 */
+            g_row  = 0;
+            g_msg[0] = '\0';
+        }
         return;
+    }
+}
+
+static void handle_detail(u32 down)
+{
+    if (down & KEY_UP)   { if (g_row > 0) --g_row; return; }
+    if (down & KEY_DOWN) { if (g_row + 1 < DETAIL_ROWS) ++g_row; return; }
+    if (!(down & KEY_A))  return;
+
+    switch (g_row) {
+    case 0:                       /* 启用/禁用 */
+        toggle();
+        break;
+    case 1:                       /* 设置 */
+        pc_load();
+        g_mode = PM_CFG;
+        g_row  = 0;
+        break;
+    case 2:
+        g_mode = PM_HELP;
+        break;
+    case 3:
+        g_mode = PM_INSTALL;
+        break;
+    default:
+        break;
+    }
+}
+
+static void handle_cfg(u32 down)
+{
+    int d = 0;
+
+    if (down & KEY_LEFT)  d = -1;
+    if (down & KEY_RIGHT) d = +1;
+
+    if (down & KEY_DOWN) { if (g_row + 1 < CFG_ROWS) ++g_row; return; }
+    if (down & KEY_UP)   { if (g_row > 0) --g_row; return; }
+
+    if (d != 0) {
+        switch (g_row) {
+        case 0: g_pc.screen ^= 1; break;
+        case 1: g_pc.anchor = (g_pc.anchor + (d > 0 ? 1 : 8)) % 9; break;
+        case 2: g_pc.cols += d * 2; break;
+        case 3: g_pc.rows += d; break;
+        case 4: g_pc.opacity += d; break;
+        case 5: g_pc.trigger = (g_pc.trigger + (d > 0 ? 1 : 7)) % 8; break;
+        case 6: g_pc.beta_pause = !g_pc.beta_pause; break;
+        default: break;
+        }
+        pc_clamp();
+        return;
+    }
+
+    if (down & KEY_A) {
+        pc_save();
+        g_mode = PM_DETAIL;
+        g_row  = 1;
+    }
+}
+
+static void plugins_handle(u32 down, u32 held)
+{
+    (void)held;
+
+    if (down & KEY_B) {
+        switch (g_mode) {
+        case PM_LIST:
+            app_pop();
+            return;
+        case PM_CFG:
+            /* 从设置返回不算保存：和"改了才保存"的直觉一致，
+             * 用户按 B 就是放弃。
+             */
+            g_mode = PM_DETAIL;
+            g_row  = 1;
+            return;
+        default:
+            g_mode = PM_LIST;
+            return;
+        }
+    }
+
+    if (down & KEY_Y) {
+        if (g_mode == PM_LIST) {
+            g_msg[0] = '\0';
+            scan_plugins();
+            app_status_set("%s", S(S0887));
+        }
+        return;
+    }
+
+    switch (g_mode) {
+    case PM_DETAIL:  handle_detail(down); break;
+    case PM_CFG:     handle_cfg(down);    break;
+    case PM_HELP:
+    case PM_INSTALL:                      /* 文字页只响应 B（上面已处理） */
+        break;
+    default:         handle_list(down);   break;
     }
 }
 

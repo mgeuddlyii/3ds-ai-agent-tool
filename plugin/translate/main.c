@@ -734,15 +734,22 @@ static void ui_thread(void *arg)
                 draw_layout();
         } else {
             /* ---- 游戏态：面板常驻，三个按钮 ---- */
-            /* ---- 快捷键：按下沿切换面板 ----
-             * 三键组合用"全部按住"判定，再配边沿检测，
-             * 这样按住不放只切一次，不会来回跳。 */
+            /* ---- 快捷键：一键翻译并显隐 ----
+             * ★ 2026-11-14 改：插件不再有自己的设置/说明/按钮。
+             *   按一次 = 截图 + 翻译 + 弹面板；再按一次 = 收起。
+             *   这样"面板"只剩一个职责：显示文字。 */
             {
                 u32 mask  = trigger_mask();
                 int combo = ((held & mask) == mask);
 
-                if (combo && !g_trig_prev)
-                    g_panel_on = !g_panel_on;
+                if (combo && !g_trig_prev) {
+                    if (g_panel_on) {
+                        g_panel_on = false;
+                    } else {
+                        g_panel_on = true;
+                        do_translate();     /* 内部会 hud_draw 并贴到 LCD */
+                    }
+                }
                 g_trig_prev = combo;
             }
 
@@ -756,24 +763,10 @@ static void ui_thread(void *arg)
             game_pause(g_cfg.beta_pause &&
                        (g_mode != MODE_GAME || g_panel_on) ? 1 : 0);
 
-            /* ★ 键盘操作面板按钮：←/→ 选，A 确认。
-             *   触摸停用期间这是**唯一**通路。没有它，"翻译/测试"这几个
-             *   只有触摸能到的分支会被 GCC 判成死代码、再被 --gc-sections 裁掉
-             *   （实测产物从 1.28MB 掉到 374KB，curl/mbedtls 全没了）。 */
-            if (g_panel_on) {
-                if (down & KEY_LEFT)  { if (--g_sel < 0) g_sel = BTN_COUNT - 1; }
-                if (down & KEY_RIGHT) { if (++g_sel >= BTN_COUNT) g_sel = 0; }
-
-                if (down & KEY_A) {
-                    int b = g_sel;
-
-                    if (b == BTN_TRANSLATE)
-                        do_translate();
-                    else if (b == BTN_SETTINGS) { g_sel = 0; g_mode = MODE_SETTINGS; }
-                    else if (b == BTN_HELP)     { help_init(9); g_mode = MODE_HELP; }
-                    else if (b == BTN_TEST)     do_test();
-                }
-            }
+            /* ★ 2026-11-14：面板里的按钮**全部取消**，这里不再有
+             *   "←/→ 选按钮 + A 确认"那段。设置/说明/安装教程已搬到
+             *   AIConsole 的「更多 → 插件」页（app/source/ui/sc_plugins.c）。
+             *   插件只负责显示，不承载任何可配置项。 */
 
             if (touch_pressed(&tp)) {
                 int b = hud_button_at(&g_cfg, tp.px, tp.py);
