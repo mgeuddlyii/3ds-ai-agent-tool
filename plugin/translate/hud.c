@@ -288,6 +288,17 @@ bool hud_draw(const PluginCfg *cfg, HudState st, const char *text)
     return true;
 }
 
+/* 抓屏用的缓冲：**静态**，不走 malloc。
+ *
+ * ★★ 2026-11-14 真机定位：痕迹里两块屏都是 `lcd_visible=0 fmt=1 fb=非零`，
+ *   也就是说"拿不到帧缓冲"根本不成立 —— 真正失败的是 `malloc(230400)`。
+ *   插件跑在游戏进程里，堆只有很小一块（MemorySize 5MiB 是 BSS 额度，
+ *   不是堆），所以 230KB 的动态申请必然失败，而失败原因被"抓屏失败"
+ *   三个字盖住了。
+ *   换成静态缓冲后不需要堆，也顺带省掉每次抓屏的分配/释放。
+ *   调用方**不要 free** 它。 */
+static u8 g_shot[(size_t)LCD_W_TOP * LCD_H_TOP * 3];   /* 288KB，bss */
+
 /* 抓屏失败时留一句**具体**的原因。原来面板只说"抓屏失败"，用户和我们都
  * 不知道是没画面、格式不认还是内存不够 —— 这三种的处理完全不同。 */
 static char g_grab_err[96];
@@ -310,35 +321,30 @@ bool hud_grab(gfxScreen_t scr, u8 **out, int *w, int *h)
     scr0 = (scr == GFX_TOP) ? 0 : 1;
     rc   = lcd_visible(scr0, &f);
 
-    /* ★ 2026-11-14：配置的那块屏可能**根本没有画面**（有些游戏会关掉下屏，
-     *   此时那块屏的 FBA 寄存器是 0）。这种情况下换另一块屏去抓，
-     *   总比直接报"抓屏失败"有用 —— 用户要的是译文，不是非得在某块屏上。 */
+    /* 配置的那块屏可能**根本没有画面**（有些游戏会关掉下屏，
+     * 此时那块屏的 FBA 寄存器是 0）。换另一块屏去抓。 */
     if (rc != 0) {
         if (lcd_visible(scr0 ^ 1, &f) != 0) {
             snprintf(g_grab_err, sizeof g_grab_err,
-                     "两块屏都拿不到画面（FBA=0）");
+                     "两块屏都没有画面（FBA=0）");
             return false;
         }
-        snprintf(g_grab_err, sizeof g_grab_err,
-                 "配置的屏没画面，已改用另一块");
     }
 
     n = (size_t)f.w * f.h * 3;
-    *out = malloc(n);
-    if (!*out) {
+    if (n > sizeof g_shot) {
         snprintf(g_grab_err, sizeof g_grab_err,
-                 "内存不够（要 %u KB）", (unsigned)(n / 1024));
+                 "屏太大（%ux%u）放不下", (unsigned)f.w, (unsigned)f.h);
         return false;
     }
 
-    if (lcd_grab(&f, 0, 0, f.w, f.h, *out) != 0) {
-        free(*out);
-        *out = NULL;
+    if (lcd_grab(&f, 0, 0, f.w, f.h, g_shot) != 0) {
         snprintf(g_grab_err, sizeof g_grab_err,
                  "读像素失败 fmt=%u bpp=%u", (unsigned)f.fmt, (unsigned)f.bpp);
         return false;
     }
 
+    *out = g_shot;
     *w = f.w;
     *h = f.h;
     return true;

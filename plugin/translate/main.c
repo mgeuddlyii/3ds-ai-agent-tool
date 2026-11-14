@@ -856,7 +856,7 @@ static void do_translate(void)
     else
         hud_draw(&g_cfg, HUD_ERROR, g_text);
 
-    free(px);
+    /* px 指向 hud_grab 的**静态**缓冲，不要 free（堆里出来的才会 free） */
     g_busy = 0;
 }
 
