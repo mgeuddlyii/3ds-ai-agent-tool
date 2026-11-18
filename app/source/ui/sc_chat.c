@@ -55,6 +55,7 @@
 
 #include <3ds.h>
 #include <math.h>            /* ctx_ring_draw 每环一次 cosf/sinf */
+#include <stdarg.h>          /* vlog()：语音黑匣子 */
 #include <stdio.h>
 #include <string.h>
 #include "uistr.h"
@@ -735,6 +736,49 @@ static const char *voice_bar(int rms)
     return b;
 }
 
+/* ---- 语音黑匣子：单独的 voice.log --------------------------------------
+ *
+ * 为什么另开一个文件，而不是复用 boot_mark：
+ *   boot.log 是**滚动**的（64KB 上限），而主循环每 32 帧就刷一行 iter/frame ——
+ *   两分钟就能把 64KB 填满。于是"上一趟按过 ZL 没有、卡在哪一步"这类证据
+ *   会被帧日志挤掉。2026-11-18 就是这么丢的：卡上 boot.log 里一条 asr 都没有，
+ *   只能得出"这趟没触发识别"，而真正要回答的是"为什么没触发"。
+ *
+ * 语音已经被反复报"不能用"，所以它必须有**不会被挤掉**的记录：
+ *   ZL 边沿、麦克风初始化结果、录音时长/RMS、ASR 的 provider/字节/HTTP/耗时/错误。
+ * 追加写 + 立即 fclose，走 FTP 就能直接看。
+ */
+static void vlog(const char *fmt, ...)
+{
+    char    buf[192];
+    va_list ap;
+    FILE   *f;
+
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof buf, fmt, ap);
+    va_end(ap);
+
+    f = fopen("sdmc:/3ds/aiconsole/voice.log", "ab");
+    if (!f)
+        return;
+    fprintf(f, "%llu %s\n", (unsigned long long)osGetTime(), buf);
+    fclose(f);
+}
+
+/* 录音期间的状态行节流：每 250ms 更新一次（每帧写会闪，也会白耗 SD 之外的
+ * 东西）。g_voice_shown 记的是"上次写过的 250ms 刻度"。 */
+static int g_voice_shown = -1;
+
+static void voice_live_status(void)
+{
+    int step = voice_ms() / 250;
+
+    if (step == g_voice_shown)
+        return;
+    g_voice_shown = step;
+    app_status_set("录音 %.1fs %s", voice_ms() / 1000.0, voice_bar(voice_rms()));
+}
+
 static void voice_begin(void)
 {
     if (!voice_available()) {
@@ -742,18 +786,22 @@ static void voice_begin(void)
          * 模拟器里这就是常态，用户得知道是"这台机器/这个环境"而不是坏了。 */
         app_status_set(S(S0103));
         app_note("voice: unavailable mic_rc=%d", voice_mic_rc());
+        vlog("begin FAIL unavailable mic_rc=%d", voice_mic_rc());
         return;
     }
     if (!voice_start()) {
         app_status_set(S(S0104));
         app_note("voice: start failed rc=%d", voice_mic_rc());
+        vlog("begin FAIL start rc=%d", voice_mic_rc());
         return;
     }
 
-    g_rec        = true;
-    g_asr_armed  = false;
+    g_rec         = true;
+    g_asr_armed   = false;
+    g_voice_shown = -1;
     app_status_set(S(S0105));
     app_note("voice: begin");
+    vlog("begin ok");
 }
 
 static void voice_finish(void)
@@ -779,11 +827,13 @@ static void voice_finish(void)
     if (ms < VOICE_MIN_MS) {
         app_status_set(S(S0106));
         app_note("voice: too short ms=%d bytes=%d rms=%d", ms, n, rms);
+        vlog("stop TOO_SHORT ms=%d bytes=%d rms=%d", ms, n, rms);
         return;
     }
 
     app_note("voice: captured ms=%d bytes=%d rms=%d sent=%d",
              ms, n, rms, (int)sent);
+    vlog("stop ok ms=%d bytes=%d rms=%d sent=%d", ms, n, rms, (int)sent);
     app_status_set(S(S0107));
     g_asr_armed = true;         /* 下一帧才真的发（见文件头两帧拆法的说明） */
 }
@@ -797,11 +847,24 @@ static void voice_finish(void)
  *
  * 参数用值拷贝 `r`：下面的界面代码全是按 `r.` 写的，
  * 改成指针得把几十处 `.` 换 `->`，那种大范围机械替换最容易漏一处。 */
+/* 识别起点（毫秒）。声明放在这里是因为 asr_apply 要拿它算耗时，
+ * 而真正的状态块在 asr_apply 之后（见下方"异步识别"那一段）。 */
+static u64 g_asr_t0;
+
 static void asr_apply(const AsrResult *src, size_t n)
 {
     AsrResult r = *src;
 
     boot_mark("asr", "done ok=%d http=%ld", (int)r.ok, r.http);
+    /* 结论行：耗时 + HTTP + 错误原文。
+     * voice.log 里 begin/done **成对**出现才说明请求真的发出去了：
+     *   只有 begin 没有 done → 卡在请求里（线程没回来）
+     *   http<0              → 根本没连上（DNS/TLS/超时）
+     *   http=401/403        → 连上了被拒（Key/额度）
+     * 这三种在屏上都只显示一句"识别失败"，所以必须在这里能分开。 */
+    vlog("asr done ok=%d http=%ld ms=%d len=%d err=%s",
+         (int)r.ok, r.http, (int)(osGetTime() - g_asr_t0), r.text_len,
+         r.err[0] ? r.err : "-");
     /* 网络三段耗时（DNS/TCP/TLS）—— 用来复核"连接复用"到底有没有生效。
      * 第一次是冷的，第二次起 dns/conn/tls 应当明显变小。 */
     {
@@ -916,6 +979,7 @@ static void do_asr(void)
     if (g_asr_n < 2) {
         app_status_set(S(S0108));
         app_note("voice: empty pcm");
+        vlog("asr SKIP empty pcm");
         return;
     }
 
@@ -924,9 +988,14 @@ static void do_asr(void)
     app_note("voice: asr provider=%s model=%s bytes=%d key=%d refilled=%d",
              d->name, d->model, (int)g_asr_n, asr_key()[0] ? 1 : 0,
              asr_key_refilled());
+    /* 这一行是排"到底卡在哪"的起点：有它、没有 done，就是在请求里；
+     * 连它都没有，说明根本没走到识别（ZL 没读到 / 录得太短）。 */
+    vlog("asr begin provider=%s model=%s bytes=%d key=%d",
+         d->name, d->model, (int)g_asr_n, asr_key()[0] ? 1 : 0);
 
     memset(&g_asr_res, 0, sizeof g_asr_res);
     g_asr_done = 0;
+    g_asr_t0   = osGetTime();
     g_asr_busy = true;
 
     g_asr_th = threadCreate(asr_thread_main, NULL,
@@ -3108,10 +3177,16 @@ static void chat_handle(u32 down, u32 held)
         bool zl_edge = !g_zl_prev;
 
         g_zl_prev = zl_now;
+        /* ZL 边沿本身也要留痕：如果 voice.log 里连 "zl down" 都没有，
+         * 那就不是识别的问题，是这个键根本没被读到（或用户按的是别处）。
+         * 这一行把"没反应"和"识别失败"彻底分开 —— 两者在屏上长得一样。 */
+        if (zl_edge)
+            vlog("zl down");
         if (zl_edge && g_asr_busy) {
             /* 上一句还在识别：不重开录音。重开会覆盖 g_asr_pcm 指向的
              * 录音缓冲，而线程正在读它 —— 识别出来的会是两句话的混合。 */
             app_status_set(S(S0107));
+            vlog("zl ignored: asr busy");
             return;
         }
         if (zl_edge)
@@ -3132,12 +3207,17 @@ static void chat_handle(u32 down, u32 held)
          *   自己那份每帧工作一并搬进来 —— 否则挡掉的不只是别的键。 */
         if (g_rec) {
             voice_pump();
+            /* 每 250ms 把"录了几秒 / 有没有声音"写到状态行。
+             * 语音一直是"按了没反应"的重灾区 —— 至少要让用户当场看出
+             * 麦克风到底有没有在工作，而不是松手之后才发现是空的。 */
+            voice_live_status();
             if (voice_full())
                 voice_finish();
         }
         return;                     /* 按住期间每帧都停在这里，别往下走 */
     } else if (g_zl_prev) {
         g_zl_prev = false;
+        vlog("zl up");
         voice_finish();             /* 松手：收尾并发识别 */
         return;
     }
@@ -3234,6 +3314,22 @@ static void chat_handle(u32 down, u32 held)
             dockui_ime_touch(tx, ty);
         else
             dockui_ime_keys(down);
+
+        /* ★★ 2026-11-18 用户反馈：「打完了发不上去，我只有退到主页面后才能发送」。
+         *   键盘里按 Y（或点动作行最后一格「发送」）现在直接发，
+         *   不必再"收起键盘 → 回聊天格 → 找发送键"绕一圈。
+         *
+         *   发送登记仍然走 dockui_take_send() —— 和键盘格那个「送到对话」
+         *   是同一个开关，"发送只有一条路"这条约束没有破。
+         *   发之前先收起键盘：发出去的那条气泡在上屏，键盘盖着下屏，
+         *   收起来才能立刻看到"确实发出去了"（这正是用户说的"看不到"）。 */
+        if (dockui_take_send()) {
+            dockui_ime_close();
+            dockui_ime_bind(NULL, 0);
+            do_send();
+            return;
+        }
+
         /* ★ 这一帧把它关掉了 → 立刻解绑。
          *   不解绑的话，若本屏随后被 leave（用户按 B 一路退出去），
          *   g_ime_dst 仍指着这个屏的静态 g_input。虽然它也是静态的、
@@ -3257,6 +3353,7 @@ static void chat_handle(u32 down, u32 held)
              *   先判它，再交给面板 —— 它是**画在页眉上**的，而页眉
              *   不属于面板内容区，dockui_touch 不会认它。 */
             if (g_tab == 1 && w_hit(&CHAT_BTN_MIC, tx, ty)) {
+                vlog("mic tap rec=%d", g_rec ? 1 : 0);
                 if (g_rec) { g_touch_arm = false; voice_finish(); }
                 else       { voice_begin(); g_touch_arm = true; }
                 return;
@@ -3317,6 +3414,9 @@ static void chat_handle(u32 down, u32 held)
          * 攒着不采，用户会看到"录了 2 秒只出来 0.5 秒"，而这在内层
          * 完全看不出来（voice_pump 老老实实返回 0）。 */
         voice_pump();
+        /* 触摸开录（麦克风按钮）走的是这条路，不是 ZL 那条 ——
+         * 状态行同样要实时涨，否则又变成"按了没反应"。 */
+        voice_live_status();
         /* 只认「录满 5 秒硬上限」兜底；正常停录由 ZL 释放边沿触发
          * （见下方 zl_edge 分支）。不再用静音检测（voice_silent_long）提前切，
          * 否则说话中途一停顿就被误停、要重录。 */
@@ -3381,7 +3481,11 @@ static void chat_handle(u32 down, u32 held)
         if (w_hit(&CHAT_BTN_KBD,  tx, ty)) {
             dockui_ime_bind(g_input, CHAT_TEXT);
             dockui_ime_open();
-            app_status_set("拼音：打字母，点候选上屏");
+            /* 对话页是唯一该"打完就发"的地方：开了之后
+             * Y = 发送、SELECT = 收起（见 dockui_ime_keys 的注释）。
+             * 必须在 open 之后调 —— open 会把它复位。 */
+            dockui_ime_allow_send(true);
+            app_status_set("拼音：选候选上屏，Y 直接发送");
             return;
         }
         if (any_think() && w_hit(&CHAT_BTN_THINK, tx, ty)) {
@@ -3427,7 +3531,8 @@ static void chat_handle(u32 down, u32 held)
         /* ★ 同键盘按钮：走我们自己的拼音 IME（系统键盘没有中文拼音页） */
         dockui_ime_bind(g_input, CHAT_TEXT);
         dockui_ime_open();
-        app_status_set("拼音：打字母，点候选上屏");
+        dockui_ime_allow_send(true);      /* 同上：open 之后才生效 */
+        app_status_set("拼音：选候选上屏，Y 直接发送");
         return;
     }
     if (down & KEY_X) {

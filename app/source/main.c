@@ -219,10 +219,16 @@ static void app_thread_main(void *arg)
     int probe_frames = 0;
 
     while (aptMainLoop()) {
-        /* 探针：前 8 帧逐帧记录，之后每 32 帧一次。
+        /* 探针：前 8 帧逐帧记录，之后每 512 帧一次。
          * 若连 iter 都没有 = 阻塞在 aptMainLoop；
-         * 若只有 iter 0 = 阻塞在循环体内（大概率 r_end 的 vblank 等待）。 */
-        if (frames < 8 || (frames & 31) == 0)
+         * 若只有 iter 0 = 阻塞在循环体内（大概率 r_end 的 vblank 等待）。
+         *
+         * ★ 2026-11-18：32 → 512。boot.log 是 64KB 的**滚动**文件，
+         *   每 32 帧一行 = 60fps 下每秒两行，两分钟就把整份日志冲干净。
+         *   那天用户报"语音不能用"，卡上日志里一条 asr 都找不到 ——
+         *   不是没触发，是被帧日志挤掉了。改成 512 帧（约 8.5 秒一行），
+         *   同样能看出"是否卡死在主循环"，但历史能留半小时以上。 */
+        if (frames < 8 || (frames & 511) == 0)
             boot_mark("iter", "frames=%d", frames);
 
         u64 t_h0 = osGetTime();
@@ -366,7 +372,8 @@ static void app_thread_main(void *arg)
             w_hdl = w_rdr = w_swp = 0;
             w_n = 0;
         }
-        if ((frames & 31) == 0)
+        /* 同上：512 帧一行（原来 32 帧，两分钟就冲掉整份 boot.log）。 */
+        if ((frames & 511) == 0)
             boot_mark("frame", "%d", frames);
     }
 

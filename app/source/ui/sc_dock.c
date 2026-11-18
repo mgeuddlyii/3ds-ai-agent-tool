@@ -834,12 +834,17 @@ static Rect ime_cand_rect(int i)
     return r;
 }
 
-/* 动作行 4 个：页面切换 / 空格 / 退格 / 上屏（4×72 + 3×4 = 300）。 */
+/* 动作行 5 个：页面切换 / 空格 / 退格 / 上屏 / 发送（5×56 + 4×5 = 300）。
+ *
+ * ★ 2026-11-18：从 4 个扩到 5 个，加的就是「发送」。
+ *   原来这一行只有"上屏"，发出去必须先按 B 收起键盘、再回聊天格找发送键 ——
+ *   用户的原话是「打完了发不上去，我只有退到主页面后才能发送」。
+ *   一个输入法没有"发送"这一格，就是逼人绕路。 */
 static Rect ime_act_rect(int i)
 {
-    static const float ws[4] = { 72.0f, 72.0f, 72.0f, 72.0f };
+    static const float ws[5] = { 56.0f, 56.0f, 56.0f, 56.0f, 56.0f };
     Rect r;
-    r.x = (float)W_BOT_MARGIN + (float)i * (72.0f + 4.0f);
+    r.x = (float)W_BOT_MARGIN + (float)i * (56.0f + 5.0f);
     r.y = IME_ACT_Y;
     r.w = ws[i];
     r.h = 30.0f;
@@ -858,6 +863,54 @@ void dockui_ime_bind(char *buf, size_t cap)
     g_ime_cap = buf ? cap : 0;
 }
 
+/* 当前上屏目标（没 bind 就是工作台面板的 g_text）—— 回显要用它。 */
+static const char *ime_dst_now(void)
+{
+    return g_ime_dst ? g_ime_dst : txt();
+}
+
+/* 取字符串的**尾部**，按**像素**装进 avail_px，切点对齐到 UTF-8 码点起点。
+ *
+ * 为什么是尾部不是头部：输入框里的字越打越多，用户想看的是"我刚打的
+ * 那几个字进去了没有"，而不是这句话的开头。行宽只有 300px、还是左对齐
+ * 画的，所以溢出时被砍掉的是右边 —— 那正好要把有限的宽度留给尾部。
+ *
+ * 为什么按像素而不是按字节：一个汉字 16px、一个字母 8px，按字节切
+ * 在"中文夹英文"的句子上会时松时紧，松的时候整行顶出右边缘，
+ * 被护栏记成溢出（w_overflow_last 会一直挂着这一行）。 */
+static const char *ime_tail_px(const char *s, int avail_px)
+{
+    int n = (int)strlen(s);
+    int used = 0;
+    int i = n;
+
+    if (avail_px <= 0)
+        return s + n;
+
+    /* 从尾部往前按码点累加宽度 */
+    while (i > 0) {
+        int  start = i - 1;
+        char cp[8];
+        int  len, cw;
+
+        while (start > 0 && ((unsigned char)s[start] & 0xC0) == 0x80)
+            --start;
+
+        len = i - start;
+        if (len > (int)sizeof cp - 1)
+            len = (int)sizeof cp - 1;
+        memcpy(cp, s + start, (size_t)len);
+        cp[len] = '\0';
+
+        cw = text_width(cp);
+        if (used + cw > avail_px)
+            break;
+        used += cw;
+        i = start;
+    }
+    return s + i;
+}
+
 /* ---- 通用行内编辑器（2026-10-27）----------------------------------------
  *
  * 为什么要有这一层：`ui_input_text` 走 system swkbd，而**模拟器里它会弹一个
@@ -871,6 +924,19 @@ void dockui_ime_bind(char *buf, size_t cap)
 static bool   g_ime_edit;      /* true = 处于"编辑某个具体字段"的状态 */
 static char   g_ime_title[40];
 
+/* 宿主允许在键盘里直接发送吗？
+ *
+ * 只有对话页该开 —— 那里"打完就发"才是主流程。设置页/Key 编辑页的
+ * 键盘是"填一格然后回车"的语义，Y 在那里本来就该是空格，贸然改成
+ * 发送等于把一个输入框搞坏。所以这是个**显式开关**，默认关，
+ * 由 dockui_ime_allow_send() 打开，ime_open/close 时复位。 */
+static bool   g_ime_sendable;
+
+void dockui_ime_allow_send(bool on)
+{
+    g_ime_sendable = on;
+}
+
 /* 这两个定义在后面（ime_append → ime_commit_idx），编辑器 API 先用到它们。 */
 static bool ime_append(const char *utf8);
 static void ime_commit_idx(int i);
@@ -882,6 +948,8 @@ bool dockui_edit_open(char *dst, size_t cap, const char *title)
     dockui_ime_bind(dst, cap);
     g_ime = true;
     g_ime_edit = true;
+    g_ime_sendable = false;     /* 编辑字段的键盘不发送，Y 仍是空格 */
+    g_send_req = false;
     g_sym_page = false;
     g_cpage = 0;
     ime_reset();
@@ -893,6 +961,8 @@ void dockui_edit_close(void)
 {
     g_ime = false;
     g_ime_edit = false;
+    g_ime_sendable = false;
+    g_send_req = false;
     g_ime_title[0] = '\0';
     ime_reset();
 }
@@ -980,7 +1050,7 @@ static void ime_commit_idx(int i)
 void dockui_render_ime(void)
 {
     int n = ime_cand_count();
-    char buf[64];
+    char buf[160];
 
     /* 候选（按页） */
     {
@@ -1017,13 +1087,36 @@ void dockui_render_ime(void)
         }
     }
 
-    /* 输入回显 + 状态。
-     * ★ 2026-10-27：y 58 → 40。键盘从 3 行扩成 4 行之后第一行落在 64，
-     *   回显还留在 58 就被字母键压掉一半（实拍里那行字只剩上半截）。 */
-    snprintf(buf, sizeof buf, "%s%s", ime_input(),
-             ime_input()[0] ? "" : "（打字母，如 ni / nihao）");
-    w_line((float)W_BOT_MARGIN, 40.0f, (float)W_BOT_USABLE, buf,
-           ime_input()[0] ? w_c(C_SLOT_ACCENT) : w_c(C_SLOT_MUTED));
+    /* 回显：**已上屏的字** + 正在拼的拼音。
+     *
+     * ★★ 2026-11-18 用户反馈：「我输入进去了之后，我无法看到它有没有发送上去」。
+     *   原来这一行只画 ime_input()（正在拼的拼音），候选一上屏就变回空白 ——
+     *   于是"我刚打的句子到底进没进输入框"在屏幕上是**完全看不出来**的，
+     *   更别说判断"发出去了没有"。
+     *   现在左边是已上屏内容的尾部，右边用 '|' 接上正在拼的拼音：
+     *     你好世界|nihao          ← 上屏了"你好世界"，还在拼 nihao
+     *     你好世界                ← 拼完了，按 Y 就能发
+     *     |ni                     ← 还没上屏
+     *
+     * ★ 2026-10-27 的 y 58 → 40 仍然有效：键盘从 3 行扩成 4 行之后
+     *   第一行落在 64，回显留在 58 会被字母键压掉一半（实拍只剩上半截）。 */
+    {
+        const char *pin  = ime_input();
+        const char *dst  = ime_dst_now();
+        /* 先给拼音留出它实际占的宽度，剩下的全归已上屏的字 ——
+         * 这样"拼音打得很长"也不会把整行顶出 300px。 */
+        int room = W_BOT_USABLE - text_width(pin) -
+                   (pin[0] ? text_width("|") : 0) - 2;
+        const char *tail = ime_tail_px(dst, room);
+
+        if (!tail[0] && !pin[0])
+            snprintf(buf, sizeof buf, "%s", "（打字母，上屏后按 Y 发送）");
+        else
+            snprintf(buf, sizeof buf, "%s%s%s", tail, pin[0] ? "|" : "", pin);
+
+        w_line((float)W_BOT_MARGIN, 40.0f, (float)W_BOT_USABLE, buf,
+               (pin[0] || tail[0]) ? w_c(C_SLOT_ACCENT) : w_c(C_SLOT_MUTED));
+    }
 
     /* 字母/数字/符号键 */
     for (int row = 0; row < IME_ROW_N; ++row) {
@@ -1036,21 +1129,32 @@ void dockui_render_ime(void)
         }
     }
 
-    /* 动作行：切页 / 空格 / 退格 / 上屏 */
+    /* 动作行：切页 / 空格 / 退格 / 上屏 / 发送 */
     {
         Rect a0 = ime_act_rect(0), a1 = ime_act_rect(1);
-        Rect a2 = ime_act_rect(2), a3 = ime_act_rect(3);
+        Rect a2 = ime_act_rect(2), a3 = ime_act_rect(3), a4 = ime_act_rect(4);
+
         w_button(&a0, g_sym_page ? "abc" : "123", W_BTN_NORMAL);
         w_button(&a1, "空格", W_BTN_NORMAL);
         w_button(&a2, "退格", W_BTN_NORMAL);
-        w_button(&a3, "上屏", W_BTN_PRIMARY);
+        w_button(&a3, "上屏", W_BTN_NORMAL);
+        /* 最后一格：对话页是「发送」（主色 —— 这是"打完就走"的那一下，
+         * 不做成主色的话五个按钮长得一样，用户还得读一遍字才找到出口）；
+         * 别的宿主是「收起」（那里"发送"没有意义）。 */
+        w_button(&a4, g_ime_sendable ? "发送" : "收起",
+                 g_ime_sendable ? W_BTN_PRIMARY : W_BTN_NORMAL);
     }
 
     /* 提示行：右手边要留给页码，所以只写四个键、不带 "=" 与多余空格。
      * 原来那句 "A=上屏 X=退格 Y=空格 SELECT=完成 B=取消" 实测 291px > 256px，
-     * 被护栏记成溢出（右边还压着页码）。B=取消 是常识，省掉。 */
+     * 被护栏记成溢出（右边还压着页码）。B=取消 是常识，省掉。
+     *
+     * ★ 2026-11-18：对话页的 Y 从"空格"改成"发送"、SELECT 改成"收起"。
+     *   屏上写的必须就是按键真正做的事 —— 这一条比省几个像素重要得多。 */
     w_line((float)W_BOT_MARGIN, 218.0f, (float)W_BOT_USABLE - 44.0f,
-           "A上屏 X退格 Y空格 SELECT完成", w_c(C_SLOT_FAINT));
+           g_ime_sendable ? "A上屏 X退格 Y发送 SELECT收起"
+                          : "A上屏 X退格 Y空格",
+           w_c(C_SLOT_FAINT));
 }
 
 bool dockui_ime_touch(int tx, int ty)
@@ -1099,7 +1203,7 @@ bool dockui_ime_touch(int tx, int ty)
     /* 动作 */
     {
         Rect a0 = ime_act_rect(0), a1 = ime_act_rect(1);
-        Rect a2 = ime_act_rect(2), a3 = ime_act_rect(3);
+        Rect a2 = ime_act_rect(2), a3 = ime_act_rect(3), a4 = ime_act_rect(4);
         if (w_hit(&a0, tx, ty)) { g_sym_page = !g_sym_page; g_cpage = 0; return true; }
         if (w_hit(&a1, tx, ty)) {
             int nc = ime_cand_count();
@@ -1109,6 +1213,15 @@ bool dockui_ime_touch(int tx, int ty)
         }
         if (w_hit(&a2, tx, ty)) { g_cpage = 0; ime_backspace(); return true; }
         if (w_hit(&a3, tx, ty)) { ime_commit_idx(0); return true; }
+        if (w_hit(&a4, tx, ty)) {
+            /* 还在拼的那一段先上屏，再决定发还是收 ——
+             * 不先上屏的话，"ni" 会留在输入串里，发出去的是没有它的半句话。 */
+            int nc = ime_cand_count();
+            if (nc > 0) ime_commit_idx(0);
+            if (g_ime_sendable) g_send_req = true;
+            else                g_ime     = false;
+            return true;
+        }
     }
 
     return true;      /* 键盘展开时，点空白也不该穿透到别的面板 */
@@ -1126,7 +1239,41 @@ void dockui_ime_keys(u32 down)
      *   留在这里会造成"两处各吃一次"，正是真机上"按 B 没反应"的来源。 */
     if (down & KEY_A) { ime_commit_idx(0); return; }
     if (down & KEY_X) { g_cpage = 0; ime_backspace(); return; }
-    if (down & KEY_Y) {
+
+    /* ★★ 2026-11-18 用户反馈：「打完了发不上去，我只有退到主页面后才能发送」。
+     *
+     *   查下来是键位自相矛盾：
+     *     · 键盘格的页脚写着「Y 发送」；
+     *     · 可一进 IME，Y 被这里吃成"空格"，而且是**看不见的**空格；
+     *     · IME 里没有任何发送入口（动作行只有 123/空格/退格/上屏）；
+     *     · SELECT 的提示写着"完成"，这里却根本没接 SELECT。
+     *   于是用户只能：收起键盘 → 回聊天格 → 再找发送键。
+     *   三个自相矛盾叠在一起，出来的就是"发不出去"。
+     *
+     *   现在（**仅当宿主开了 sendable**，即对话页）：
+     *     Y      = 先上屏，再登记发送（宿主这一帧就取走并发出去）
+     *     SELECT = 收起键盘（不发送，字留在输入框里，回聊天格按 A 再发）
+     *     空格   = 只保留按钮，不再占着 Y
+     *   设置页那类"填一格"的键盘不开 sendable，Y 仍是空格 —— 见 g_ime_sendable。 */
+    if (g_ime_sendable && (down & KEY_Y)) {
+        int nc = ime_cand_count();
+
+        if (nc > 0)
+            ime_commit_idx(0);
+        g_send_req = true;
+        return;
+    }
+
+    if (g_ime_sendable && (down & KEY_SELECT)) {
+        int nc = ime_cand_count();
+
+        if (nc > 0)
+            ime_commit_idx(0);
+        g_ime = false;              /* 只收起键盘；字已经在上屏目标里了 */
+        return;
+    }
+
+    if (down & KEY_Y) {             /* 非对话页：老行为，Y = 空格 */
         int nc = ime_cand_count();
 
         if (nc > 0)
@@ -1949,11 +2096,17 @@ void dockui_ime_open(void)
     ime_reset();
     g_cpage = 0;
     g_ime = true;
+    g_ime_sendable = false;     /* 由宿主自己显式打开（见 allow_send） */
+    /* 上一次会话可能留了一个没被取走的"发送"登记。
+     * 不清的话，这次刚打开键盘就会自己发一条 —— 而且那条是上一轮的文字。 */
+    g_send_req = false;
 }
 
 void dockui_ime_close(void)
 {
     g_ime = false;
+    g_ime_sendable = false;
+    g_send_req = false;
 }
 
 void dockui_rail_rect(int i, float *x, float *y, float *w, float *h)

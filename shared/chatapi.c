@@ -24,6 +24,7 @@
 #include "doubao.h"
 #include "minijson.h"
 #include "provider.h"
+#include "httpx.h"
 
 #include <3ds.h>
 #include <stdio.h>
@@ -977,23 +978,97 @@ static bool demo_stream(const char *user_text, const ChatCtx *ctx,
     return total > 0;
 }
 
-/* --------------------------------------------------------------------------
- * 共用的连接建立
+
+/* 非流式：把 body 收进定长缓冲。
  *
- * 把 open → 头 → body → begin → status 这段走完。成功（R_SUCCEEDED 且
- * status==200）返回 true，此时 *ctx 是活的、body 还没读；失败时已经把
- * ctx/httpc 收干净并填好 out，调用方直接返回即可。
+ * ⚠️ 无论收没收下都要 return len：返回值是"我处理了几个字节"，
+ *    不是 len 就等于叫 curl 中止 —— 截断该由 rs.trunc 单独说，
+ *    不能借返回值表达，否则会变成一个看不出原因的 -23。 */
+typedef struct {
+    char  *buf;
+    size_t cap;
+    size_t len;
+    bool   trunc;
+} RawSink;
+
+static size_t sink_raw(const char *data, size_t len, void *user)
+{
+    RawSink *s = (RawSink *)user;
+    size_t   room = s->cap - 1 - s->len;
+
+    if (len > room) {
+        if (room > 0) {
+            memcpy(s->buf + s->len, data, room);
+            s->len += room;
+        }
+        s->trunc = true;
+    } else {
+        memcpy(s->buf + s->len, data, len);
+        s->len += len;
+    }
+    s->buf[s->len] = '\0';
+    return len;
+}
+
+/* --------------------------------------------------------------------------
+ * 共用的发送
+ *
+ * 成功 = HTTP 200 且 body 已经**逐段**喂给 sink（非流式收进缓冲，
+ * 流式边走边解 SSE）。失败时 out->error 里一定有一句能指明原因的话，
+ * 调用方直接返回即可。
+ *
+ * ★★ 2026-11-18：从 httpc 换成 httpx（curl + mbedtls）。
+ *
+ *   真机日志（11-18 晚，用户报"发送了错误代码"）：
+ *     http begin provider=deepseek model=deepseek-chat len=6 stream=1
+ *     http stream fallback http=-129542144 err=请求失败 0xd8a0a03c
+ *
+ *   0xD8A0A03C 是 3DS 结果码，拆开是「模块 HTTP(40) / 描述 60」，
+ *   而 60 就是 **Failed to verify TLS certificate**。
+ *   也就是说请求根本没出网卡：httpc 的 TLS 栈只到 TLS 1.1、内置证书库
+ *   也太老，DeepSeek 那边握手直接拒了。
+ *
+ *   这不是新坑 —— 2026-10 的 OTA 就是同一个病根，当时改走 httpx 修好了
+ *   （见 httpx.h 开头）。聊天这条路一直没跟着改，于是同一个应用里
+ *   有两套网络栈、只有一套能用。现在统一：HTTPS 一律走 httpx。
  * ----------------------------------------------------------------------- */
-/* 参数名用 chat_ctx 而不是 ctx：下面还有个 httpcContext *ctx，
- * 两者同名会遮蔽，读起来也容易搞混（一个装上下文、一个装连接）。 */
+
+/* 非 200 时留一份 body 开头，给 http_word() 当"服务端说了什么"。
+ * 只留 256 字节：错误响应本来就是一句话，收全了也没人看。 */
+static char   g_peek[257];
+static size_t g_peek_len;
+
+typedef struct {
+    HxSink inner;
+    void  *user;
+} PeekWrap;
+
+static size_t sink_peek(const char *data, size_t len, void *user)
+{
+    PeekWrap *w = (PeekWrap *)user;
+    size_t    room = sizeof g_peek - 1 - g_peek_len;
+
+    if (room > 0) {
+        size_t take = len < room ? len : room;
+        memcpy(g_peek + g_peek_len, data, take);
+        g_peek_len += take;
+        g_peek[g_peek_len] = '\0';
+    }
+    return w->inner ? w->inner(data, len, w->user) : len;
+}
+
 static bool open_and_send(const ProviderDef *p, const char *model,
                           const char *apikey, const ChatCtx *chat_ctx,
                           const char *user_text, int thinking,
-                          bool stream, httpcContext *ctx, u32 *status,
+                          bool stream, HxSink sink, void *user,
                           ChatResult *out)
 {
-    char url[256];
-    Result r;
+    static char url[256];
+    static char hdr_auth[560];
+    static const char *headers[4];
+    HxReq req;
+    char  err[192];
+    long  code;
 
     snprintf(url, sizeof url, "%s/chat/completions", p->base_url);
 
@@ -1008,87 +1083,53 @@ static bool open_and_send(const ProviderDef *p, const char *model,
         return false;
     }
 
-    /* ★★ httpcInit 的参数**不是**"随便给个缓冲"，而是
-     *   「POST 数据要上传的那块共享内存」。libctru 的注释写得很清楚：
-     *     "The sharedmem contains data which will be later uploaded for HTTP
-     *      POST. sharedmem_size should be aligned to 0x1000-bytes."
-     *
-     *   原来传 0 → 用默认大小（4KB 量级）。于是：
-     *     · 旧请求体 4095 字节**刚好塞得下** → 请求能发出去（只是被我们自己截断成半截 JSON）；
-     *     · 扩到 40KB 之后**塞不进去** → httpcAddPostDataRaw 直接返回 0xD8A0A003，
-     *       屏上就是"请求体写不进去 0xd8a0a003"。
-     *   一分钱没花就同时解释了前后两个症状。
-     *
-     *   现在给 64KB（0x10000，按 0x1000 对齐），比 REQ_BUF(40KB) 有余量。 */
-    r = httpcInit(64 * 1024);
-    if (R_FAILED(r)) {
-        snprintf(out->error, sizeof out->error, "网络服务起不来 0x%08lx",
-                 (unsigned long)r);
-        return false;
-    }
+    /* 头必须活到 hx_perform 返回 —— 用 static，别放栈上：
+     * curl 只存指针、不拷贝，栈一弹就是野指针。 */
+    snprintf(hdr_auth, sizeof hdr_auth, "Authorization: Bearer %s", apikey);
+    headers[0] = "Content-Type: application/json";
+    headers[1] = hdr_auth;
+    headers[2] = stream ? "Accept: text/event-stream" : NULL;
+    headers[3] = NULL;
 
-    r = httpcOpenContext(ctx, HTTPC_METHOD_POST, url, 0);
-    if (R_FAILED(r)) {
-        snprintf(out->error, sizeof out->error, "打不开连接 0x%08lx",
-                 (unsigned long)r);
-        httpcExit();
-        return false;
-    }
+    memset(&req, 0, sizeof req);
+    req.url         = url;
+    /* JSON 里不可能出现 0x00，所以走 post（strlen 定长）就够；
+     * post_raw 那条路是留给音频这种含 NUL 的二进制。 */
+    req.post        = req_body;
+    req.headers     = headers;
+    /* 非流式给 60 秒（够模型想完一整段），流式给 120 秒 ——
+     * 长回答是一边想一边吐，整条连接活得比非流式久。 */
+    req.timeout_s   = stream ? 120 : 60;
+    req.follow      = false;
+    req.add_cookies = false;
+    /* 不进池：SSE 一条连接要占几十秒，留着它等于把池子锁死
+     * （见 httpx.h 里 persist 那段）。语音那边才需要复用。 */
+    req.persist     = false;
+    req.buf_size    = 0;
 
-    httpcAddRequestHeaderField(ctx, "Content-Type", "application/json");
+    err[0]    = '\0';
+    g_peek[0] = '\0';
+    g_peek_len = 0;
+
     {
-        static char auth[512];
-        snprintf(auth, sizeof auth, "Bearer %s", apikey);
-        httpcAddRequestHeaderField(ctx, "Authorization", auth);
-    }
-    /* SSE 必须告诉服务端"别缓冲、别压缩"。Accept 一下更保险 ——
-     * 有的中转不认 stream:true，但认这个头。 */
-    if (stream) {
-        httpcAddRequestHeaderField(ctx, "Accept", "text/event-stream");
-        httpcAddRequestHeaderField(ctx, "Cache-Control", "no-cache");
-    }
-    httpcSetKeepAlive(ctx, HTTPC_KEEPALIVE_DISABLED);
+        PeekWrap w = { sink, user };
 
-    r = httpcAddPostDataRaw(ctx, (const u32 *)req_body, (u32)strlen(req_body));
-    if (R_FAILED(r)) {
-        snprintf(out->error, sizeof out->error, "请求体写不进去 0x%08lx",
-                 (unsigned long)r);
-        httpcCloseContext(ctx);
-        httpcExit();
+        code = hx_perform(&req, sink_peek, &w, err, sizeof err);
+    }
+
+    out->http_code = (int)code;
+
+    if (code < 0) {
+        /* curl 层面的失败：DNS / 连不上 / TLS 握手 / 超时。
+         * httpx 已经把 -code 翻成一句人话了，直接用。 */
+        snprintf(out->error, sizeof out->error, "%s",
+                 err[0] ? err : "连不上服务器");
         return false;
     }
 
-    r = httpcBeginRequest(ctx);
-    if (R_SUCCEEDED(r))
-        r = httpcGetResponseStatusCode(ctx, status);
-
-    out->http_code = (int)*status;
-
-    if (R_FAILED(r)) {
-        snprintf(out->error, sizeof out->error, "请求失败 0x%08lx",
-                 (unsigned long)r);
-        httpcCloseContext(ctx);
-        httpcExit();
-        return false;
-    }
-
-    if (*status != 200) {
-        /* 把服务端返回的 body 也读一点出来 —— 很多 API 会在里面说具体原因 */
-        static char peek[256];
-        u32 size = 0;
-        peek[0] = '\0';
-        httpcGetDownloadSizeState(ctx, NULL, &size);
-        if (size > 0) {
-            u32 want = size < sizeof peek - 1 ? size : sizeof peek - 1;
-            /* want-1：ready 是严格大于，要 N 字节就填 N-1 */
-            if (R_SUCCEEDED(httpcReceiveData(ctx, (u8 *)peek,
-                                             want > 1 ? want - 1 : 1)))
-                peek[want] = '\0';
-        }
-        snprintf(out->error, sizeof out->error, "HTTP %lu · %s",
-                 (unsigned long)*status, http_word((int)*status, peek));
-        httpcCloseContext(ctx);
-        httpcExit();
+    if (code != 200) {
+        snprintf(out->error, sizeof out->error, "HTTP %ld · %s",
+                 code, http_word((int)code, g_peek));
         return false;
     }
 
@@ -1104,10 +1145,10 @@ bool chat_completion(const char *provider_name, const char *model,
                      ChatResult *out)
 {
     const ProviderDef *p = provider_find(provider_name);
-    httpcContext ctx;
-    u32 status = 0;
     /* 响应缓冲放静态区：8KB 放栈上对 3DS 有点冒险 */
     static char resp[RESP_BUF];
+    size_t got = 0;
+    bool   truncated = false;
 
     if (!out)
         return false;
@@ -1157,36 +1198,17 @@ bool chat_completion(const char *provider_name, const char *model,
         return false;
     }
 
-    if (!open_and_send(p, model, apikey, chat_ctx, user_text, thinking,
-                       false, &ctx, &status, out))
-        return false;
+    {
+        RawSink rs = { resp, sizeof resp, 0, false };
 
-    /* ---- 读完整响应 ----
-     * 坑一：状态码到手 ≠ body 到手（远程 HTTPS 上 body 后到）。
-     * 坑二：**服务商走 chunked 编码，响应头里没有 Content-Length**，
-     *       GetDownloadSizeState 的 content-length 返回 0 —— 按"目标长度"
-     *       读取的写法一个字节都拿不到（实测 size=0 got=0）。
-     * 所以改用第一个参数（已拷贝字节）当进度：边读边看它涨不涨，
-     * 连续多次不涨就认为读完了。 */
-    u32 got = 0;
-    int stall = 0;
-    while (got < RESP_BUF - 1 && stall < 30) {
-        u32 want = RESP_BUF - 1 - got;
-        (void)httpcReceiveData(&ctx, (u8 *)(resp + got), want > 1 ? want - 1 : 1);
-        u32 now = 0;
-        httpcGetDownloadSizeState(&ctx, &now, NULL);
-        if (now > got) {
-            got = now > RESP_BUF - 1 ? RESP_BUF - 1 : now;
-            stall = 0;
-        } else {
-            ++stall;
-            svcSleepThread(20000000LL);      /* 20ms，最多空转 0.6 秒 */
-        }
+        resp[0] = '\0';
+        if (!open_and_send(p, model, apikey, chat_ctx, user_text, thinking,
+                           false, sink_raw, &rs, out))
+            return false;
+        got       = rs.len;
+        truncated = rs.trunc;
+        resp[got] = '\0';
     }
-    resp[got] = '\0';
-
-    httpcCloseContext(&ctx);
-    httpcExit();
 
     PickCtx pc = { out->reply, CHAT_REPLY_MAX, false };
     minijson_walk(resp, got, pick_reply, &pc);
@@ -1201,8 +1223,14 @@ bool chat_completion(const char *provider_name, const char *model,
     }
 
     if (!pc.got) {
-        snprintf(out->error, sizeof out->error,
-                 "收到了回复，但没找到内容字段（服务商格式变了？）");
+        /* 截断和"格式变了"必须分开报：8KB 装不下长回复是**我们的**限制，
+         * 说成"服务商格式变了"会让人去翻接口文档，方向完全错。 */
+        if (truncated)
+            snprintf(out->error, sizeof out->error,
+                     "回复太长（超过 %d 字节），没能完整收下", (int)sizeof resp);
+        else
+            snprintf(out->error, sizeof out->error,
+                     "收到了回复，但没找到内容字段（服务商格式变了？）");
         return false;
     }
     return true;
@@ -1211,22 +1239,19 @@ bool chat_completion(const char *provider_name, const char *model,
 /* --------------------------------------------------------------------------
  * 流式
  *
- * 主循环的写法（这是整段代码里唯一需要"想清楚"的地方）：
+ * 现在的形状（2026-11-18 从 httpc 换到 httpx 之后）：
  *
- *   · httpcReceiveData(ctx, buf, STREAM_CHUNK-1)
- *       —— 缓冲水位到 STREAM_CHUNK 就返回 STREAM_CHUNK-1 字节；
- *          传输结束时也返回（可能是 0 字节，也可能是剩下的尾巴）。
- *   · 返回 ErrorBufferSmall 完全正常 —— 它只表示"这次没读完整个 body"，
- *     数据该拿到多少拿到了多少。
- *   · 只有 httpcGetDownloadSizeState 的**已拷贝量涨了**才算真拿到东西；
- *     一次没涨就马上用一个小超时调用再试一次 —— **不要**在这里长睡，
- *     否则"等新 token"就变成了"界面冻住"。
- *   · 连续若干次（含超时）都没进展就收工。5 × 300ms = 1.5s 静默，
- *     对 SSE 来说足够判定"对面不发了"。
+ *   hx_perform(req, sink_sse, ...)  —— curl 每收到一段数据就回调一次
+ *   sink_sse                        —— 按 '\n' 切行，整行交给 feed_sse_line
  *
- * 收工后**必须把 body 读干净**再 httpcCloseContext：还剩数据没读时，
- * 关闭会一直等在那儿（真机和 Azahar 都是）。所以有个 drain 循环，
- * 上限兜底，宁可放弃后几字节也不能卡死。
+ * 三个要点：
+ *   · 行缓冲必须**跨回调存活**（SSE 事件会被 TCP 切在任意字节上），
+ *     所以它在函数里是 static、通过 SseSink 传进去。
+ *   · 用户叫停时 sink 返回 0 —— curl 会以 CURLE_WRITE_ERROR(-23) 提前收工，
+ *     这是**唯一**能在不等对面说完的情况下断开的路。别用返回值表达"截断"，
+ *     那是两回事。
+ *   · 收尾不需要 drain：是 curl 自己管的连接，它会在 perform 返回前
+ *     把该读的读完或直接关掉。
  * ----------------------------------------------------------------------- */
 
 /* SSE 一行是怎么吐给回调的：只看 data: 前缀，忽略 event:/id:/注释 */
@@ -1248,6 +1273,47 @@ static void feed_sse_line(char *line, size_t len, DeltaCtx *dc)
     minijson_walk(p, strlen(p), pick_delta, dc);
 }
 
+
+/* 流式：curl 每收到一段就调一次这里，按行切好再交给 feed_sse_line。
+ *
+ * ⚠️ chunk 是**字节流**不是行流：一个 SSE 事件可能横跨两次回调，
+ *    所以跨调用的行缓冲必须留在 SseSink 里（不能是局部变量）。
+ * 返回值语义（见 httpx.h）：!= len 会被 curl 当成"调用方要求中止"。
+ *    用户叫停时我们就靠这个立刻断开，省得把后面的几 KB 白读完。 */
+typedef struct {
+    DeltaCtx *dc;
+    char     *line;
+    size_t    cap;
+    size_t    len;
+} SseSink;
+
+static size_t sink_sse(const char *data, size_t len, void *user)
+{
+    SseSink *s = (SseSink *)user;
+
+    for (size_t i = 0; i < len; ++i) {
+        char c = data[i];
+
+        if (c == '\r')
+            continue;                /* CRLF：CR 直接吃掉 */
+        if (c == '\n') {
+            if (s->len > 0) {
+                s->line[s->len] = '\0';
+                feed_sse_line(s->line, s->len, s->dc);
+            }
+            s->len = 0;
+            if (s->dc->stop)
+                return 0;            /* 叫停：让 curl 断开 */
+            continue;
+        }
+        if (s->len + 1 < s->cap)
+            s->line[s->len++] = c;
+        else
+            s->len = 0;              /* 超长行：丢掉，别溢出 */
+    }
+    return len;
+}
+
 bool chat_completion_stream(const char *provider_name, const char *model,
                             int thinking,
                             const char *apikey, const ChatCtx *chat_ctx,
@@ -1256,19 +1322,11 @@ bool chat_completion_stream(const char *provider_name, const char *model,
                             ChatResult *out)
 {
     const ProviderDef *p = provider_find(provider_name);
-    httpcContext ctx;
-    u32 status = 0;
-    u32 copied = 0;
-    long started_snapshot;
 
     /* 都放静态区：单线程、一次一个请求，静态化是安全的，
      * 而 2.2KB(ChatResult) + 1.5KB(缓冲) 放栈上会把发送路径顶到危险深度 */
-    static char chunk[STREAM_CHUNK];
     static char line[SSE_LINE_MAX];
     DeltaCtx dc;
-    size_t line_len = 0;
-    bool   done = false;
-    int    idle = 0;
 
     if (!out)
         return false;
@@ -1319,10 +1377,6 @@ bool chat_completion_stream(const char *provider_name, const char *model,
         return false;
     }
 
-    if (!open_and_send(p, model, apikey, chat_ctx, user_text, thinking,
-                       true, &ctx, &status, out))
-        return false;
-
     dc.on_delta  = on_delta;
     dc.user      = user;
     dc.full      = out->reply;
@@ -1337,86 +1391,21 @@ bool chat_completion_stream(const char *provider_name, const char *model,
     out->reply[0]     = '\0';
     out->reasoning[0] = '\0';
 
-    /* 起始水位：open_and_send 里 peek 过（那是非 200 分支，这里到不了），
-     * 所以正常情况就是 0。取一次是为了让下面的"涨没涨"有基准。 */
-    httpcGetDownloadSizeState(&ctx, &copied, NULL);
-    started_snapshot = (long)copied;
+    {
+        SseSink ss = { &dc, line, sizeof line, 0 };
+        bool    ok = open_and_send(p, model, apikey, chat_ctx, user_text,
+                                   thinking, true, sink_sse, &ss, out);
 
-    while (!done) {
-        Result r = httpcReceiveDataTimeout(&ctx, (u8 *)chunk,
-                                           STREAM_CHUNK - 1,
-                                           idle > 0 ? 400000000ULL : 3000000000ULL);
-        u32 now = 0;
-
-        if (r == (Result)HTTPC_RESULTCODE_TIMEDOUT) {
-            /* 超时不是错误：模型首 token 延迟经常好几秒，对面只是还没写。
-             * 第一次给 3s（首 token 想久一点是正常的），之后就缩到 400ms
-             * —— 已经在吐字了还停 400ms，基本就是吐完了。 */
-            httpcGetDownloadSizeState(&ctx, &now, NULL);
-            if ((long)now > started_snapshot) {
-                started_snapshot = (long)now;
-                idle = 0;
-            } else if (++idle >= 5) {
-                done = true;             /* 连 5 次静默（约 2s）→ 收工 */
-            }
-            continue;
+        /* 用户在界面上叫停：sink 返回 0 让 curl 主动断开，hx_perform
+         * 于是回一个负值。这不是失败 —— 收多少算多少。 */
+        if (!ok && dc.stop) {
+            ok             = true;
+            out->http_code = 200;
+            out->error[0]  = '\0';
         }
-
-        httpcGetDownloadSizeState(&ctx, &now, NULL);
-
-        if ((long)now <= started_snapshot) {
-            /* 有返回但没有任何新数据 → 传输结束（或对面明确不发了） */
-            done = true;
-            continue;
-        }
-
-        /* 真拿到了。数据长度 = 两次已拷贝量之差 —— 不依赖 libctru 的返回值，
-         * 因为 ErrorBufferSmall 和 Success 都会把数据拷进来。 */
-        size_t n = (size_t)((long)now - started_snapshot);
-        started_snapshot = (long)now;
-        idle = 0;
-        if (n > STREAM_CHUNK - 1)
-            n = STREAM_CHUNK - 1;
-
-        /* 逐字节喂给行解析器。chunk 是**字节流**不是行流：
-         * 一个 SSE 事件可能横跨两次 ReceiveData，所以留着跨调用的 line 缓冲。 */
-        for (size_t i = 0; i < n && !done; ++i) {
-            char c = chunk[i];
-            if (c == '\r')
-                continue;                /* CRLF：CR 直接吃掉 */
-            if (c == '\n') {
-                line[line_len] = '\0';
-                if (line_len > 0)
-                    feed_sse_line(line, line_len, &dc);
-                line_len = 0;
-                if (dc.stop)
-                    done = true;
-                continue;
-            }
-            if (line_len + 1 < sizeof line)
-                line[line_len++] = c;
-            else
-                line_len = 0;            /* 超长行：丢掉，别溢出 */
-        }
+        if (!ok)
+            return false;
     }
-
-    /* ---- 把 body 读干净再关 ----
-     * httpcCloseContext 在还有未读 body 时会一直等（连接不是 keep-alive，
-     * 对面可能还在发）。给一个上限：最多再读 32KB / 40 次，
-     * 到了就走 —— 宁可丢几字节也不能把界面卡在关闭上。 */
-    for (int guard = 0; guard < 40; ++guard) {
-        u32 now = 0;
-        httpcGetDownloadSizeState(&ctx, &now, NULL);
-        if ((long)now <= started_snapshot)
-            break;
-        started_snapshot = (long)now;
-        (void)httpcReceiveDataTimeout(&ctx, (u8 *)chunk, STREAM_CHUNK - 1, 100000000ULL);
-    }
-
-    httpcCloseContext(&ctx);
-    httpcExit();
-
-    (void)done;
 
     /* 一个字符都没收到 → 这条路没走通，让调用方退回非流式。
      * 注意：真的回一个空回复（比如模型拒答）也会命中这里，

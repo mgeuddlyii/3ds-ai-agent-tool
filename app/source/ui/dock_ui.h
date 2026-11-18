@@ -103,6 +103,13 @@ void dockui_opt_set_copy(bool (*has)(void), void (*run)(void));
 void dockui_ime_open(void);
 void dockui_ime_close(void);
 
+/* 键盘里允不允许"直接发送"（Y = 发送 / SELECT = 收起，动作行多一格「发送」）。
+ *
+ * ⚠️ 必须**在 dockui_ime_open() 之后**调：open 会把它复位成 false。
+ *   默认关，是因为设置页那类"填一格"的键盘里 Y 本来就该是空格 ——
+ *   见 sc_dock.c 的 g_ime_sendable。对话页是唯一该打开的地方。 */
+void dockui_ime_allow_send(bool on);
+
 /* ★ 绑定上屏缓冲：之后选中的候选字会**追加**到这个缓冲末尾。
  *   传 NULL 解绑（回到"写到工作台面板的 g_text"的老行为）。
  *   这是为了让对话页的输入框（g_input）能被拼音键盘直接写。
