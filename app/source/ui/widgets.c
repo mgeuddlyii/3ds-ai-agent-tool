@@ -428,12 +428,23 @@ float w_line(float x, float y, float w, const char *s, RColor c)
 float w_wrap(float x, float y, float w, const char *s, RColor c, int line_h)
 {
     int lh = line_h > 0 ? line_h : TEXT_LINE_H;
-    int lines = text_line_count(s, (int)w);
+
+    /* ★ 2026-11-18：**一趟出结果**。
+     *
+     * 原来是 text_line_count() 先数一遍行数（为了算矩形高度），
+     * 再 text_draw() 折一遍画 —— 同一份排版算了两次。对话屏一帧要画
+     * 二三十条消息，每条还要算行高，这两趟就是排版开销的一半。
+     *
+     * text_draw() 本来就返回"实际画了几行"，直接用它。
+     * 矩形给一个大高度是安全的：r_clip_push 会把裁剪区与父裁剪区取交集，
+     * 最终一定夹在画布内（见 render_2d.c），不会写出画布。
+     * 行为等价性：原来的高度 = lines*lh，本来就不会裁掉任何一行。 */
+    Rect  r     = { x, y, w, 100000.0f, 0 };
+    int   lines = text_draw(&r, s, c, lh);
 
     if (lines < 1)
         lines = 1;
 
-    text_draw(&(Rect){ x, y, w, (float)(lines * lh), 0 }, s, c, lh);
     return y + (float)(lines * lh);
 }
 

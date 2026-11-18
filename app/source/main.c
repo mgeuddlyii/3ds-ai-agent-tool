@@ -212,6 +212,9 @@ static void app_thread_main(void *arg)
      *   t_rdr；所以判读时要看 t_rdr - 1000/fps 才是"真正的绘制开销"。
      *   （60fps 下 vblank 一帧 16.7ms，判读时按 frames 折算掉。） */
     u64 t_in = 0, t_hdl = 0, t_rdr = 0, t_swap = 0, t_hid = 0;
+    /* 稳态窗口（每 512 帧清零一次，见循环里那行 boot_mark("perf")） */
+    u64 w_hdl = 0, w_rdr = 0, w_swp = 0;
+    int w_n = 0;
     u64 t_start = osGetTime();
     int probe_frames = 0;
 
@@ -328,6 +331,12 @@ static void app_thread_main(void *arg)
                 t_rdr += t2 - t1;        /* app_render（含 r_end 的 vblank 等待） */
                 ++probe_frames;
             }
+            /* ★ 2026-11-18：稳态窗口采样（每 512 帧一行，进 boot.log）。
+             *   上面那段只记前 400 帧，那还是启动期；用户抱怨的"卡"
+             *   发生在用起来之后，所以这里滚动统计最近的帧。
+             *   判读：hdl+rdr+swp ≈ 一帧总时长；60fps 的预算是 16.7ms。 */
+            w_hdl += t1 - t_start;
+            w_rdr += t2 - t1;
         }
 
         if (shot_name) {
@@ -343,9 +352,20 @@ static void app_thread_main(void *arg)
             r_end();
             if (probe_frames <= 400)
                 t_swap += osGetTime() - t3;   /* 清缓冲 + 交换 + 等 vblank */
+            w_swp += osGetTime() - t3;
             t_start = osGetTime();            /* 下一帧的起点 */
         }
         ++frames;
+        ++w_n;
+        if (w_n >= 512) {
+            /* 每 512 帧一行：hdl = 逻辑，rdr = 绘制，swp = 交换+vblank 等待。
+             * 60fps 预算 16.7ms；三项相加显著超过它就是这个屏在拖后腿。 */
+            boot_mark("perf", "avg hdl=%d rdr=%d swp=%d (ms, %d frames)",
+                      (int)(w_hdl / (u64)w_n), (int)(w_rdr / (u64)w_n),
+                      (int)(w_swp / (u64)w_n), w_n);
+            w_hdl = w_rdr = w_swp = 0;
+            w_n = 0;
+        }
         if ((frames & 31) == 0)
             boot_mark("frame", "%d", frames);
     }

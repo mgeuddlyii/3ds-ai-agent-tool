@@ -788,26 +788,18 @@ static void voice_finish(void)
     g_asr_armed = true;         /* 下一帧才真的发（见文件头两帧拆法的说明） */
 }
 
-static void do_asr(void)
+/* 识别结果落地（原 do_asr 的后半段）。
+ *
+ * 拆出来的原因：真正的网络请求已经挪到工作线程（见下方 asr_poll），
+ * 主线程只在"线程真的跑完了"这一刻做界面更新 —— 原来那一版是在主循环里
+ * 直接同步发请求，Baidu 换 token + 上传最多能卡 30 秒，屏上什么都动不了，
+ * 用户看到的就是"卡死"（2026-11-18 用户报的就是这个）。
+ *
+ * 参数用值拷贝 `r`：下面的界面代码全是按 `r.` 写的，
+ * 改成指针得把几十处 `.` 换 `->`，那种大范围机械替换最容易漏一处。 */
+static void asr_apply(const AsrResult *src, size_t n)
 {
-    size_t      n = 0;
-    AsrResult   r;
-    const AsrDef *d = asr_current();
-    const void  *pcm = voice_pcm(&n);
-
-    if (n < 2) {
-        app_status_set(S(S0108));
-        app_note("voice: empty pcm");
-        return;
-    }
-
-    boot_mark("asr", "begin provider=%s model=%s bytes=%d",
-              d->name, d->model, (int)n);
-    app_note("voice: asr provider=%s model=%s bytes=%d key=%d refilled=%d",
-             d->name, d->model, (int)n, asr_key()[0] ? 1 : 0,
-             asr_key_refilled());
-
-    asr_transcribe(pcm, n, &r);
+    AsrResult r = *src;
 
     boot_mark("asr", "done ok=%d http=%ld", (int)r.ok, r.http);
     /* 网络三段耗时（DNS/TCP/TLS）—— 用来复核"连接复用"到底有没有生效。
@@ -889,6 +881,84 @@ static void do_asr(void)
     }
 }
 
+/* ---- 异步识别：请求放工作线程，主循环继续画 ----------------------------
+ *
+ * 为什么必须异步：换 token（12s 超时）+ 上传（15s 超时）都在 asr_transcribe
+ * 里同步跑，跑在主线程上就是**整屏冻结**。Baidu 那条链路在国内本来不慢，
+ * 但 3DS 的 TLS 握手 + 100KB 上行叠起来是秒级，用户体感就是"死了"。
+ *
+ * 并发边界：识别期间 chat_ready() 返回 false —— 同一时刻只有一条网络请求
+ * 在用 httpx 的连接池。这条不是洁癖，是池子有共享状态（见 shared/httpx.c），
+ * 两条请求同时抓池子里的连接本来就是未定义行为。
+ */
+static Thread        g_asr_th;
+static volatile int  g_asr_done;      /* 线程自己置 1，唯一完成判据 */
+static bool          g_asr_busy;
+static const void   *g_asr_pcm;
+static size_t        g_asr_n;
+static AsrResult     g_asr_res;
+
+static void asr_thread_main(void *arg)
+{
+    (void)arg;
+    asr_transcribe(g_asr_pcm, g_asr_n, &g_asr_res);
+    g_asr_done = 1;
+}
+
+static void do_asr(void)
+{
+    const AsrDef *d = asr_current();
+
+    if (g_asr_busy)
+        return;                       /* 上一轮还没回来，别叠第二条请求 */
+
+    g_asr_pcm = voice_pcm(&g_asr_n);
+    if (g_asr_n < 2) {
+        app_status_set(S(S0108));
+        app_note("voice: empty pcm");
+        return;
+    }
+
+    boot_mark("asr", "begin provider=%s model=%s bytes=%d",
+              d->name, d->model, (int)g_asr_n);
+    app_note("voice: asr provider=%s model=%s bytes=%d key=%d refilled=%d",
+             d->name, d->model, (int)g_asr_n, asr_key()[0] ? 1 : 0,
+             asr_key_refilled());
+
+    memset(&g_asr_res, 0, sizeof g_asr_res);
+    g_asr_done = 0;
+    g_asr_busy = true;
+
+    g_asr_th = threadCreate(asr_thread_main, NULL,
+                            32 * 1024, 0x30, -2, false);
+    if (!g_asr_th) {
+        /* 线程建不出来（内存不够）→ 退回同步。宁可卡一次，也别静默不识别。 */
+        g_asr_busy = false;
+        app_note("voice: threadCreate failed, sync fallback");
+        asr_transcribe(g_asr_pcm, g_asr_n, &g_asr_res);
+        asr_apply(&g_asr_res, g_asr_n);
+        return;
+    }
+
+    app_status_set(S(S0107));         /* 正在识别… */
+}
+
+/* 每帧调一次：完成了就收线程 + 落地结果，没完成就什么都不做
+ * （状态行在 do_asr 里已经设成"正在识别…"，一直在那儿就说明在跑）。 */
+static void asr_poll(void)
+{
+    if (!g_asr_busy || !g_asr_done)
+        return;
+
+    /* 走到这里 g_asr_done 已经是 1，join 立刻返回；
+     * 用 U64_MAX 只是因为 libctru 没有"只探一下"的接口。 */
+    threadJoin(g_asr_th, U64_MAX);
+    threadFree(g_asr_th);
+    g_asr_th   = NULL;
+    g_asr_busy = false;
+    asr_apply(&g_asr_res, g_asr_n);
+}
+
 /* ---- 「复制代码」：3DS 没有系统剪贴板，落点只能是输入框 ----------------
  *
  * 为什么不自动发送：复制的目的是"拿去改一行再发"，自动发就把改的机会堵死了。
@@ -941,6 +1011,12 @@ static void do_send(void)
 
     if (g_input[0] == '\0') {
         app_status_set(S(S0118));
+        return;
+    }
+    /* 识别中：明确说"在识别"，不要落到下面那句"没配 Key"上 ——
+     * 用户刚说完话就按发送是最自然的动作，给错提示会被当成"语音功能坏了"。 */
+    if (g_asr_busy) {
+        app_status_set(S(S0107));
         return;
     }
     if (!chat_ready()) {
@@ -1023,6 +1099,10 @@ static bool chat_offline(void)
  * 界面上一切"能不能发"的判断都该走这里，别再散着判 g_have_key。 */
 static bool chat_ready(void)
 {
+    /* 识别还没回来时不许发对话：同一时刻只允许一条网络请求走 httpx，
+     * 见 asr_poll 上方那段"并发边界"。 */
+    if (g_asr_busy)
+        return false;
     /* ⚠️ 豆包**必须先判**：它走登录态、不走 API Key，
      * 所以"有没有 Key"这个判据对它恒为假。不单独分这一支的后果是
      * 「已经扫码登录好豆包」的用户在对话屏被拦住，而提示让他去配一个
@@ -2920,6 +3000,12 @@ static void chat_handle(u32 down, u32 held)
 {
     (void)held;
 
+    /* ★ 第一件事：收异步识别的结果。
+     *   放在最前面，是因为"识别中"这一段屏幕看起来是静止的 —
+     *   用户会去按 A/B，而结果晚一帧落地的话，那些按键会被当成
+     *   "对着空输入框发送"。先在原地把结果并进输入框，再处理按键。 */
+    asr_poll();
+
     /* ★ AI 在等回答：这一屏只认选项页，别的键一律不理。
      * 不接管的话，用户按 A 会"切到某一格"、按 B 会直接退屏 ——
      * 而屏幕上明明摆着几个选项，看起来像"点了没反应"。 */
@@ -3022,6 +3108,12 @@ static void chat_handle(u32 down, u32 held)
         bool zl_edge = !g_zl_prev;
 
         g_zl_prev = zl_now;
+        if (zl_edge && g_asr_busy) {
+            /* 上一句还在识别：不重开录音。重开会覆盖 g_asr_pcm 指向的
+             * 录音缓冲，而线程正在读它 —— 识别出来的会是两句话的混合。 */
+            app_status_set(S(S0107));
+            return;
+        }
         if (zl_edge)
             voice_begin();          /* 返回 void；成功/失败它自己设状态行 */
         /* ★★ 按住期间**必须自己搬采样**（2026-10-24 修）。
@@ -3399,6 +3491,16 @@ static void chat_handle(u32 down, u32 held)
  * 而那个屏自己什么都看不见。 */
 static void chat_leave(void)
 {
+    /* 识别线程还在跑就等它收尾：它写的是本文件的静态缓冲，
+     * 人已经离开这一屏也不能让线程继续往里面写。失败路径最多 ~30 秒，
+     * 但那是用户已经放弃这一屏之后的等待，不会卡住界面绘制。 */
+    if (g_asr_busy) {
+        threadJoin(g_asr_th, U64_MAX);
+        threadFree(g_asr_th);
+        g_asr_th   = NULL;
+        g_asr_busy = false;
+        app_note("voice: asr joined on leave");
+    }
     dockui_bind_text(NULL, 0);
     dockui_opt_set_copy(NULL, NULL);   /* 离屏即撤销：别的屏不该看到这一行 */
 }

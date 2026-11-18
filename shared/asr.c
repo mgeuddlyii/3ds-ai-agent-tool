@@ -408,6 +408,18 @@ const AsrDef *asr_current(void)
             return d;
     }
 
+    /* 1.3) ★ 2026-11-18：**英文界面 + 只配了百度** 这一格以前是空的。
+     *
+     *   于是它一路往下落到 siliconflow，而硅基那把内置 Key 的额度早就没了
+     *   （402），表现是"一按 ZL 就说没配 Key / 永远识别不出来"。
+     *   百度对英文的识别率是不如 Groq，但"差一点"和"不可用"不是一个量级 ——
+     *   有凭据就用它，把不可用降级成凑合能用。 */
+    if (g_key_baidu[0] && g_secret_baidu[0]) {
+        const AsrDef *d = asr_find("baidu");
+        if (d)
+            return d;
+    }
+
     /* 1.5) **有模力方舟令牌就先走它**（国内直连、中文最强、每日免费 100 次）。
      *      放在 Groq 前面：Groq 的控制台在本机 403，注册那一步就断了。 */
     if (g_key_moark[0]) {
@@ -866,9 +878,11 @@ static size_t pick_result(const char *s, char *out, size_t cap)
  *   校验的 —— 直接改成 16000 而不重采样，音频会被当成慢了 2.25%，
  *   识别率下降且没有报错；老老实实重采样才是对的。
  *   线性插值对语音足够（下一步就是 ASR 模型，不是重放给人听）。 */
-static size_t baidu_wav(const s16 *in, size_t n_in, u8 *dst, size_t cap)
+static size_t baidu_wav(const s16 *in, size_t n_in, u8 *dst, size_t cap,
+                        unsigned dst_rate)
 {
-    const unsigned SRC = 16360u, DST = 16000u;
+    const unsigned SRC = 16360u;
+    const unsigned DST = dst_rate ? dst_rate : 16000u;
     size_t         n_out, i;
     u8            *pcm = dst + 44;
 
@@ -978,7 +992,11 @@ static void baidu_transcribe(const AsrDef *d, const void *pcm, size_t bytes,
         return;
     }
 
-    wlen = baidu_wav((const s16 *)pcm, bytes / 2, g_body, sizeof g_body);
+    /* ★ 2026-11-18：百度这条走 **8kHz**，不是 16k。
+     *   3DS 的瓶颈是上行（TLS + 小包），文件减半等于等待时间减半；
+     *   8k 是电信级语音采样率，短句识别率损失远小于"多等三秒"的体感代价。
+     *   百度短语音接口 rate 只接受 16000 / 8000 两档，别再往下压。 */
+    wlen = baidu_wav((const s16 *)pcm, bytes / 2, g_body, sizeof g_body, 8000u);
     if (!wlen) {
         snprintf(out->err, sizeof out->err, "音频重采样失败（太长？）");
         return;
@@ -1004,7 +1022,7 @@ static void baidu_transcribe(const AsrDef *d, const void *pcm, size_t bytes,
     req.url          = url;
     req.post_raw     = g_body;
     req.post_raw_len = wlen;
-    req.content_type = "audio/wav;rate=16000";
+    req.content_type = "audio/wav;rate=8000";
     req.timeout_s    = 15;
     req.follow       = false;
     req.add_cookies  = false;
@@ -1128,7 +1146,7 @@ static void azure_transcribe(const AsrDef *d, const void *pcm, size_t bytes,
         return;
     }
 
-    wlen = baidu_wav((const s16 *)pcm, bytes / 2, g_body, sizeof g_body);
+    wlen = baidu_wav((const s16 *)pcm, bytes / 2, g_body, sizeof g_body, 16000u);
     if (!wlen) {
         snprintf(out->err, sizeof out->err, "音频封装失败（太长？）");
         return;
