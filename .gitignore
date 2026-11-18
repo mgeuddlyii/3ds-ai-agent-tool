@@ -96,6 +96,9 @@ tools/ftp_putkey.py
 tools/_*.py
 tools/_*.txt
 tools/_ref_doubao/
+# 豆包网页登录态（sessionid / sid_guard 等）。这是**个人账号凭据**，
+# 不是配置；只留在本机，绝不进仓库。
+tools/doubao_session.json
 
 # 第三方子模块：CTRPluginFramework 有自己的仓库，不该嵌套进来
 plugin/ctrpluginframework/
